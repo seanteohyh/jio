@@ -135,7 +135,9 @@ export default function ProfilePage() {
       <header>
         <h1 className="text-2xl font-semibold tracking-tight">You</h1>
         <p className="text-dolch-muted mt-1 text-sm">
-          {me?.user?.email ?? "Signed in"}
+          {/* Name-only users have no email, so fall back to who they said
+              they are rather than showing an empty line. */}
+          {me?.user?.email ?? me?.user?.display_name ?? "Signed in"}
         </p>
       </header>
 
@@ -339,7 +341,37 @@ export default function ProfilePage() {
           Push notifications are not built yet — see the README for what would
           be involved.
         </p>
-        {!config.isDemo && (
+
+        {/* In name-only mode there is no way back in: the identity lives in
+            this browser's session and nothing else. Signing out is closer to
+            "delete me" than to "log out", so it says so and is not styled as
+            the friendly option. Changing your name is what people actually
+            want, and that is the field at the top of this page. */}
+        {config.authAdapter === "name" && !config.isDemo && (
+          <>
+            <p className="text-dolch-muted text-xs">
+              You are signed in on this browser only. Signing out gives you a
+              blank slate — your ratings, wishlist and history stay with the old
+              identity and there is no way back to them.
+            </p>
+            <Button
+              variant="danger"
+              onClick={() => {
+                if (
+                  window.confirm(
+                    "Sign out and start fresh? Your history on this browser will not be recoverable."
+                  )
+                ) {
+                  signOut();
+                }
+              }}
+            >
+              Sign out and start over
+            </Button>
+          </>
+        )}
+
+        {config.authAdapter === "email" && (
           <Button variant="secondary" onClick={signOut}>
             Sign out
           </Button>

@@ -1,5 +1,5 @@
 import { createAuthServerClient } from "@/lib/supabase/serverAuth";
-import type { AuthAdapter } from "./index";
+import { UNSUPPORTED, type AuthAdapter } from "./index";
 
 /**
  * Supabase Auth adapter — passwordless email.
@@ -13,7 +13,12 @@ import type { AuthAdapter } from "./index";
  * session, and sign-in silently does nothing. Typing six digits always works.
  */
 export const supabaseAuth: AuthAdapter = {
-  name: "supabase",
+  name: "email",
+  capabilities: { name: false, email: true },
+
+  async signInWithName() {
+    return UNSUPPORTED;
+  },
 
   async getCurrentUser() {
     try {

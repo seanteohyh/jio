@@ -17,7 +17,7 @@ export async function GET() {
       user: null,
       demo: config.isDemo,
       features,
-      authMethods: config.authMethods,
+      authMode: config.authAdapter,
       openSignup: config.openSignup,
     });
   }
@@ -41,7 +41,7 @@ export async function GET() {
     },
     demo: config.isDemo,
     features,
-    authMethods: config.authMethods,
+    authMode: config.authAdapter,
     openSignup: config.openSignup,
   });
 }

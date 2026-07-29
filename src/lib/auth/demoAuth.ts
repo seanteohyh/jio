@@ -4,11 +4,12 @@ import type { AuthAdapter } from "./index";
 /**
  * No-auth adapter for demo mode.
  *
- * Always returns the same fixed user, so every page renders as if signed in
- * and nobody has to configure an email provider to look at the app.
+ * Always the same fixed user, so every page renders as if signed in and nobody
+ * has to configure anything to look at the app.
  */
 export const demoAuth: AuthAdapter = {
   name: "demo",
+  capabilities: { name: true, email: false },
 
   async getCurrentUser() {
     return {
@@ -16,6 +17,10 @@ export const demoAuth: AuthAdapter = {
       email: DEMO_USER.email,
       display_name: DEMO_USER.display_name,
     };
+  },
+
+  async signInWithName() {
+    return { ok: true };
   },
 
   async signInWithEmail() {

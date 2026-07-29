@@ -15,7 +15,20 @@ export { FEATURE_KEYS } from "./features";
  */
 
 export type DataAdapter = "demo" | "supabase";
-export type AuthAdapter = "demo" | "supabase";
+
+/**
+ * Auth modes, cheapest first.
+ *
+ *  demo  — everyone is the same fixed user. No sign-in at all.
+ *  name  — type your name, that's it. Identity is a Supabase anonymous
+ *          session, so it is a real distinct user with a real UUID and Row
+ *          Level Security still applies. No email, no password, no provider.
+ *  email — passwordless magic link plus a 6-digit code.
+ *
+ * `name` is the default outside demo mode: it is the least ceremony that still
+ * gives distinct, attributable users.
+ */
+export type AuthAdapter = "demo" | "name" | "email";
 export type RoutingProviderName = "onemap" | "haversine";
 export type WeatherProviderName = "nea" | "none";
 export type DiscoveryProviderName = "overpass" | "none";
@@ -50,11 +63,17 @@ export const config = {
     () => (isDemoMode() ? "demo" : "supabase")
   ),
 
-  /** Which auth implementation `getAuth()` returns. */
+  /**
+   * Which auth implementation `getAuth()` returns.
+   *
+   * Deliberately NEXT_PUBLIC_: the login page is a client component and has to
+   * know which form to render. A server-only var would read as undefined in
+   * the browser and silently fall back to the wrong mode.
+   */
   authAdapter: pick<AuthAdapter>(
-    process.env.JIO_AUTH_ADAPTER,
-    ["demo", "supabase"],
-    () => (isDemoMode() ? "demo" : "supabase")
+    process.env.NEXT_PUBLIC_JIO_AUTH_ADAPTER,
+    ["demo", "name", "email"],
+    () => (isDemoMode() ? "demo" : "name")
   ),
 
   /** Which walking-route provider to use. */
@@ -76,15 +95,7 @@ export const config = {
     () => (isEnabled("discovery") ? "overpass" : "none")
   ),
 
-  /** Sign-in methods the login page offers. */
-  authMethods: (
-    process.env.NEXT_PUBLIC_JIO_AUTH_METHODS || "magiclink,otp"
-  )
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean) as ("magiclink" | "otp" | "password")[],
-
-  /** When false, only existing users can sign in. */
+  /** When false, only existing users can sign in. Only meaningful in email mode. */
   openSignup: process.env.NEXT_PUBLIC_JIO_OPEN_SIGNUP !== "false",
 
   overpassUrl:

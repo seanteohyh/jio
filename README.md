@@ -78,7 +78,7 @@ implementation from an environment variable.
 | Seam | Interface | Ships with | Set with |
 |---|---|---|---|
 | Database | `Repo` (`lib/data/index.ts`) | `demoRepo`, `supabaseRepo` | `JIO_DATA_ADAPTER` |
-| Auth | `AuthAdapter` (`lib/auth/index.ts`) | `demoAuth`, `supabaseAuth` | `JIO_AUTH_ADAPTER` |
+| Auth | `AuthAdapter` (`lib/auth/index.ts`) | `demoAuth`, `nameAuth`, `supabaseAuth` | `NEXT_PUBLIC_JIO_AUTH_ADAPTER` |
 | Walking routes | `RoutingProvider` | OneMap, haversine | `JIO_ROUTING_PROVIDER` |
 | Weather | `WeatherProvider` | NEA, none | `JIO_WEATHER_PROVIDER` |
 | Place discovery | `DiscoveryProvider` | Overpass, none | `JIO_DISCOVERY_PROVIDER` |
@@ -110,6 +110,61 @@ NEXT_PUBLIC_JIO_DISABLED_FEATURES=kakis,blogImport,roulette
 
 Valid keys: `events`, `kakis`, `wishlist`, `recos`, `blogImport`, `discovery`,
 `weather`, `map`, `metrics`, `roulette`, `reviews`, `offices`.
+
+---
+
+## Accounts
+
+Three modes, set by `NEXT_PUBLIC_JIO_AUTH_ADAPTER`. **`name` is the default.**
+
+### `name` — type your name, that's it
+
+One field, one button, you're in. No email, no password, no provider to
+configure, nothing to verify. You get a distinct user with a real UUID, so
+votes, reviews and recommendations are all properly attributed and everyone can
+tell who is who.
+
+Underneath it is a Supabase **anonymous session**. That detail matters: the
+obvious shortcut — a signed cookie holding a user id we made up — would mean no
+`auth.uid()`, which would mean every Row Level Security policy in the schema
+stops working and every query has to run as service role. Anonymous sessions
+give a real row in `auth.users` and a JWT with the `authenticated` role, so all
+fifteen migrations' worth of access control keep applying exactly as written.
+Zero sign-up friction, security model intact.
+
+Two things you are accepting in exchange:
+
+- **Identity is bound to the browser.** Clear site data and you come back as a
+  new person with no history. Your phone is a different user from your laptop.
+- **Anyone can claim any name.** There is no secret, so nothing stops someone
+  typing a colleague's name. Fine for a team that already trusts each other.
+
+Setup: enable **Authentication → Providers → Anonymous sign-ins** in the
+Supabase dashboard, and apply migration 015.
+
+### `email` — magic link plus a 6-digit code
+
+Passwordless. The same email carries both a link and a code; the code exists
+because on a phone a magic link often opens in the mail client's in-app
+browser, which does not share cookies with the browser holding the session —
+sign-in silently does nothing and it is baffling to debug. Six digits always
+works.
+
+Fixes both of the trade-offs above: identity is portable across devices, and
+names cannot be claimed by someone else.
+
+Requires custom SMTP (see below).
+
+### `demo` — everyone is the same user
+
+No sign-in at all. What you get with no configuration.
+
+### Switching later
+
+Change one environment variable. Nothing else. Both real modes sit on the same
+`auth.users` table, so existing users keep their ids, their history and their
+display names across the change — an anonymous user can even be upgraded in
+place by attaching an email to it.
 
 ---
 
@@ -164,18 +219,25 @@ Roughly 30 minutes end to end. Everything below stays on a free tier.
    `service_role` key. The last one is a secret; it bypasses all access
    control.
 3. **SQL Editor** — run every file in `supabase/migrations/` in numeric order,
-   001 through 014. They are idempotent, so re-running is harmless.
-4. **Authentication → Providers → Email** — enable it, with magic links on.
+   001 through 015. They are idempotent, so re-running is harmless.
+4. **Authentication → Providers → Anonymous sign-ins** — turn this on. It is
+   what makes name-only sign-in work.
 5. **Authentication → URL Configuration** — set the Site URL to your deployed
    URL, and add `http://localhost:3000` to the redirect URLs for local work.
 
-### 2. Email delivery (do not skip this)
+### 2. Email delivery — only if you switch to `email` mode
 
-Supabase's built-in email service is rate limited to a handful of messages an
-hour and is explicitly not for production. Since sign-in *is* email, that limit
-is the thing most likely to make the app look broken to your colleagues.
+In the default `name` mode the app never sends an email, so there is nothing to
+configure and you can skip straight to step 3.
 
-Set up custom SMTP under **Project Settings → Authentication → SMTP Settings**.
+If you later set `NEXT_PUBLIC_JIO_AUTH_ADAPTER=email`, this stops being
+optional. Supabase's built-in email service is rate limited to a handful of
+messages an hour and is explicitly not for production — and since sign-in
+*is* email in that mode, hitting the limit looks exactly like the app being
+broken.
+
+Set up custom SMTP under **Project Settings → Authentication → SMTP Settings**,
+and enable **Authentication → Providers → Email** with magic links on.
 [Resend](https://resend.com) and [Brevo](https://brevo.com) both have free
 tiers well beyond what a team of this size needs.
 
@@ -197,6 +259,7 @@ the environment variables. Vercel detects Next.js with no configuration.
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | From step 1 |
 | `SUPABASE_SERVICE_ROLE_KEY` | From step 1 — secret |
 | `NEXT_PUBLIC_DEMO_MODE` | `false` |
+| `NEXT_PUBLIC_JIO_AUTH_ADAPTER` | `name` (or `email` once SMTP is set up) |
 | `CRON_SECRET` | `openssl rand -hex 32` |
 | `ONEMAP_EMAIL` / `ONEMAP_PASSWORD` | Optional, from step 3 |
 
@@ -221,7 +284,9 @@ curl -H "Authorization: Bearer $CRON_SECRET" \
 # {"fetched":45,"new":3,"skipped":42,...}
 ```
 
-Then sign in, open `/suggest`, and confirm you get picks with reasons attached.
+Then sign in — one name field, no email — open `/suggest`, and confirm you get
+picks with reasons attached. Ask a colleague to do the same and check they show
+up as a separate person on `/kakis` and in an event's vote.
 
 ---
 
@@ -294,7 +359,7 @@ open.
 ## Tests
 
 ```bash
-npm test          # 179 tests across 9 files
+npm test          # 184 tests across 10 files
 npm run typecheck
 npm run lint
 ```
@@ -309,6 +374,7 @@ npm run lint
 | `voting.test.ts` | Borda count, partial ballots, tie-breaking |
 | `weather.test.ts` | Rain detection and weather-aware ranking |
 | `clients.test.ts` | The Supabase client factories cannot escalate privilege |
+| `auth.test.ts` | Every auth adapter answers every method, and refuses cleanly |
 | `repoConformance.test.ts` | Both repos implement the same interface |
 
 ---
@@ -317,9 +383,11 @@ npm run lint
 
 In rough priority order.
 
-1. **Onboarding polish for display names.** A new user is seeded from their
-   email local part. It works, but the first-run prompt to set a real name
-   should be more prominent than a field on `/profile`.
+1. **Making a name-only identity portable.** Right now it lives in one
+   browser. The clean fix is letting someone optionally attach an email to
+   their existing anonymous user, which upgrades it in place without losing
+   history — Supabase supports this directly, it just needs a form on
+   `/profile` and SMTP configured.
 2. **Office management UI.** The schema supports unlimited offices and the
    switcher works, but adding one in production means the small form or a SQL
    insert. An admin view would be better.

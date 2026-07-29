@@ -36,7 +36,7 @@ npm test
 npm run typecheck
 ```
 
-179 tests. If these pass, the business logic is sound.
+184 tests. If these pass, the business logic is sound.
 
 ## 4. Put it on GitHub
 
@@ -51,14 +51,18 @@ accident.
 
 ## 5. Make it real
 
-Follow **Going live** in `README.md`. Roughly 30 minutes:
+Follow **Going live** in `README.md`. Roughly 20 minutes:
 
-1. Create a Supabase project, run the 14 migrations in the SQL editor
-2. **Set up custom SMTP** — this is the step people skip and then wonder why
-   sign-in stops working after three colleagues try it
+1. Create a Supabase project, run the 15 migrations in the SQL editor
+2. Turn on **Authentication → Providers → Anonymous sign-ins**. This is the one
+   dashboard toggle name-only sign-in needs, and the only thing that will make
+   it fail with a confusing error if you miss it
 3. Optionally register for OneMap for real walking distances
 4. Deploy to Vercel, paste in the environment variables
 5. Run the three seed scripts
+
+No SMTP, no email provider, nothing to verify — that is only needed if you
+later switch to magic-link mode.
 
 ---
 
@@ -85,4 +89,25 @@ version you got; the code targets the Next.js 15+ App Router conventions
 | Change the colours | The `@theme` block in `src/app/globals.css` |
 | Swap the database | Write one file implementing `Repo`, add a case to `src/lib/data/repo.ts` |
 | Swap authentication | Write one file implementing `AuthAdapter`, add a case to `src/lib/auth/adapter.ts` |
+| Move from names to email sign-in | Set `NEXT_PUBLIC_JIO_AUTH_ADAPTER=email` (and configure SMTP) |
 | Add a place by hand | `/places/new` in the app, or `scripts/manual-seed.json` |
+
+---
+
+## How sign-in works
+
+Type your name, press the button, you're in. No email, no password, nothing to
+verify. Everyone gets a distinct user, so votes and reviews are attributed and
+you can tell who is who — which is all you asked for.
+
+Two things worth knowing before you share the link:
+
+- **Your identity lives in your browser.** Clear site data and you come back as
+  a new person with an empty history. Your phone is a separate user from your
+  laptop.
+- **There is no secret, so anyone can type anyone's name.** Fine for a team
+  that trusts each other; not a control you can rely on if that changes.
+
+Both are fixed by one environment variable — `NEXT_PUBLIC_JIO_AUTH_ADAPTER=email`
+switches to magic links, and existing users keep their ids and history because
+both modes sit on the same table. That is the whole migration.
