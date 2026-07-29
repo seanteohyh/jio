@@ -1,0 +1,375 @@
+import { beforeEach, describe, expect, it } from "vitest";
+import { demoRepo, resetDemoStore } from "@/lib/data/demoRepo";
+import { DEFAULT_OFFICE, DEMO_USER_ID } from "@/lib/constants";
+import { DEMO_TEAMMATE_A, DEMO_TEAMMATE_B } from "@/lib/data/demoData";
+
+/**
+ * Who may put a place on the table, and who may take it off again.
+ *
+ * These rules are enforced twice: here in application code (for readable
+ * errors) and in the RLS policy from migration 013 (which is the real gate).
+ * These tests cover the application half; the policy is exercised against a
+ * live database.
+ */
+
+const STRANGER = "00000000-0000-0000-0000-0000000stranger";
+const TOMORROW = new Date(Date.now() + 86400000).toISOString();
+
+beforeEach(() => {
+  resetDemoStore();
+});
+
+async function makeEvent(options?: {
+  kakiId?: string | null;
+  inviteeIds?: string[];
+  placeIds?: string[];
+}) {
+  return demoRepo.createEvent(
+    DEMO_USER_ID,
+    "Test lunch",
+    TOMORROW,
+    DEFAULT_OFFICE.id,
+    options?.placeIds ?? ["demo-place-01"],
+    options?.kakiId ?? null,
+    options?.inviteeIds ?? []
+  );
+}
+
+describe("adding an option", () => {
+  it("lets the host add a place", async () => {
+    const event = await makeEvent();
+    await demoRepo.addOptionToEvent(event.id, "demo-place-02", DEMO_USER_ID);
+
+    const detail = await demoRepo.getEvent(event.id);
+    expect(detail?.options.map((o) => o.place_id)).toContain("demo-place-02");
+  });
+
+  it("lets a member of the linked kaki add a place", async () => {
+    const kaki = await demoRepo.createKaki(DEMO_USER_ID, "Test group");
+    await demoRepo.joinKaki(kaki.invite_token, DEMO_TEAMMATE_A);
+
+    const event = await makeEvent({ kakiId: kaki.id });
+    await demoRepo.addOptionToEvent(event.id, "demo-place-03", DEMO_TEAMMATE_A);
+
+    const detail = await demoRepo.getEvent(event.id);
+    expect(detail?.options.map((o) => o.place_id)).toContain("demo-place-03");
+  });
+
+  it("lets an explicit invitee add a place", async () => {
+    const event = await makeEvent({ inviteeIds: [DEMO_TEAMMATE_B] });
+    await demoRepo.addOptionToEvent(event.id, "demo-place-04", DEMO_TEAMMATE_B);
+
+    const detail = await demoRepo.getEvent(event.id);
+    expect(detail?.options.map((o) => o.place_id)).toContain("demo-place-04");
+  });
+
+  it("rejects someone with no connection to the event", async () => {
+    const event = await makeEvent();
+
+    await expect(
+      demoRepo.addOptionToEvent(event.id, "demo-place-05", STRANGER)
+    ).rejects.toThrow(/host, kaki members or invitees/i);
+  });
+
+  it("rejects a kaki member when the event is not linked to that kaki", async () => {
+    const kaki = await demoRepo.createKaki(DEMO_USER_ID, "Unlinked group");
+    await demoRepo.joinKaki(kaki.invite_token, DEMO_TEAMMATE_A);
+
+    const event = await makeEvent({ kakiId: null });
+
+    await expect(
+      demoRepo.addOptionToEvent(event.id, "demo-place-06", DEMO_TEAMMATE_A)
+    ).rejects.toThrow(/host, kaki members or invitees/i);
+  });
+
+  it("rejects a duplicate option", async () => {
+    const event = await makeEvent({ placeIds: ["demo-place-01"] });
+
+    await expect(
+      demoRepo.addOptionToEvent(event.id, "demo-place-01", DEMO_USER_ID)
+    ).rejects.toThrow(/already an option/i);
+  });
+
+  it("rejects a place that does not exist", async () => {
+    const event = await makeEvent();
+
+    await expect(
+      demoRepo.addOptionToEvent(event.id, "no-such-place", DEMO_USER_ID)
+    ).rejects.toThrow(/not found/i);
+  });
+
+  it("rejects an addition to a closed event", async () => {
+    const event = await makeEvent();
+    await demoRepo.closeEvent(event.id, DEMO_USER_ID);
+
+    await expect(
+      demoRepo.addOptionToEvent(event.id, "demo-place-02", DEMO_USER_ID)
+    ).rejects.toThrow(/already closed/i);
+  });
+
+  it("rejects an unknown event", async () => {
+    await expect(
+      demoRepo.addOptionToEvent("no-such-event", "demo-place-01", DEMO_USER_ID)
+    ).rejects.toThrow(/not found/i);
+  });
+
+  it("records who added each option", async () => {
+    const event = await makeEvent({ inviteeIds: [DEMO_TEAMMATE_B] });
+    await demoRepo.addOptionToEvent(event.id, "demo-place-07", DEMO_TEAMMATE_B);
+
+    const detail = await demoRepo.getEvent(event.id);
+    const option = detail?.options.find((o) => o.place_id === "demo-place-07");
+
+    expect(option?.added_by).toBe(DEMO_TEAMMATE_B);
+  });
+});
+
+describe("removing an option", () => {
+  it("lets the host remove anything", async () => {
+    const event = await makeEvent({ inviteeIds: [DEMO_TEAMMATE_B] });
+    await demoRepo.addOptionToEvent(event.id, "demo-place-08", DEMO_TEAMMATE_B);
+    await demoRepo.removeOptionFromEvent(
+      event.id,
+      "demo-place-08",
+      DEMO_USER_ID
+    );
+
+    const detail = await demoRepo.getEvent(event.id);
+    expect(detail?.options.map((o) => o.place_id)).not.toContain(
+      "demo-place-08"
+    );
+  });
+
+  it("lets whoever added an option remove it again", async () => {
+    const event = await makeEvent({ inviteeIds: [DEMO_TEAMMATE_B] });
+    await demoRepo.addOptionToEvent(event.id, "demo-place-09", DEMO_TEAMMATE_B);
+    await demoRepo.removeOptionFromEvent(
+      event.id,
+      "demo-place-09",
+      DEMO_TEAMMATE_B
+    );
+
+    const detail = await demoRepo.getEvent(event.id);
+    expect(detail?.options.map((o) => o.place_id)).not.toContain(
+      "demo-place-09"
+    );
+  });
+
+  it("stops one invitee removing another's suggestion", async () => {
+    const event = await makeEvent({
+      inviteeIds: [DEMO_TEAMMATE_A, DEMO_TEAMMATE_B],
+    });
+    await demoRepo.addOptionToEvent(event.id, "demo-place-10", DEMO_TEAMMATE_B);
+
+    await expect(
+      demoRepo.removeOptionFromEvent(
+        event.id,
+        "demo-place-10",
+        DEMO_TEAMMATE_A
+      )
+    ).rejects.toThrow(/host or whoever added it/i);
+  });
+
+  it("rejects removing something that is not an option", async () => {
+    const event = await makeEvent();
+
+    await expect(
+      demoRepo.removeOptionFromEvent(event.id, "demo-place-20", DEMO_USER_ID)
+    ).rejects.toThrow(/not an option/i);
+  });
+
+  it("drops ballot rows that pointed at the removed option", async () => {
+    // Otherwise the Borda count keeps scoring a place nobody can pick.
+    const event = await makeEvent({
+      placeIds: ["demo-place-01", "demo-place-02"],
+    });
+    await demoRepo.castBallot(event.id, DEMO_USER_ID, [
+      "demo-place-02",
+      "demo-place-01",
+    ]);
+
+    let detail = await demoRepo.getEvent(event.id);
+    expect(detail?.votes).toHaveLength(2);
+
+    await demoRepo.removeOptionFromEvent(
+      event.id,
+      "demo-place-02",
+      DEMO_USER_ID
+    );
+
+    detail = await demoRepo.getEvent(event.id);
+    expect(detail?.votes.map((v) => v.place_id)).not.toContain("demo-place-02");
+  });
+});
+
+describe("invitees", () => {
+  it("persists invitees added at creation time", async () => {
+    const event = await makeEvent({
+      inviteeIds: [DEMO_TEAMMATE_A, DEMO_TEAMMATE_B],
+    });
+    const detail = await demoRepo.getEvent(event.id);
+
+    expect(detail?.invitees.map((i) => i.user_id).sort()).toEqual(
+      [DEMO_TEAMMATE_A, DEMO_TEAMMATE_B].sort()
+    );
+  });
+
+  it("never adds the host as their own invitee", async () => {
+    const event = await makeEvent({ inviteeIds: [DEMO_USER_ID] });
+    const detail = await demoRepo.getEvent(event.id);
+
+    expect(detail?.invitees).toHaveLength(0);
+  });
+
+  it("lets the host invite more people later", async () => {
+    const event = await makeEvent();
+    await demoRepo.addInviteesToEvent(
+      event.id,
+      [DEMO_TEAMMATE_A],
+      DEMO_USER_ID
+    );
+
+    const detail = await demoRepo.getEvent(event.id);
+    expect(detail?.invitees.map((i) => i.user_id)).toContain(DEMO_TEAMMATE_A);
+  });
+
+  it("stops a non-host inviting people", async () => {
+    const event = await makeEvent();
+
+    await expect(
+      demoRepo.addInviteesToEvent(event.id, [STRANGER], DEMO_TEAMMATE_A)
+    ).rejects.toThrow(/only the host/i);
+  });
+
+  it("does not duplicate an invitee added twice", async () => {
+    const event = await makeEvent({ inviteeIds: [DEMO_TEAMMATE_A] });
+    await demoRepo.addInviteesToEvent(
+      event.id,
+      [DEMO_TEAMMATE_A],
+      DEMO_USER_ID
+    );
+
+    const detail = await demoRepo.getEvent(event.id);
+    expect(detail?.invitees).toHaveLength(1);
+  });
+});
+
+describe("event visibility", () => {
+  it("shows an event to its host", async () => {
+    const event = await makeEvent();
+    const events = await demoRepo.listEvents(DEMO_USER_ID);
+
+    expect(events.map((e) => e.id)).toContain(event.id);
+  });
+
+  it("shows an event to someone explicitly invited", async () => {
+    const event = await makeEvent({ inviteeIds: [DEMO_TEAMMATE_B] });
+    const events = await demoRepo.listEvents(DEMO_TEAMMATE_B);
+
+    expect(events.map((e) => e.id)).toContain(event.id);
+  });
+
+  it("shows a kaki-linked event to every member", async () => {
+    const kaki = await demoRepo.createKaki(DEMO_USER_ID, "Visible group");
+    await demoRepo.joinKaki(kaki.invite_token, DEMO_TEAMMATE_A);
+    const event = await makeEvent({ kakiId: kaki.id });
+
+    const events = await demoRepo.listEvents(DEMO_TEAMMATE_A);
+    expect(events.map((e) => e.id)).toContain(event.id);
+  });
+
+  it("hides an unrelated event from a stranger", async () => {
+    const event = await makeEvent();
+    const events = await demoRepo.listEvents(STRANGER);
+
+    expect(events.map((e) => e.id)).not.toContain(event.id);
+  });
+});
+
+describe("closing", () => {
+  it("stops anyone but the host closing it", async () => {
+    const event = await makeEvent();
+
+    await expect(
+      demoRepo.closeEvent(event.id, DEMO_TEAMMATE_A)
+    ).rejects.toThrow(/only the host/i);
+  });
+
+  it("picks the Borda winner when no override is given", async () => {
+    const event = await makeEvent({
+      placeIds: ["demo-place-01", "demo-place-02"],
+    });
+    await demoRepo.castBallot(event.id, DEMO_USER_ID, [
+      "demo-place-02",
+      "demo-place-01",
+    ]);
+
+    const closed = await demoRepo.closeEvent(event.id, DEMO_USER_ID);
+
+    expect(closed.status).toBe("closed");
+    expect(closed.winner_place_id).toBe("demo-place-02");
+  });
+
+  it("honours a host override, which is how the roulette closes", async () => {
+    const event = await makeEvent({
+      placeIds: ["demo-place-01", "demo-place-02"],
+    });
+    await demoRepo.castBallot(event.id, DEMO_USER_ID, ["demo-place-02"]);
+
+    const closed = await demoRepo.closeEvent(
+      event.id,
+      DEMO_USER_ID,
+      "demo-place-01"
+    );
+
+    expect(closed.winner_place_id).toBe("demo-place-01");
+  });
+
+  it("closes with no winner when nobody voted", async () => {
+    const event = await makeEvent();
+    const closed = await demoRepo.closeEvent(event.id, DEMO_USER_ID);
+
+    expect(closed.status).toBe("closed");
+    expect(closed.winner_place_id).toBeNull();
+  });
+});
+
+describe("ballots", () => {
+  it("replaces a previous ballot rather than appending to it", async () => {
+    const event = await makeEvent({
+      placeIds: ["demo-place-01", "demo-place-02"],
+    });
+
+    await demoRepo.castBallot(event.id, DEMO_USER_ID, [
+      "demo-place-01",
+      "demo-place-02",
+    ]);
+    await demoRepo.castBallot(event.id, DEMO_USER_ID, ["demo-place-02"]);
+
+    const detail = await demoRepo.getEvent(event.id);
+    const mine = detail?.votes.filter((v) => v.user_id === DEMO_USER_ID) ?? [];
+
+    expect(mine).toHaveLength(1);
+    expect(mine[0].place_id).toBe("demo-place-02");
+  });
+
+  it("ignores ranked places that are not options", async () => {
+    const event = await makeEvent({ placeIds: ["demo-place-01"] });
+    await demoRepo.castBallot(event.id, DEMO_USER_ID, [
+      "demo-place-01",
+      "demo-place-99",
+    ]);
+
+    const detail = await demoRepo.getEvent(event.id);
+    expect(detail?.votes).toHaveLength(1);
+  });
+
+  it("rejects a ballot on a closed event", async () => {
+    const event = await makeEvent();
+    await demoRepo.closeEvent(event.id, DEMO_USER_ID);
+
+    await expect(
+      demoRepo.castBallot(event.id, DEMO_USER_ID, ["demo-place-01"])
+    ).rejects.toThrow(/already closed/i);
+  });
+});
