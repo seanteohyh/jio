@@ -1,0 +1,44 @@
+{
+  "name": "Jio — where are we eating?",
+  "short_name": "Jio",
+  "description": "Find, decide on and share lunch spots within a 15-minute walk of the office.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#faf7f2",
+  "theme_color": "#faf7f2",
+  "categories": ["food", "lifestyle", "productivity"],
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Suggest somewhere",
+      "url": "/suggest",
+      "description": "Personalised lunch picks"
+    },
+    {
+      "name": "Start a Jio",
+      "url": "/events/new",
+      "description": "Get a group vote going"
+    }
+  ]
+}

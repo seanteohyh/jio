@@ -1,0 +1,235 @@
+[
+  {
+    "name": "Albert Centre Market & Food Centre",
+    "address": "270 Queen St, Singapore 180270",
+    "lat": 1.3009,
+    "lng": 103.8542,
+    "cuisine": ["food_court", "local", "chinese"],
+    "budget_tier": 1,
+    "best_dishes": ["Fishball noodles", "Char kway teow"],
+    "notes": "Classic hawker centre. Go before 12 or queue."
+  },
+  {
+    "name": "Hill Street Tai Hwa Pork Noodle",
+    "address": "466 Crawford Ln, Singapore 190466",
+    "lat": 1.3032,
+    "lng": 103.8629,
+    "cuisine": ["local", "chinese"],
+    "budget_tier": 1,
+    "best_dishes": ["Bak chor mee"],
+    "notes": "Michelin star. Allow 30 minutes for the queue."
+  },
+  {
+    "name": "Zam Zam Restaurant",
+    "address": "697-699 North Bridge Rd, Singapore 198675",
+    "lat": 1.302,
+    "lng": 103.8567,
+    "cuisine": ["indian", "malay", "halal"],
+    "budget_tier": 1,
+    "best_dishes": ["Mutton murtabak", "Briyani"]
+  },
+  {
+    "name": "Yakiniku Like Bugis",
+    "address": "200 Victoria St, Singapore 188021",
+    "lat": 1.2993,
+    "lng": 103.8552,
+    "cuisine": ["japanese"],
+    "budget_tier": 2,
+    "best_dishes": ["Beef harami set"],
+    "notes": "Individual grills. Good for a solo lunch."
+  },
+  {
+    "name": "Ichiban Boshi",
+    "address": "200 Victoria St, Singapore 188021",
+    "lat": 1.2995,
+    "lng": 103.8556,
+    "cuisine": ["japanese"],
+    "budget_tier": 2,
+    "best_dishes": ["Salmon don", "Chirashi"]
+  },
+  {
+    "name": "Tonkotsu Kazan Ramen",
+    "address": "200 Victoria St, Singapore 188021",
+    "lat": 1.2997,
+    "lng": 103.8549,
+    "cuisine": ["japanese"],
+    "budget_tier": 2,
+    "best_dishes": ["Volcano ramen"]
+  },
+  {
+    "name": "Seoul Garden",
+    "address": "200 Victoria St, Singapore 188021",
+    "lat": 1.2999,
+    "lng": 103.8557,
+    "cuisine": ["korean"],
+    "budget_tier": 3,
+    "best_dishes": ["BBQ buffet"],
+    "notes": "Better for a team lunch than a quick one."
+  },
+  {
+    "name": "The Providore Bras Basah",
+    "address": "231 Bain St, Singapore 180231",
+    "lat": 1.2984,
+    "lng": 103.8535,
+    "cuisine": ["cafe", "western"],
+    "budget_tier": 3,
+    "best_dishes": ["Truffle scrambled eggs", "Flat white"]
+  },
+  {
+    "name": "Chye Seng Huat Hardware",
+    "address": "150 Tyrwhitt Rd, Singapore 207563",
+    "lat": 1.3105,
+    "lng": 103.8607,
+    "cuisine": ["cafe", "western"],
+    "budget_tier": 3,
+    "best_dishes": ["Filter coffee", "Big breakfast"],
+    "notes": "A proper walk. Worth it when you have the hour."
+  },
+  {
+    "name": "Kok Sen Restaurant",
+    "address": "30 Keong Saik Rd, Singapore 089137",
+    "lat": 1.2806,
+    "lng": 103.8419,
+    "cuisine": ["chinese", "local"],
+    "budget_tier": 2,
+    "best_dishes": ["Big prawn hor fun", "Claypot yong tau foo"]
+  },
+  {
+    "name": "Sushi Tei Raffles City",
+    "address": "252 North Bridge Rd, Singapore 179103",
+    "lat": 1.2937,
+    "lng": 103.8533,
+    "cuisine": ["japanese"],
+    "budget_tier": 3,
+    "best_dishes": ["Aburi salmon"]
+  },
+  {
+    "name": "Chatterbox",
+    "address": "333 Orchard Rd, Singapore 238867",
+    "lat": 1.3009,
+    "lng": 103.8383,
+    "cuisine": ["local", "chinese"],
+    "budget_tier": 4,
+    "best_dishes": ["Chicken rice"],
+    "notes": "Expensive, but a good one for visitors."
+  },
+  {
+    "name": "Fortune Centre Vegetarian",
+    "address": "190 Middle Rd, Singapore 188979",
+    "lat": 1.2996,
+    "lng": 103.8535,
+    "cuisine": ["vegetarian", "chinese"],
+    "budget_tier": 1,
+    "best_dishes": ["Mock char siew rice"]
+  },
+  {
+    "name": "Kailash Parbat",
+    "address": "3 Belilios Rd, Singapore 219924",
+    "lat": 1.3072,
+    "lng": 103.8541,
+    "cuisine": ["indian", "vegetarian"],
+    "budget_tier": 2,
+    "best_dishes": ["Chole bhature", "Pani puri"]
+  },
+  {
+    "name": "Nam Kee Pau",
+    "address": "229 Selegie Rd, Singapore 188344",
+    "lat": 1.3007,
+    "lng": 103.8497,
+    "cuisine": ["chinese", "local"],
+    "budget_tier": 1,
+    "best_dishes": ["Big pau", "Siew mai"]
+  },
+  {
+    "name": "Thai Express Bugis",
+    "address": "200 Victoria St, Singapore 188021",
+    "lat": 1.2994,
+    "lng": 103.8559,
+    "cuisine": ["thai"],
+    "budget_tier": 2,
+    "best_dishes": ["Boat noodles", "Green curry"]
+  },
+  {
+    "name": "Pho Street",
+    "address": "252 North Bridge Rd, Singapore 179103",
+    "lat": 1.2935,
+    "lng": 103.8536,
+    "cuisine": ["vietnamese"],
+    "budget_tier": 2,
+    "best_dishes": ["Beef pho"]
+  },
+  {
+    "name": "Encik Tan",
+    "address": "200 Victoria St, Singapore 188021",
+    "lat": 1.2991,
+    "lng": 103.8551,
+    "cuisine": ["halal", "local", "food_court"],
+    "budget_tier": 1,
+    "best_dishes": ["Mee rebus", "Nasi lemak"]
+  },
+  {
+    "name": "Two Men Bagel House",
+    "address": "16 Enggor St, Singapore 079717",
+    "lat": 1.2757,
+    "lng": 103.8437,
+    "cuisine": ["cafe", "western"],
+    "budget_tier": 2,
+    "best_dishes": ["Reuben bagel"]
+  },
+  {
+    "name": "Ministry of Food",
+    "address": "51 Bras Basah Rd, Singapore 189554",
+    "lat": 1.2967,
+    "lng": 103.8523,
+    "cuisine": ["local", "food_court"],
+    "budget_tier": 1,
+    "best_dishes": ["Economy rice"],
+    "notes": "Downstairs. For when you have 20 minutes and no opinions."
+  },
+  {
+    "name": "Nasi Lemak Ayam Taliwang",
+    "address": "Bugis Junction, Singapore 188021",
+    "lat": 1.2996,
+    "lng": 103.8554,
+    "cuisine": ["malay", "halal", "local"],
+    "budget_tier": 1,
+    "best_dishes": ["Nasi lemak set"]
+  },
+  {
+    "name": "Beach Road Scissor Cut Curry Rice",
+    "address": "229 Jln Besar, Singapore 208905",
+    "lat": 1.3095,
+    "lng": 103.8574,
+    "cuisine": ["local", "chinese"],
+    "budget_tier": 1,
+    "best_dishes": ["Curry rice", "Pork chop"],
+    "notes": "Open very late. Not for the faint-hearted."
+  },
+  {
+    "name": "Alaturka",
+    "address": "16 Bussorah St, Singapore 199437",
+    "lat": 1.3018,
+    "lng": 103.8592,
+    "cuisine": ["halal", "western"],
+    "budget_tier": 3,
+    "best_dishes": ["Mixed grill", "Lamb shank"]
+  },
+  {
+    "name": "Sin Kee Famous Chicken Rice",
+    "address": "213 Hougang St 21, Singapore 530213",
+    "lat": 1.3005,
+    "lng": 103.8447,
+    "cuisine": ["local", "chinese"],
+    "budget_tier": 1,
+    "best_dishes": ["Chicken rice"]
+  },
+  {
+    "name": "Tiong Bahru Bakery Raffles City",
+    "address": "252 North Bridge Rd, Singapore 179103",
+    "lat": 1.2939,
+    "lng": 103.8537,
+    "cuisine": ["cafe", "dessert"],
+    "budget_tier": 2,
+    "best_dishes": ["Kouign amann", "Almond croissant"]
+  }
+]

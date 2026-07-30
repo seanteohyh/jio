@@ -1,0 +1,65 @@
+import { NextRequest, NextResponse } from "next/server";
+import { requireUser } from "@/lib/auth";
+import { getRepoAsync } from "@/lib/data/repo";
+import { errorResponse, json, notFound } from "@/lib/api";
+import { featureGate } from "@/lib/config";
+import { computeKakiMetrics } from "@/lib/metrics";
+import type { Visit } from "@/types";
+
+type Params = { params: Promise<{ id: string }> };
+
+export async function GET(_request: NextRequest, { params }: Params) {
+  const blocked = featureGate("kakis");
+  if (blocked) return blocked as NextResponse;
+
+  try {
+    const user = await requireUser();
+    const { id } = await params;
+    const repo = await getRepoAsync();
+
+    const kaki = await repo.getKaki(id);
+    if (!kaki) return notFound("That group does not exist");
+
+    const places = await repo.listPlaces({ status: "all" });
+
+    // Only public visits are readable across users under RLS, so group stats
+    // are built from what members chose to share plus your own history.
+    const memberVisits = new Map<string, Visit[]>();
+    await Promise.all(
+      kaki.members.map(async (member) => {
+        const visits = await repo.listVisits(undefined, member.user_id);
+        memberVisits.set(member.user_id, visits);
+      })
+    );
+
+    const metrics = computeKakiMetrics(memberVisits, places, kaki.members);
+
+    return json({
+      kaki,
+      metrics,
+      viewer: {
+        id: user.id,
+        isMember: kaki.members.some((m) => m.user_id === user.id),
+        isCreator: kaki.created_by === user.id,
+      },
+    });
+  } catch (error) {
+    return errorResponse(error);
+  }
+}
+
+export async function DELETE(_request: NextRequest, { params }: Params) {
+  const blocked = featureGate("kakis");
+  if (blocked) return blocked as NextResponse;
+
+  try {
+    const user = await requireUser();
+    const { id } = await params;
+    const repo = await getRepoAsync();
+
+    await repo.leaveKaki(id, user.id);
+    return json({ ok: true });
+  } catch (error) {
+    return errorResponse(error);
+  }
+}

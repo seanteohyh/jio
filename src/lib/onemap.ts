@@ -1,0 +1,209 @@
+import { estimateWalkMinutes, haversine } from "./utils";
+import type { WalkingRoute } from "@/types";
+
+/**
+ * OneMap SG — free walking-route distances and times for Singapore.
+ *
+ * Straight-line distance understates a real walk (buildings, crossings,
+ * overhead bridges), so where OneMap is configured the numbers get noticeably
+ * more honest. Where it is not, everything still works on haversine estimates.
+ */
+
+const TOKEN_URL = "https://www.onemap.gov.sg/api/auth/post/getToken";
+const ROUTE_URL = "https://www.onemap.gov.sg/api/public/routingsvc/route";
+
+const TOKEN_TTL_MS = 72 * 60 * 60 * 1000; // OneMap tokens last 3 days.
+const TOKEN_REFRESH_EARLY_MS = 12 * 60 * 60 * 1000; // Refresh with 12h to spare.
+
+interface TokenCache {
+  token: string;
+  expiresAt: number;
+}
+
+const globalCache = globalThis as typeof globalThis & {
+  __jioOneMapToken?: TokenCache | null;
+  __jioOneMapCalls?: number[];
+};
+
+export function clearTokenCache(): void {
+  globalCache.__jioOneMapToken = null;
+}
+
+export function hasOneMapCredentials(): boolean {
+  return Boolean(process.env.ONEMAP_EMAIL && process.env.ONEMAP_PASSWORD);
+}
+
+export async function getToken(): Promise<string | null> {
+  const cached = globalCache.__jioOneMapToken;
+  if (cached && cached.expiresAt > Date.now()) return cached.token;
+
+  const email = process.env.ONEMAP_EMAIL;
+  const password = process.env.ONEMAP_PASSWORD;
+  if (!email || !password) return null;
+
+  try {
+    const response = await fetch(TOKEN_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+    if (!response.ok) return null;
+
+    const json = (await response.json()) as { access_token?: string };
+    if (!json.access_token) return null;
+
+    globalCache.__jioOneMapToken = {
+      token: json.access_token,
+      expiresAt: Date.now() + TOKEN_TTL_MS - TOKEN_REFRESH_EARLY_MS,
+    };
+    return json.access_token;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Sliding-window throttle. OneMap allows 200 calls a minute; the walk-time
+ * enrichment script would blow straight past that without this.
+ */
+export async function throttledCall<T>(
+  fn: () => Promise<T>,
+  maxPerMin = 200
+): Promise<T> {
+  const calls = globalCache.__jioOneMapCalls ?? [];
+  globalCache.__jioOneMapCalls = calls;
+
+  const now = Date.now();
+  // Drop anything that has fallen out of the 60-second window.
+  while (calls.length > 0 && now - calls[0] > 60000) calls.shift();
+
+  if (calls.length >= maxPerMin) {
+    const waitMs = 60000 - (now - calls[0]) + 50;
+    await new Promise((resolve) => setTimeout(resolve, waitMs));
+    return throttledCall(fn, maxPerMin);
+  }
+
+  calls.push(Date.now());
+  return fn();
+}
+
+/** Decode a Google-encoded polyline into [lat, lng] pairs. */
+export function decodePolyline(
+  encoded: string,
+  precision = 5
+): [number, number][] {
+  const coordinates: [number, number][] = [];
+  const factor = Math.pow(10, precision);
+
+  let index = 0;
+  let lat = 0;
+  let lng = 0;
+
+  while (index < encoded.length) {
+    let result = 1;
+    let shift = 0;
+    let b: number;
+
+    do {
+      b = encoded.charCodeAt(index++) - 63 - 1;
+      result += b << shift;
+      shift += 5;
+    } while (b >= 0x1f);
+    lat += result & 1 ? ~(result >> 1) : result >> 1;
+
+    result = 1;
+    shift = 0;
+    do {
+      b = encoded.charCodeAt(index++) - 63 - 1;
+      result += b << shift;
+      shift += 5;
+    } while (b >= 0x1f);
+    lng += result & 1 ? ~(result >> 1) : result >> 1;
+
+    coordinates.push([lat / factor, lng / factor]);
+  }
+
+  return coordinates;
+}
+
+export interface LatLng {
+  lat: number;
+  lng: number;
+}
+
+/** Haversine fallback, shaped like a route so callers need no special case. */
+export function haversineRoute(from: LatLng, to: LatLng): WalkingRoute {
+  const distance = haversine(from.lat, from.lng, to.lat, to.lng);
+  return {
+    distance_m: Math.round(distance),
+    walk_minutes: estimateWalkMinutes(distance),
+    polyline: [
+      [from.lat, from.lng],
+      [to.lat, to.lng],
+    ],
+    source: "haversine",
+  };
+}
+
+interface OneMapRouteResponse {
+  route_summary?: { total_distance?: number; total_time?: number };
+  route_geometry?: string;
+}
+
+/**
+ * Walking route between two points.
+ *
+ * Retries once on a 401, since the most likely cause is a token that expired
+ * earlier than we expected. Any other failure degrades to haversine rather
+ * than surfacing an error — a slightly wrong walk time beats a broken page.
+ */
+export async function getWalkingRoute(
+  from: LatLng,
+  to: LatLng
+): Promise<WalkingRoute> {
+  if (!hasOneMapCredentials()) return haversineRoute(from, to);
+
+  const attempt = async (token: string): Promise<Response> => {
+    const url =
+      `${ROUTE_URL}?start=${from.lat},${from.lng}` +
+      `&end=${to.lat},${to.lng}&routeType=walk`;
+    return fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  };
+
+  try {
+    let token = await getToken();
+    if (!token) return haversineRoute(from, to);
+
+    let response = await throttledCall(() => attempt(token as string));
+
+    if (response.status === 401) {
+      clearTokenCache();
+      token = await getToken();
+      if (!token) return haversineRoute(from, to);
+      response = await throttledCall(() => attempt(token as string));
+    }
+
+    if (!response.ok) return haversineRoute(from, to);
+
+    const json = (await response.json()) as OneMapRouteResponse;
+    const distance = json.route_summary?.total_distance;
+    if (typeof distance !== "number") return haversineRoute(from, to);
+
+    const seconds = json.route_summary?.total_time;
+    const minutes =
+      typeof seconds === "number" && seconds > 0
+        ? Math.max(1, Math.round(seconds / 60))
+        : estimateWalkMinutes(distance);
+
+    return {
+      distance_m: Math.round(distance),
+      walk_minutes: minutes,
+      polyline: json.route_geometry
+        ? decodePolyline(json.route_geometry)
+        : undefined,
+      source: "onemap",
+    };
+  } catch {
+    return haversineRoute(from, to);
+  }
+}

@@ -1,0 +1,209 @@
+@import "tailwindcss";
+
+/* Make sure Tailwind scans the whole src tree for utility classes. */
+@source "../";
+
+/**
+ * Dolch Light.
+ *
+ * A warm, low-contrast palette — off-white paper, terracotta accent, muted
+ * everything else. Lunch apps that use saturated reds and yellows all end up
+ * looking like a food delivery ad; this reads more like a notebook.
+ *
+ * Every default Tailwind ramp is remapped, so `bg-orange-100` and friends land
+ * in the same world instead of punching a hole in it.
+ */
+@theme {
+  /* Semantic tokens */
+  --color-dolch-bg: #faf7f2;
+  --color-dolch-surface: #f5f0e8;
+  --color-dolch-text: #2b2b2b;
+  --color-dolch-muted: #6b665c;
+  --color-dolch-accent: #b4532f;
+  --color-dolch-accent-soft: #f4c9b0;
+  --color-dolch-border: #e8e1d6;
+  --color-dolch-success: #567b57;
+  --color-dolch-warn: #a87b2d;
+
+  /* Warm stone, replacing the default cool grays */
+  --color-gray-50: #faf8f5;
+  --color-gray-100: #f3efe8;
+  --color-gray-200: #e8e1d6;
+  --color-gray-300: #d5ccbe;
+  --color-gray-400: #a9a094;
+  --color-gray-500: #857d72;
+  --color-gray-600: #6b665c;
+  --color-gray-700: #514d46;
+  --color-gray-800: #3a3733;
+  --color-gray-900: #2b2b2b;
+
+  /* Terracotta */
+  --color-orange-50: #fdf5f1;
+  --color-orange-100: #f9e6dc;
+  --color-orange-200: #f4c9b0;
+  --color-orange-300: #e8a582;
+  --color-orange-400: #d47f56;
+  --color-orange-500: #b4532f;
+  --color-orange-600: #9c4728;
+  --color-orange-700: #7e3a21;
+  --color-orange-800: #632e1a;
+  --color-orange-900: #4a2214;
+
+  /* Muted amber */
+  --color-amber-50: #fbf7ee;
+  --color-amber-100: #f5ecd7;
+  --color-amber-200: #ead6ad;
+  --color-amber-300: #d9bb7e;
+  --color-amber-400: #c39c50;
+  --color-amber-500: #a87b2d;
+  --color-amber-600: #8f6726;
+  --color-amber-700: #73521f;
+  --color-amber-800: #5a4018;
+  --color-amber-900: #423011;
+
+  /* Sage */
+  --color-green-50: #f2f6f2;
+  --color-green-100: #e0eae0;
+  --color-green-200: #c3d5c4;
+  --color-green-300: #9fbaa0;
+  --color-green-400: #7a9b7c;
+  --color-green-500: #567b57;
+  --color-green-600: #4a6a4b;
+  --color-green-700: #3c563d;
+  --color-green-800: #2f432f;
+  --color-green-900: #233223;
+
+  /* Plum */
+  --color-purple-50: #f6f4f8;
+  --color-purple-100: #eae5ef;
+  --color-purple-200: #d3cadd;
+  --color-purple-300: #b4a7c4;
+  --color-purple-400: #9082a8;
+  --color-purple-500: #6b6091;
+  --color-purple-600: #5c527d;
+  --color-purple-700: #4a4265;
+  --color-purple-800: #3a344f;
+  --color-purple-900: #2b273a;
+
+  /* Slate blue */
+  --color-blue-50: #f2f6f7;
+  --color-blue-100: #e0eaed;
+  --color-blue-200: #c2d5db;
+  --color-blue-300: #9bb9c2;
+  --color-blue-400: #6d97a3;
+  --color-blue-500: #3f6b78;
+  --color-blue-600: #375d68;
+  --color-blue-700: #2c4b54;
+  --color-blue-800: #233a42;
+  --color-blue-900: #1a2b31;
+
+  /* Teal */
+  --color-teal-50: #f1f7f6;
+  --color-teal-100: #dfebe9;
+  --color-teal-200: #bfd7d3;
+  --color-teal-300: #97bbb5;
+  --color-teal-400: #6a9a92;
+  --color-teal-500: #427a70;
+  --color-teal-600: #396961;
+  --color-teal-700: #2e554e;
+  --color-teal-800: #24423d;
+  --color-teal-900: #1a312d;
+
+  /* Clay red */
+  --color-red-50: #fbf3f3;
+  --color-red-100: #f5e2e2;
+  --color-red-200: #e9c4c5;
+  --color-red-300: #d79fa1;
+  --color-red-400: #bf7377;
+  --color-red-500: #8c4a52;
+  --color-red-600: #7a4047;
+  --color-red-700: #62333a;
+  --color-red-800: #4d282d;
+  --color-red-900: #391e22;
+}
+
+html,
+body {
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
+body {
+  background: var(--color-dolch-bg);
+  color: var(--color-dolch-text);
+  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* Visible keyboard focus. The default ring disappears against warm off-white. */
+:focus-visible {
+  outline: 2px solid var(--color-dolch-accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Leaflet needs an explicit height or the map container collapses to zero. */
+.leaflet-container {
+  height: 100%;
+  width: 100%;
+  z-index: 0;
+  background: var(--color-dolch-surface);
+  font-family: inherit;
+}
+
+.leaflet-popup-content-wrapper {
+  border-radius: 10px;
+}
+
+/* Respect a user's reduced-motion setting — the roulette wheel especially. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Utility: hide scrollbars on horizontal filter strips. */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Safe-area padding so the bottom nav clears the iOS home indicator. */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+@keyframes jio-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(var(--spin-to, 1440deg));
+  }
+}
+
+@keyframes jio-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: jio-fade-in 0.25s ease-out;
+}
