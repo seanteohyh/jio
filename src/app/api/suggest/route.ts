@@ -13,8 +13,8 @@ import type { MemberData, ScoredPlace } from "@/types";
  * The suggestion endpoint.
  *
  * Assembles everything the pure ranking functions need — places, the user's
- * history and preferences, wishlist, teammate recos, and the weather — then
- * gets out of the way. All the actual judgement lives in `lib/recommend.ts`.
+ * history and preferences, wishlist, and the weather — then gets out of the
+ * way. All the actual judgement lives in `lib/recommend.ts`.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -31,12 +31,11 @@ export async function GET(request: NextRequest) {
       ? numberParam(params, "maxWalk", 20)
       : undefined;
 
-    const [places, visits, prefs, wishlist, recos, offices] = await Promise.all([
+    const [{ places }, visits, prefs, wishlist, offices] = await Promise.all([
       repo.listPlaces({ status: "active", officeId }),
       repo.listVisits(undefined, user.id),
       repo.getUserPrefs(user.id),
       isEnabled("wishlist") ? repo.listWishlist(user.id) : Promise.resolve([]),
-      isEnabled("recos") ? repo.listRecos(50) : Promise.resolve([]),
       repo.listOffices(),
     ]);
 
@@ -52,7 +51,6 @@ export async function GET(request: NextRequest) {
 
     const options = {
       weatherMultiplier,
-      recoPlaceIds: recos.map((r) => r.place_id),
       limit,
       cuisines: cuisines.length > 0 ? cuisines : undefined,
       maxWalkMinutes: maxWalk,

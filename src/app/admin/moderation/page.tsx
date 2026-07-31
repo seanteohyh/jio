@@ -14,7 +14,22 @@ import {
 } from "@/components/ui";
 import { fetcher, mutateJson } from "@/lib/fetcher";
 import { formatDateTime } from "@/lib/utils";
-import type { AuthUser, ModerationLogEntry, Place, TeamUser } from "@/types";
+import type {
+  AuthUser,
+  FlagReason,
+  ModerationLogEntry,
+  Place,
+  PlaceFlag,
+  TeamUser,
+} from "@/types";
+
+const FLAG_REASON_LABELS: Record<FlagReason, string> = {
+  closed: "Permanently closed",
+  wrong_info: "Wrong information",
+  duplicate: "Duplicate of another place",
+  inappropriate: "Inappropriate",
+  other: "Other",
+};
 
 interface MeResponse {
   user: (AuthUser & { is_admin: boolean }) | null;
@@ -50,11 +65,27 @@ export default function ModerationPage() {
     isAdmin ? "/api/users" : null,
     fetcher
   );
+  const { data: flagsData, mutate: mutateFlags } = useSWR<{
+    flags: PlaceFlag[];
+  }>(isAdmin ? "/api/admin/flags" : null, fetcher);
 
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("blocked");
   const [creatorFilter, setCreatorFilter] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [blockingPlaceId, setBlockingPlaceId] = useState<string | null>(null);
+  const [flagBlockReason, setFlagBlockReason] = useState("");
+
+  // Grouped so the admin resolves every pending flag on a place in one shot.
+  const flagsByPlace = useMemo(() => {
+    const map = new Map<string, PlaceFlag[]>();
+    for (const flag of flagsData?.flags ?? []) {
+      const list = map.get(flag.place_id) ?? [];
+      list.push(flag);
+      map.set(flag.place_id, list);
+    }
+    return map;
+  }, [flagsData]);
 
   const nameById = useMemo(() => {
     const map = new Map<string, string>();
@@ -99,6 +130,31 @@ export default function ModerationPage() {
     }
   };
 
+  const resolveFlags = async (
+    placeId: string,
+    resolution: "dismissed" | "edited" | "blocked",
+    reason?: string
+  ) => {
+    setBusyId(placeId);
+    setError(null);
+    try {
+      await mutateJson(`/api/admin/flags/${placeId}/resolve`, "POST", {
+        resolution,
+        reason,
+      });
+      setBlockingPlaceId(null);
+      setFlagBlockReason("");
+      mutateFlags();
+      mutatePlaces();
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Could not resolve that report"
+      );
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   const places = placesData?.places ?? [];
   const filtered = places.filter((p) => {
     if (statusFilter !== "all" && p.status !== statusFilter) return false;
@@ -116,6 +172,93 @@ export default function ModerationPage() {
       </header>
 
       {error && <ErrorNote>{error}</ErrorNote>}
+
+      {flagsByPlace.size > 0 && (
+        <section className="space-y-2">
+          <SectionHeading>
+            {flagsByPlace.size} place{flagsByPlace.size === 1 ? "" : "s"}{" "}
+            reported
+          </SectionHeading>
+          <ul className="space-y-2">
+            {Array.from(flagsByPlace.entries()).map(([placeId, flags]) => (
+              <li key={placeId}>
+                <Card className="space-y-2 border-amber-300/50 bg-amber-50/50">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <Link
+                        href={`/places/${placeId}`}
+                        className="font-medium hover:underline"
+                      >
+                        {flags[0].place_name ?? "A place"}
+                      </Link>
+                      <ul className="text-dolch-muted mt-1 space-y-0.5 text-xs">
+                        {flags.map((f) => (
+                          <li key={f.id}>
+                            {FLAG_REASON_LABELS[f.reason]} —{" "}
+                            {f.flagged_by_name ?? "someone"}
+                            {f.comment ? `: "${f.comment}"` : ""}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                    <div className="flex shrink-0 flex-wrap gap-1.5">
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        disabled={busyId === placeId}
+                        onClick={() => resolveFlags(placeId, "dismissed")}
+                      >
+                        Dismiss
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        disabled={busyId === placeId}
+                        onClick={() => resolveFlags(placeId, "edited")}
+                      >
+                        Mark fixed
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="danger"
+                        disabled={busyId === placeId}
+                        onClick={() =>
+                          setBlockingPlaceId((prev) =>
+                            prev === placeId ? null : placeId
+                          )
+                        }
+                      >
+                        Block
+                      </Button>
+                    </div>
+                  </div>
+
+                  {blockingPlaceId === placeId && (
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      <input
+                        value={flagBlockReason}
+                        onChange={(e) => setFlagBlockReason(e.target.value)}
+                        className={`${inputClass} flex-1`}
+                        placeholder="Reason for blocking (shown in the log)"
+                      />
+                      <Button
+                        size="sm"
+                        variant="danger"
+                        disabled={busyId === placeId || !flagBlockReason.trim()}
+                        onClick={() =>
+                          resolveFlags(placeId, "blocked", flagBlockReason.trim())
+                        }
+                      >
+                        Confirm block
+                      </Button>
+                    </div>
+                  )}
+                </Card>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <Card className="flex flex-wrap gap-3">
         <select

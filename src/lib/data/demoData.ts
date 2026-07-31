@@ -11,7 +11,6 @@ import type {
   Office,
   Place,
   Profile,
-  Reco,
   UserPrefs,
   Visit,
   WishlistEntry,
@@ -362,10 +361,12 @@ function buildVisits(): Visit[] {
   }));
 }
 
+const DEMO_PROFILE_CREATED_AT = new Date("2025-06-01").toISOString();
+
 export const demoProfiles: Profile[] = [
-  { user_id: DEMO_USER_ID, display_name: "You", created_at: new Date("2025-06-01").toISOString() },
-  { user_id: DEMO_TEAMMATE_A, display_name: "Alex Tan", created_at: new Date("2025-06-01").toISOString() },
-  { user_id: DEMO_TEAMMATE_B, display_name: "Mei Lin", created_at: new Date("2025-06-01").toISOString() },
+  { user_id: DEMO_USER_ID, display_name: "You", created_at: DEMO_PROFILE_CREATED_AT, onboarded_at: DEMO_PROFILE_CREATED_AT },
+  { user_id: DEMO_TEAMMATE_A, display_name: "Alex Tan", created_at: DEMO_PROFILE_CREATED_AT, onboarded_at: DEMO_PROFILE_CREATED_AT },
+  { user_id: DEMO_TEAMMATE_B, display_name: "Mei Lin", created_at: DEMO_PROFILE_CREATED_AT, onboarded_at: DEMO_PROFILE_CREATED_AT },
 ];
 
 export const demoUserPrefs: UserPrefs[] = [
@@ -450,11 +451,11 @@ export const demoEvents: LunchEvent[] = [
 ];
 
 export const demoEventOptions: EventOption[] = [
-  { event_id: DEMO_EVENT_ID, place_id: "demo-place-12", added_by: DEMO_TEAMMATE_A },
-  { event_id: DEMO_EVENT_ID, place_id: "demo-place-08", added_by: DEMO_TEAMMATE_A },
-  { event_id: DEMO_EVENT_ID, place_id: "demo-place-16", added_by: DEMO_TEAMMATE_B },
-  { event_id: DEMO_PAST_EVENT_ID, place_id: "demo-place-12", added_by: DEMO_USER_ID },
-  { event_id: DEMO_PAST_EVENT_ID, place_id: "demo-place-06", added_by: DEMO_USER_ID },
+  { event_id: DEMO_EVENT_ID, place_id: "demo-place-12", added_by: DEMO_TEAMMATE_A, is_suggested: false },
+  { event_id: DEMO_EVENT_ID, place_id: "demo-place-08", added_by: DEMO_TEAMMATE_A, is_suggested: false },
+  { event_id: DEMO_EVENT_ID, place_id: "demo-place-16", added_by: DEMO_TEAMMATE_B, is_suggested: false },
+  { event_id: DEMO_PAST_EVENT_ID, place_id: "demo-place-12", added_by: DEMO_USER_ID, is_suggested: false },
+  { event_id: DEMO_PAST_EVENT_ID, place_id: "demo-place-06", added_by: DEMO_USER_ID, is_suggested: false },
 ];
 
 export const demoEventVotes: EventVote[] = [
@@ -474,34 +475,52 @@ export const demoEventRsvps: EventRsvp[] = [
   { event_id: DEMO_PAST_EVENT_ID, user_id: DEMO_TEAMMATE_A, response: "yes" },
 ];
 
-export const demoRecos: Reco[] = [
-  { id: "demo-reco-1", place_id: "demo-place-12", user_id: DEMO_TEAMMATE_A, comment: "The big prawn hor fun is the whole point. Go early.", created_at: new Date(Date.now() - 2 * 86400000).toISOString() },
-  { id: "demo-reco-2", place_id: "demo-place-10", user_id: DEMO_TEAMMATE_B, comment: "Quiet enough for a 1:1, good coffee.", created_at: new Date(Date.now() - 3 * 86400000).toISOString() },
-  { id: "demo-reco-3", place_id: "demo-place-16", user_id: DEMO_TEAMMATE_A, comment: "Best vegetarian option within walking distance.", created_at: new Date(Date.now() - 5 * 86400000).toISOString() },
-  { id: "demo-reco-4", place_id: "demo-place-02", user_id: DEMO_TEAMMATE_B, comment: "Worth queueing for once a month.", created_at: new Date(Date.now() - 8 * 86400000).toISOString() },
-];
 
 export const demoLobangs: Lobang[] = [
   {
     id: "demo-lobang-1",
     from_user_id: DEMO_TEAMMATE_A,
-    to_user_id: DEMO_USER_ID,
     place_id: "demo-place-16",
     note: "Vegetarian-friendly and quick — thought of you after Monday's jio.",
     event_id: DEMO_PAST_EVENT_ID,
+    kaki_id: null,
     created_at: new Date(Date.now() - 1 * 86400000).toISOString(),
-    seen_at: null,
   },
   {
     id: "demo-lobang-2",
     from_user_id: DEMO_USER_ID,
-    to_user_id: DEMO_TEAMMATE_B,
     place_id: "demo-place-12",
     note: "The hor fun everyone was raving about at Monday's jio. You'd like this.",
     event_id: DEMO_PAST_EVENT_ID,
+    kaki_id: null,
     created_at: new Date(Date.now() - 4 * 86400000).toISOString(),
+  },
+  {
+    id: "demo-lobang-3",
+    from_user_id: DEMO_USER_ID,
+    place_id: "demo-place-02",
+    note: "Whole Kaki should try this before the lunch crowd finds out.",
+    event_id: null,
+    kaki_id: DEMO_KAKI_ID,
+    created_at: new Date(Date.now() - 6 * 86400000).toISOString(),
+  },
+];
+
+/** Recipients, snapshotted at send time — see 019_lobang_group_send.sql. */
+export const demoLobangRecipients: {
+  lobang_id: string;
+  user_id: string;
+  seen_at: string | null;
+}[] = [
+  { lobang_id: "demo-lobang-1", user_id: DEMO_USER_ID, seen_at: null },
+  {
+    lobang_id: "demo-lobang-2",
+    user_id: DEMO_TEAMMATE_B,
     seen_at: new Date(Date.now() - 3 * 86400000).toISOString(),
   },
+  // Group send to the whole Kaki, minus the sender (DEMO_USER_ID).
+  { lobang_id: "demo-lobang-3", user_id: DEMO_TEAMMATE_A, seen_at: null },
+  { lobang_id: "demo-lobang-3", user_id: DEMO_TEAMMATE_B, seen_at: null },
 ];
 
 export const demoWishlist: WishlistEntry[] = [

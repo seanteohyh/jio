@@ -9,9 +9,9 @@ import { relativeDayLabel } from "@/lib/utils";
 import type { Lobang } from "@/types";
 
 /**
- * Lobangs sent to you, plus a short history of ones you've sent. Unlike the
- * Food Pool, these are one-to-one — only the two people involved ever see a
- * given lobang.
+ * Lobangs sent to you, plus a short history of ones you've sent. Always
+ * targeted — either to specific teammates or to a whole Kaki at once — never
+ * a broadcast to the entire team.
  */
 export default function LobangInbox() {
   const { data: received, mutate: mutateReceived } = useSWR<{

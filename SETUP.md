@@ -36,7 +36,7 @@ npm test
 npm run typecheck
 ```
 
-184 tests. If these pass, the business logic is sound.
+254 tests. If these pass, the business logic is sound.
 
 ## 4. Put it on GitHub
 
@@ -53,7 +53,7 @@ accident.
 
 Follow **Going live** in `README.md`. Roughly 20 minutes:
 
-1. Create a Supabase project, run the 15 migrations in the SQL editor
+1. Create a Supabase project, run the 25 migrations in the SQL editor
 2. Turn on **Authentication → Providers → Anonymous sign-ins**. This is the one
    dashboard toggle name-only sign-in needs, and the only thing that will make
    it fail with a confusing error if you miss it

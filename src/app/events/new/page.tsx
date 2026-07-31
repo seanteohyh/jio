@@ -28,16 +28,31 @@ function defaultDateTime(): string {
   )}T${pad(when.getHours())}:${pad(when.getMinutes())}`;
 }
 
+type Mode = "fixed" | "flexi";
+
 export default function NewEventPage() {
   const router = useRouter();
 
+  const [mode, setMode] = useState<Mode>("fixed");
   const [title, setTitle] = useState("Lunch");
   const [when, setWhen] = useState(defaultDateTime());
+  const [candidateDates, setCandidateDates] = useState<string[]>([]);
+  const [newCandidateDate, setNewCandidateDate] = useState("");
   const [kakiId, setKakiId] = useState("");
   const [selected, setSelected] = useState<string[]>([]);
   const [invitees, setInvitees] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const addCandidateDate = () => {
+    if (!newCandidateDate || candidateDates.includes(newCandidateDate)) return;
+    setCandidateDates((prev) => [...prev, newCandidateDate].sort());
+    setNewCandidateDate("");
+  };
+
+  const removeCandidateDate = (date: string) => {
+    setCandidateDates((prev) => prev.filter((d) => d !== date));
+  };
 
   const { data: suggestData } = useSWR<{ suggestions: ScoredPlace[] }>(
     "/api/suggest?limit=15",
@@ -71,13 +86,20 @@ export default function NewEventPage() {
       const payload = await mutateJson<{ event: { id: string } }>(
         "/api/events",
         "POST",
-        {
-          title: title.trim() || "Lunch",
-          scheduled_at: new Date(when).toISOString(),
-          place_ids: selected,
-          kaki_id: kakiId || null,
-          invitee_ids: invitees,
-        }
+        mode === "flexi"
+          ? {
+              title: title.trim() || "Lunch",
+              candidate_dates: candidateDates,
+              kaki_id: kakiId || null,
+              invitee_ids: invitees,
+            }
+          : {
+              title: title.trim() || "Lunch",
+              scheduled_at: new Date(when).toISOString(),
+              place_ids: selected,
+              kaki_id: kakiId || null,
+              invitee_ids: invitees,
+            }
       );
       router.push(`/events/${payload.event.id}`);
     } catch (err) {
@@ -107,15 +129,79 @@ export default function NewEventPage() {
             />
           </Field>
 
-          <Field label="When">
-            <input
-              type="datetime-local"
-              required
-              value={when}
-              onChange={(e) => setWhen(e.target.value)}
-              className={inputClass}
-            />
-          </Field>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setMode("fixed")}
+              className={
+                mode === "fixed"
+                  ? "bg-dolch-accent rounded-full px-3 py-1.5 text-xs font-medium text-white"
+                  : "border-dolch-border text-dolch-muted rounded-full border px-3 py-1.5 text-xs"
+              }
+            >
+              Pick a date now
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode("flexi")}
+              className={
+                mode === "flexi"
+                  ? "bg-dolch-accent rounded-full px-3 py-1.5 text-xs font-medium text-white"
+                  : "border-dolch-border text-dolch-muted rounded-full border px-3 py-1.5 text-xs"
+              }
+            >
+              Poll a few dates first
+            </button>
+          </div>
+
+          {mode === "fixed" ? (
+            <Field label="When">
+              <input
+                type="datetime-local"
+                required
+                value={when}
+                onChange={(e) => setWhen(e.target.value)}
+                className={inputClass}
+              />
+            </Field>
+          ) : (
+            <Field
+              label="Candidate dates"
+              hint="At least 2. Everyone marks which ones they're free, then you confirm one."
+            >
+              <div className="flex items-center gap-2">
+                <input
+                  type="date"
+                  value={newCandidateDate}
+                  onChange={(e) => setNewCandidateDate(e.target.value)}
+                  className={inputClass}
+                />
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={addCandidateDate}
+                  disabled={!newCandidateDate}
+                >
+                  Add
+                </Button>
+              </div>
+              {candidateDates.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {candidateDates.map((date) => (
+                    <button
+                      key={date}
+                      type="button"
+                      onClick={() => removeCandidateDate(date)}
+                      className="border-dolch-border text-dolch-muted rounded-full border px-2.5 py-1 text-xs hover:border-red-300 hover:text-red-700"
+                    >
+                      {date} ×
+                    </button>
+                  ))}
+                </div>
+              )}
+            </Field>
+          )}
 
           {features.kakis && kakiData?.kakis && kakiData.kakis.length > 0 && (
             <Field
@@ -138,6 +224,7 @@ export default function NewEventPage() {
           )}
         </Card>
 
+        {mode === "fixed" && (
         <Card>
           <SectionHeading>Options to vote on</SectionHeading>
           <p className="text-dolch-muted mb-3 text-xs">
@@ -173,6 +260,7 @@ export default function NewEventPage() {
             {selected.length} selected
           </p>
         </Card>
+        )}
 
         {userData?.users && userData.users.length > 1 && (
           <Card>
@@ -207,8 +295,20 @@ export default function NewEventPage() {
         {error && <ErrorNote>{error}</ErrorNote>}
 
         <div className="flex gap-2">
-          <Button type="submit" disabled={busy || selected.length === 0}>
-            {busy ? "Starting…" : "Start the Jio"}
+          <Button
+            type="submit"
+            disabled={
+              busy ||
+              (mode === "fixed"
+                ? selected.length === 0
+                : candidateDates.length < 2)
+            }
+          >
+            {busy
+              ? "Starting…"
+              : mode === "flexi"
+                ? "Start polling dates"
+                : "Start the Jio"}
           </Button>
           <Button type="button" variant="ghost" onClick={() => router.back()}>
             Cancel

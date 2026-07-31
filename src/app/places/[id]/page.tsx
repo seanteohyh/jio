@@ -20,13 +20,20 @@ import {
 import { fetcher, mutateJson } from "@/lib/fetcher";
 import { features } from "@/lib/config";
 import { formatCuisine, formatDate } from "@/lib/utils";
-import type { AuthUser, Place, Reco, Visit } from "@/types";
+import type { AuthUser, FlagReason, Place, Visit } from "@/types";
 
 interface PlaceResponse {
   place: Place;
   reviews: Visit[];
-  recos: Reco[];
 }
+
+const FLAG_REASON_LABELS: Record<FlagReason, string> = {
+  closed: "Permanently closed",
+  wrong_info: "Wrong information",
+  duplicate: "Duplicate of another place",
+  inappropriate: "Inappropriate",
+  other: "Other",
+};
 
 interface MeResponse {
   user: (AuthUser & { is_admin: boolean }) | null;
@@ -54,17 +61,20 @@ export default function PlaceDetailPage({
   const [notes, setNotes] = useState("");
   const [dishes, setDishes] = useState("");
   const [isPublic, setIsPublic] = useState(true);
-  const [recoComment, setRecoComment] = useState("");
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [blocking, setBlocking] = useState(false);
   const [blockReason, setBlockReason] = useState("");
+  const [reporting, setReporting] = useState(false);
+  const [reportReason, setReportReason] = useState<FlagReason>("wrong_info");
+  const [reportComment, setReportComment] = useState("");
+  const [reportSent, setReportSent] = useState(false);
 
   if (isLoading) return <Spinner label="Loading" />;
   if (error) return <ErrorNote>{error.message}</ErrorNote>;
   if (!data) return null;
 
-  const { place, reviews, recos } = data;
+  const { place, reviews } = data;
   const onWishlist =
     wishlistData?.wishlist.some((w) => w.place_id === place.id) ?? false;
 
@@ -97,23 +107,6 @@ export default function PlaceDetailPage({
       setLogging(false);
       setNotes("");
       setDishes("");
-      mutate();
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : "Could not save");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const recommend = async () => {
-    setBusy(true);
-    setActionError(null);
-    try {
-      await mutateJson("/api/recos", "POST", {
-        place_id: place.id,
-        comment: recoComment.trim() || null,
-      });
-      setRecoComment("");
       mutate();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Could not save");
@@ -181,6 +174,28 @@ export default function PlaceDetailPage({
     }
   };
 
+  const submitReport = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setBusy(true);
+    setActionError(null);
+    try {
+      await mutateJson(`/api/places/${place.id}/flag`, "POST", {
+        reason: reportReason,
+        comment: reportComment.trim() || undefined,
+      });
+      setReportComment("");
+      setReporting(false);
+      setReportSent(true);
+      mutate();
+    } catch (err) {
+      setActionError(
+        err instanceof Error ? err.message : "Could not send that report"
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const isAdmin = me?.user?.is_admin ?? false;
   const canBlock =
     place.status === "active" &&
@@ -203,6 +218,11 @@ export default function PlaceDetailPage({
           <BudgetBadge tier={place.budget_tier} />
           <Stars rating={place.avg_rating} size="md" />
           {place.visit_count ? <span>{place.visit_count} visits</span> : null}
+          {place.has_pending_flag && (
+            <span className="bg-dolch-warn/20 text-dolch-warn rounded-full px-2 py-0.5 text-xs font-medium">
+              Reported
+            </span>
+          )}
         </div>
 
         {place.cuisine.length > 0 && (
@@ -291,7 +311,60 @@ export default function PlaceDetailPage({
             {blocking ? "Never mind" : "Remove this place"}
           </Button>
         )}
+        {place.status === "active" && !!me?.user && (
+          <Button
+            variant="secondary"
+            onClick={() => {
+              setReportSent(false);
+              setReporting((v) => !v);
+            }}
+          >
+            {reporting ? "Never mind" : "Report an issue"}
+          </Button>
+        )}
       </div>
+
+      {reportSent && (
+        <p className="text-dolch-muted text-xs">
+          Thanks — an admin will take a look. You can track it under My
+          Reports on your profile.
+        </p>
+      )}
+
+      {reporting && (
+        <Card className="animate-fade-in space-y-3">
+          <form onSubmit={submitReport} className="space-y-3">
+            <Field label="What's wrong?">
+              <select
+                value={reportReason}
+                onChange={(e) => setReportReason(e.target.value as FlagReason)}
+                className={inputClass}
+              >
+                {(Object.keys(FLAG_REASON_LABELS) as FlagReason[]).map((key) => (
+                  <option key={key} value={key}>
+                    {FLAG_REASON_LABELS[key]}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Details (optional)">
+              <textarea
+                value={reportComment}
+                onChange={(e) => setReportComment(e.target.value)}
+                className={`${inputClass} min-h-16`}
+                placeholder="Anything that helps an admin check this"
+              />
+            </Field>
+            <p className="text-dolch-muted text-xs">
+              The place stays visible while this is reviewed — reporting
+              doesn&apos;t remove it.
+            </p>
+            <Button type="submit" variant="secondary" disabled={busy}>
+              {busy ? "Sending…" : "Send report"}
+            </Button>
+          </form>
+        </Card>
+      )}
 
       {blocking && (
         <Card className="animate-fade-in space-y-3">
@@ -376,47 +449,6 @@ export default function PlaceDetailPage({
               {busy ? "Saving…" : "Save"}
             </Button>
           </form>
-        </Card>
-      )}
-
-      {features.recos && (
-        <Card>
-          <SectionHeading>Recommend it</SectionHeading>
-          <p className="text-dolch-muted mb-2 text-xs">
-            Puts it in the team&apos;s food pool and nudges it up everyone&apos;s
-            suggestions.
-          </p>
-          <div className="flex gap-2">
-            <input
-              value={recoComment}
-              onChange={(e) => setRecoComment(e.target.value)}
-              className={inputClass}
-              placeholder="Why should people go?"
-            />
-            <Button onClick={recommend} disabled={busy}>
-              Add
-            </Button>
-          </div>
-
-          {recos.length > 0 && (
-            <ul className="mt-3 space-y-2">
-              {recos.map((reco) => (
-                <li key={reco.id} className="flex items-start gap-2 text-sm">
-                  <Avatar
-                    name={reco.display_name ?? "Teammate"}
-                    id={reco.user_id}
-                    size={22}
-                  />
-                  <span>
-                    <span className="font-medium">{reco.display_name}</span>
-                    {reco.comment && (
-                      <span className="text-dolch-muted"> — {reco.comment}</span>
-                    )}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
         </Card>
       )}
 

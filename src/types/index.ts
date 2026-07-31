@@ -75,6 +75,10 @@ export interface Place {
   avg_rating?: number | null;
   /** Derived, not stored: how many visits have been logged. */
   visit_count?: number;
+  /** Trigger-maintained: true while at least one flag on this place is
+   *  unresolved (022_place_flags.sql). Shows a "Reported" badge — the place
+   *  stays fully active until an admin resolves it. */
+  has_pending_flag?: boolean;
 }
 
 export interface Visit {
@@ -116,6 +120,8 @@ export interface Profile {
   user_id: string;
   display_name: string;
   created_at?: string;
+  /** Null until the one-time /welcome screen has been completed. */
+  onboarded_at?: string | null;
 }
 
 export interface TeamUser {
@@ -127,16 +133,22 @@ export interface TeamUser {
 // Events
 // ---------------------------------------------------------------------------
 
+/** Null/undefined means "not a Flexi Jio" — every regular fixed-date event. */
+export type DatePhase = "polling" | "confirmed";
+
 export interface LunchEvent {
   id: string;
   office_id: string;
   host_id: string;
   title: string;
+  /** For a polling Flexi Jio, a provisional value (the earliest candidate
+   *  date) rather than a real commitment — check `date_phase` first. */
   scheduled_at: string;
   status: EventStatus;
   invite_token: string;
   winner_place_id?: string | null;
   kaki_id?: string | null;
+  date_phase?: DatePhase | null;
   created_at?: string;
 
   /** Derived. */
@@ -147,12 +159,40 @@ export interface LunchEvent {
   going_count?: number;
   /** Derived. */
   winner_place_name?: string | null;
+  /** Derived. Only meaningful for a polling Flexi Jio — has the requesting
+   *  user already marked any availability on it? Powers the home page's
+   *  "Needs your availability" list without a full per-event fetch. */
+  has_marked_availability?: boolean;
+}
+
+export interface EventCandidateDate {
+  event_id: string;
+  /** ISO date, "YYYY-MM-DD" — day-level, no time component. */
+  date: string;
+  added_by: string;
+  created_at?: string;
+
+  /** Derived. */
+  added_by_name?: string;
+}
+
+/** One user marking themselves free on one candidate date. */
+export interface EventDateVote {
+  event_id: string;
+  user_id: string;
+  date: string;
+  created_at?: string;
+
+  /** Derived. */
+  display_name?: string;
 }
 
 export interface EventOption {
   event_id: string;
   place_id: string;
   added_by: string;
+  /** True for a "Can't decide? Suggest 3" pick, false for a manual add. */
+  is_suggested: boolean;
 
   /** Derived. */
   place?: Place;
@@ -192,6 +232,10 @@ export interface EventDetail extends LunchEvent {
   invitees: EventInvitee[];
   /** Live Borda tally, keyed by place id. */
   tally?: Record<string, number>;
+  /** Only meaningful for a Flexi Jio (`date_phase` set). */
+  candidateDates: EventCandidateDate[];
+  /** Only meaningful for a Flexi Jio (`date_phase` set). */
+  dateVotes: EventDateVote[];
 }
 
 // ---------------------------------------------------------------------------
@@ -207,45 +251,51 @@ export interface WishlistEntry {
   place?: Place;
 }
 
-export interface Reco {
-  id: string;
-  place_id: string;
-  user_id: string;
-  comment?: string | null;
-  created_at?: string;
-
-  /** Derived. */
-  display_name?: string;
-  /** Derived. */
-  place?: Place;
-}
-
 /**
  * A "lobang" — Singlish for a tip-off — is a personalized place
- * recommendation one teammate sends directly to another, as opposed to a
- * `Reco`, which is broadcast to everyone in the food pool.
+ * recommendation one teammate sends directly to another (or to every member
+ * of a Kaki at once — see `kaki_id`), never a broadcast to the whole team.
+ *
+ * Recipients live in a separate `lobang_recipients` table (snapshotted at
+ * send time), so this object's shape depends on which `Repo` method produced
+ * it: `listLobangsReceived` hydrates it for one specific recipient's view
+ * (`to_user_id`/`seen_at` are that viewer's own); `listLobangsSent` hydrates
+ * it as the send itself (`to_display_name` summarizes every recipient, or
+ * names the Kaki for a group send).
  */
 export interface Lobang {
   id: string;
   from_user_id: string;
-  to_user_id: string;
   place_id: string;
   note?: string | null;
   /** The past Jio this was sent from, if any. Purely informational. */
   event_id?: string | null;
+  /** Set only for a group send. Display provenance only — the actual
+   *  recipient list always lives in `lobang_recipients`. */
+  kaki_id?: string | null;
   created_at?: string;
-  /** Null until the recipient has seen it. */
+
+  /** Derived. Populated only on a `listLobangsReceived` row, or a
+   *  single-recipient `listLobangsSent` row. */
+  to_user_id?: string;
+  /** Derived. Null until that recipient has seen it. */
   seen_at?: string | null;
 
   /** Derived. */
   from_display_name?: string;
-  /** Derived. */
+  /** Derived. Who/what this went to, as one string — a teammate's name for
+   *  an individual send, or the Kaki's name for a group send. */
   to_display_name?: string;
   /** Derived. */
   place?: Place;
   /** Derived. */
   event_title?: string | null;
 }
+
+/** Who a lobang is being sent to — specific teammates, or a whole Kaki. */
+export type LobangTarget =
+  | { type: "users"; userIds: string[] }
+  | { type: "kaki"; kakiId: string };
 
 /**
  * One block or unblock event. "Removing" a place always means flipping its
@@ -263,6 +313,39 @@ export interface ModerationLogEntry {
   /** Derived. */
   place_name?: string;
   actor_display_name?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Place flags
+// ---------------------------------------------------------------------------
+
+export type FlagReason =
+  | "closed"
+  | "wrong_info"
+  | "duplicate"
+  | "inappropriate"
+  | "other";
+
+/** "blocked" means an admin resolved the flag(s) by blocking the place —
+ *  reuses the same status/log an ordinary block_place() call would. */
+export type FlagResolution = "dismissed" | "edited" | "blocked";
+
+export interface PlaceFlag {
+  id: string;
+  place_id: string;
+  flagged_by: string;
+  reason: FlagReason;
+  comment?: string | null;
+  status: "pending" | "resolved";
+  resolution?: FlagResolution | null;
+  resolved_by?: string | null;
+  resolved_at?: string | null;
+  created_at?: string;
+
+  /** Derived. */
+  place_name?: string;
+  /** Derived. */
+  flagged_by_name?: string;
 }
 
 export interface Kaki {
@@ -300,7 +383,6 @@ export interface ScoreBreakdown {
   walkPenalty: number;
   varietyBonus: number;
   wishlistBoost: number;
-  recoBoost: number;
 }
 
 export interface ScoredPlace {
@@ -314,8 +396,6 @@ export interface ScoredPlace {
 export interface RankOptions {
   /** Multiplier applied to the walk penalty. 2 when rain is likely. */
   weatherMultiplier?: number;
-  /** Place ids recommended by teammates. */
-  recoPlaceIds?: string[];
   /** Injected clock, for deterministic tests. */
   now?: Date;
   /** Cap on how many results to return. */
@@ -345,6 +425,17 @@ export interface Filters {
   status: PlaceStatus | "all";
   search: string;
   officeId: string;
+}
+
+export interface PlacesPagination {
+  limit: number;
+  offset: number;
+}
+
+export interface PlacesPage {
+  places: Place[];
+  /** Total matching rows, ignoring `limit`/`offset` — for a "Load more" count. */
+  total: number;
 }
 
 // ---------------------------------------------------------------------------

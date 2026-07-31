@@ -1,4 +1,5 @@
 import { WALK_SPEED_M_PER_MIN } from "./constants";
+import type { Place } from "@/types";
 
 /** Great-circle distance in metres between two lat/lng points. */
 export function haversine(
@@ -27,6 +28,28 @@ export function haversine(
  */
 export function estimateWalkMinutes(distanceM: number): number {
   return Math.max(1, Math.round(distanceM / WALK_SPEED_M_PER_MIN));
+}
+
+/**
+ * The default sort for the plain `/places` browse list: nearest first.
+ *
+ * `walk_minutes` is already a stored/cached column, so this is a cheap
+ * `ORDER BY` — unlike a rating-based sort, which would need a visits fetch.
+ * Rating is deliberately excluded from the tiebreak for the same reason.
+ * A place with no cached walk time yet sorts last, not as "closest".
+ */
+export function sortPlacesForList(places: Place[]): Place[] {
+  return [...places].sort((a, b) => {
+    const aWalk = typeof a.walk_minutes === "number" ? a.walk_minutes : Infinity;
+    const bWalk = typeof b.walk_minutes === "number" ? b.walk_minutes : Infinity;
+    if (aWalk !== bWalk) return aWalk - bWalk;
+
+    const aVisits = a.visit_count ?? 0;
+    const bVisits = b.visit_count ?? 0;
+    if (aVisits !== bVisits) return bVisits - aVisits;
+
+    return a.name.localeCompare(b.name);
+  });
 }
 
 /** Tiny className joiner. Falsy values are dropped. */

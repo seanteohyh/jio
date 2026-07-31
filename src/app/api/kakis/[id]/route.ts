@@ -20,7 +20,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
     const kaki = await repo.getKaki(id);
     if (!kaki) return notFound("That group does not exist");
 
-    const places = await repo.listPlaces({ status: "all" });
+    const { places } = await repo.listPlaces({ status: "all" });
 
     // Only public visits are readable across users under RLS, so group stats
     // are built from what members chose to share plus your own history.

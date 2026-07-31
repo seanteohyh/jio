@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
     const repo = await getRepoAsync();
     const kakiId = request.nextUrl.searchParams.get("kakiId");
 
-    const [visits, places] = await Promise.all([
+    const [visits, { places }] = await Promise.all([
       repo.listVisits(undefined, user.id),
       repo.listPlaces({ status: "all" }),
     ]);

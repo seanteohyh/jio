@@ -13,8 +13,7 @@ import {
   inputClass,
 } from "../ui";
 import { fetcher, mutateJson } from "@/lib/fetcher";
-import { DEFAULT_OFFICE } from "@/lib/constants";
-import type { Place, ScoredPlace, TeamUser } from "@/types";
+import type { Kaki, Place, ScoredPlace, TeamUser } from "@/types";
 
 interface SuggestResponse {
   suggestions: (ScoredPlace & { why: string })[];
@@ -23,6 +22,8 @@ interface SuggestResponse {
 interface SearchResponse {
   places: Place[];
 }
+
+type RecipientMode = "users" | "kaki";
 
 interface SendLobangPanelProps {
   selfId: string;
@@ -36,7 +37,11 @@ interface SendLobangPanelProps {
 /**
  * The "send lobang" composer.
  *
- * Any registered place is fair game, not just places either person has
+ * Recipients are either a multi-select of specific teammates, or a single
+ * Kaki you're a member of (every current member gets it, minus yourself) —
+ * the two modes aren't combinable in one send, to keep duplicate-handling
+ * unambiguous. Any registered place is fair game, not just places either
+ * person has
  * actually been to — a lobang is often "saw this online, thought of you."
  * The originating Jio's winner is pinned at the top, personalized "quick
  * picks" sit just below it as a shortcut, and a real search box covers
@@ -57,8 +62,11 @@ export default function SendLobangPanel({
     "/api/users",
     fetcher
   );
+  const { data: kakisData } = useSWR<{ kakis: Kaki[] }>("/api/kakis", fetcher);
 
-  const [toUserId, setToUserId] = useState("");
+  const [mode, setMode] = useState<RecipientMode>("users");
+  const [toUserIds, setToUserIds] = useState<string[]>([]);
+  const [kakiId, setKakiId] = useState("");
   const [placeId, setPlaceId] = useState(defaultPlaceId ?? "");
   const [selectedPlaceName, setSelectedPlaceName] = useState(
     defaultPlaceName ?? ""
@@ -72,27 +80,53 @@ export default function SendLobangPanel({
   const [addingPlace, setAddingPlace] = useState(false);
   const [newName, setNewName] = useState("");
   const [newAddress, setNewAddress] = useState("");
-  const [newLat, setNewLat] = useState(String(DEFAULT_OFFICE.lat));
-  const [newLng, setNewLng] = useState(String(DEFAULT_OFFICE.lng));
+  const [newCoords, setNewCoords] = useState<{ lat: number; lng: number } | null>(
+    null
+  );
+  const [newLocatedVia, setNewLocatedVia] = useState<"geocoded" | "gps" | null>(
+    null
+  );
   const [addBusy, setAddBusy] = useState(false);
+  const [geocodingNew, setGeocodingNew] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
+
+  const teammates = (usersData?.users ?? []).filter((u) => u.user_id !== selfId);
+  const kakis = kakisData?.kakis ?? [];
+  const hasRecipient =
+    mode === "users" ? toUserIds.length > 0 : Boolean(kakiId);
+  // Personalized "quick picks" only make sense against one specific person.
+  const singleUserId =
+    mode === "users" && toUserIds.length === 1 ? toUserIds[0] : undefined;
 
   const { data: suggestData, isLoading: loadingSuggestions } =
     useSWR<SuggestResponse>(
-      toUserId ? `/api/lobangs/suggest?to=${toUserId}` : null,
+      singleUserId ? `/api/lobangs/suggest?to=${singleUserId}` : null,
       fetcher
     );
 
   const { data: searchData, isLoading: searching } = useSWR<SearchResponse>(
-    toUserId && search.trim().length >= 2
+    hasRecipient && search.trim().length >= 2
       ? `/api/places?status=active&q=${encodeURIComponent(search.trim())}`
       : null,
     fetcher
   );
 
-  const teammates = (usersData?.users ?? []).filter((u) => u.user_id !== selfId);
   const suggestions = suggestData?.suggestions ?? [];
   const searchResults = searchData?.places ?? [];
+
+  const toggleUser = (userId: string) => {
+    setToUserIds((prev) =>
+      prev.includes(userId)
+        ? prev.filter((id) => id !== userId)
+        : [...prev, userId]
+    );
+  };
+
+  const switchMode = (next: RecipientMode) => {
+    setMode(next);
+    setToUserIds([]);
+    setKakiId("");
+  };
 
   const choosePlace = (id: string, name: string) => {
     setPlaceId(id);
@@ -100,12 +134,13 @@ export default function SendLobangPanel({
   };
 
   const send = async () => {
-    if (!toUserId || !placeId) return;
+    if (!hasRecipient || !placeId) return;
     setBusy(true);
     setError(null);
     try {
       await mutateJson("/api/lobangs", "POST", {
-        to_user_id: toUserId,
+        to_user_ids: mode === "users" ? toUserIds : undefined,
+        kaki_id: mode === "kaki" ? kakiId : undefined,
         place_id: placeId,
         note: note.trim() || undefined,
         event_id: eventId ?? null,
@@ -121,8 +156,40 @@ export default function SendLobangPanel({
   const addPlace = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!newName.trim()) return;
-    setAddBusy(true);
     setAddError(null);
+
+    let resolved = newCoords;
+
+    if (!resolved) {
+      if (!newAddress.trim()) {
+        setAddError("Enter an address or postal code so we can place it on the map");
+        return;
+      }
+      setGeocodingNew(true);
+      try {
+        const { result, message } = await fetcher<{
+          result: { lat: number; lng: number; address: string } | null;
+          message?: string;
+        }>(`/api/geocode?q=${encodeURIComponent(newAddress.trim())}`);
+        if (!result) {
+          setAddError(message ?? "Couldn't find that address");
+          setGeocodingNew(false);
+          return;
+        }
+        resolved = { lat: result.lat, lng: result.lng };
+        setNewCoords(resolved);
+        setNewLocatedVia("geocoded");
+      } catch (err) {
+        setAddError(
+          err instanceof Error ? err.message : "Could not look up that address"
+        );
+        setGeocodingNew(false);
+        return;
+      }
+      setGeocodingNew(false);
+    }
+
+    setAddBusy(true);
     try {
       // Same POST /api/places path the standalone "Add a place" form uses —
       // status defaults to active there too, so this gets the same
@@ -131,8 +198,8 @@ export default function SendLobangPanel({
       const payload = await mutateJson<{ place: Place }>("/api/places", "POST", {
         name: newName.trim(),
         address: newAddress.trim() || null,
-        lat: Number(newLat),
-        lng: Number(newLng),
+        lat: resolved.lat,
+        lng: resolved.lng,
         cuisine: [],
         best_dishes: [],
       });
@@ -140,6 +207,8 @@ export default function SendLobangPanel({
       setAddingPlace(false);
       setNewName("");
       setNewAddress("");
+      setNewCoords(null);
+      setNewLocatedVia(null);
       setSearch("");
     } catch (err) {
       setAddError(err instanceof Error ? err.message : "Could not add that place");
@@ -155,31 +224,60 @@ export default function SendLobangPanel({
     }
     navigator.geolocation.getCurrentPosition(
       (position) => {
-        setNewLat(position.coords.latitude.toFixed(6));
-        setNewLng(position.coords.longitude.toFixed(6));
+        setNewCoords({
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+        });
+        setNewLocatedVia("gps");
+        setAddError(null);
       },
-      () => setAddError("Could not get your location — enter it by hand")
+      () => setAddError("Could not get your location — try the address field instead")
     );
   };
 
   return (
     <Card className="animate-fade-in space-y-3">
       <Field label="Send lobang to">
-        <select
-          value={toUserId}
-          onChange={(e) => setToUserId(e.target.value)}
-          className={inputClass}
-        >
-          <option value="">Pick a teammate</option>
-          {teammates.map((t) => (
-            <option key={t.user_id} value={t.user_id}>
-              {t.display_name}
-            </option>
-          ))}
-        </select>
+        <div className="flex gap-2">
+          <Chip active={mode === "users"} onClick={() => switchMode("users")}>
+            Teammates
+          </Chip>
+          {kakis.length > 0 && (
+            <Chip active={mode === "kaki"} onClick={() => switchMode("kaki")}>
+              A whole Kaki
+            </Chip>
+          )}
+        </div>
+
+        {mode === "users" ? (
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {teammates.map((t) => (
+              <Chip
+                key={t.user_id}
+                active={toUserIds.includes(t.user_id)}
+                onClick={() => toggleUser(t.user_id)}
+              >
+                {t.display_name}
+              </Chip>
+            ))}
+          </div>
+        ) : (
+          <select
+            value={kakiId}
+            onChange={(e) => setKakiId(e.target.value)}
+            className={`${inputClass} mt-2`}
+          >
+            <option value="">Pick a Kaki</option>
+            {kakis.map((k) => (
+              <option key={k.id} value={k.id}>
+                {k.name} · {k.member_count ?? "?"} members
+              </option>
+            ))}
+          </select>
+        )}
       </Field>
 
-      {toUserId && (
+      {hasRecipient && (
         <div className="space-y-3">
           <p className="text-dolch-text text-sm font-medium">Place</p>
 
@@ -304,40 +402,38 @@ export default function SendLobangPanel({
                     autoFocus
                   />
                 </Field>
-                <Field label="Address" hint="Optional, but it helps people find it.">
+                <Field
+                  label="Address or postal code"
+                  hint="We'll look up the coordinates — no need to know them."
+                >
                   <input
+                    required={!newCoords}
                     value={newAddress}
-                    onChange={(e) => setNewAddress(e.target.value)}
+                    onChange={(e) => {
+                      setNewAddress(e.target.value);
+                      if (newLocatedVia === "gps") {
+                        setNewCoords(null);
+                        setNewLocatedVia(null);
+                      }
+                    }}
                     className={inputClass}
+                    placeholder="466 Crawford Ln, or just 190466"
                   />
                 </Field>
-                <div className="grid grid-cols-2 gap-3">
-                  <Field label="Latitude">
-                    <input
-                      required
-                      value={newLat}
-                      onChange={(e) => setNewLat(e.target.value)}
-                      className={inputClass}
-                      inputMode="decimal"
-                    />
-                  </Field>
-                  <Field label="Longitude">
-                    <input
-                      required
-                      value={newLng}
-                      onChange={(e) => setNewLng(e.target.value)}
-                      className={inputClass}
-                      inputMode="decimal"
-                    />
-                  </Field>
-                </div>
+
+                {newLocatedVia === "gps" && (
+                  <p className="text-dolch-success text-xs">
+                    Using your current location ✓
+                  </p>
+                )}
+
                 <Button
                   type="button"
                   variant="secondary"
                   size="sm"
                   onClick={useMyLocation}
                 >
-                  Use my current location
+                  Use my current location instead
                 </Button>
 
                 {addError && <ErrorNote>{addError}</ErrorNote>}
@@ -345,9 +441,18 @@ export default function SendLobangPanel({
                 <Button
                   type="submit"
                   size="sm"
-                  disabled={addBusy || !newName.trim()}
+                  disabled={
+                    addBusy ||
+                    geocodingNew ||
+                    !newName.trim() ||
+                    (!newCoords && !newAddress.trim())
+                  }
                 >
-                  {addBusy ? "Adding…" : "Add & select"}
+                  {geocodingNew
+                    ? "Looking up address…"
+                    : addBusy
+                      ? "Adding…"
+                      : "Add & select"}
                 </Button>
                 <p className="text-dolch-muted text-xs">
                   Cuisine, budget and dishes can be filled in later from the
@@ -359,7 +464,7 @@ export default function SendLobangPanel({
         </div>
       )}
 
-      {toUserId && (
+      {hasRecipient && (
         <Field label="Note (optional)">
           <textarea
             value={note}
@@ -377,7 +482,7 @@ export default function SendLobangPanel({
       <div className="flex items-center gap-2">
         <Button
           onClick={send}
-          disabled={busy || !toUserId || !placeId}
+          disabled={busy || !hasRecipient || !placeId}
           size="sm"
         >
           {busy ? "Sending…" : "Send lobang"}

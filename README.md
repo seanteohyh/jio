@@ -219,7 +219,7 @@ Roughly 30 minutes end to end. Everything below stays on a free tier.
    `service_role` key. The last one is a secret; it bypasses all access
    control.
 3. **SQL Editor** — run every file in `supabase/migrations/` in numeric order,
-   001 through 015. They are idempotent, so re-running is harmless.
+   001 through 025. They are idempotent, so re-running is harmless.
 4. **Authentication → Providers → Anonymous sign-ins** — turn this on. It is
    what makes name-only sign-in work.
 5. **Authentication → URL Configuration** — set the Site URL to your deployed
@@ -305,11 +305,14 @@ UTC accordingly. For anything more frequent, point an external scheduler such
 as [cron-job.org](https://cron-job.org) at `/api/cron/discover` with the same
 bearer token.
 
-**Rating aggregates are computed in the application, not the database.**
-`listPlaces()` pulls the visits and averages them in JavaScript. Fine for a
-team; it will get slow somewhere in the tens of thousands of visits. The fix
-when you get there is a materialised view or a trigger-maintained column, and
-it is contained entirely within `supabaseRepo.listPlaces()`.
+**Rating aggregates are trigger-maintained columns**, not computed on read.
+A row-level trigger on `visits` (migration `021_place_ratings_trigger.sql`)
+recomputes `places.avg_rating`/`visit_count` for the one affected place on
+every insert/update/delete — always current, no refresh schedule, and
+`listPlaces()` no longer needs a visits fetch at all. The shared
+`bayesianRating()` helper in `src/lib/rating.ts` is what turns those two
+columns (plus, where relevant, the current user's own ratings) into the
+smoothed score `recommend.ts` actually ranks on.
 
 **OSM coverage is uneven.** Some entries are long-closed businesses, some are
 vending machines tagged as cafés. Everything discovered lands in a
@@ -385,7 +388,7 @@ on, so it deliberately doesn't share block/unblock's admin-or-creator gate.
 ## Tests
 
 ```bash
-npm test          # 184 tests across 10 files
+npm test          # 254 tests across 17 files
 npm run typecheck
 npm run lint
 ```

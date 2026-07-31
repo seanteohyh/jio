@@ -91,25 +91,42 @@ describe("demoRepo behaviour", () => {
   });
 
   it("enriches places with a walk time and rating aggregate", async () => {
-    const places = await demoRepo.listPlaces({ status: "active" });
+    const { places, total } = await demoRepo.listPlaces({ status: "active" });
 
     expect(places.length).toBeGreaterThan(0);
+    expect(total).toBe(places.length);
     expect(typeof places[0].walk_minutes).toBe("number");
     expect(places[0]).toHaveProperty("visit_count");
   });
 
   it("returns places nearest first", async () => {
-    const places = await demoRepo.listPlaces({ status: "active" });
+    const { places } = await demoRepo.listPlaces({ status: "active" });
     const walks = places.map((p) => p.walk_minutes ?? 0);
 
     expect(walks).toEqual([...walks].sort((a, b) => a - b));
   });
 
   it("keeps unreviewed places out of the default listing", async () => {
-    const active = await demoRepo.listPlaces({ status: "active" });
-    const pending = await demoRepo.listPlaces({ status: "needs_review" });
+    const { places: active } = await demoRepo.listPlaces({ status: "active" });
+    const { places: pending } = await demoRepo.listPlaces({
+      status: "needs_review",
+    });
 
     expect(pending.length).toBeGreaterThan(0);
     expect(active.every((p) => p.status === "active")).toBe(true);
+  });
+
+  it("paginates when asked, without changing the unpaginated total", async () => {
+    const { places: all, total } = await demoRepo.listPlaces({
+      status: "active",
+    });
+    const { places: firstPage, total: pagedTotal } = await demoRepo.listPlaces(
+      { status: "active" },
+      { limit: 2, offset: 0 }
+    );
+
+    expect(pagedTotal).toBe(total);
+    expect(firstPage.length).toBe(Math.min(2, total));
+    expect(firstPage.map((p) => p.id)).toEqual(all.slice(0, 2).map((p) => p.id));
   });
 });

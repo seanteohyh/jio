@@ -4,7 +4,7 @@ import { getRepoAsync } from "@/lib/data/repo";
 import { config, features } from "@/lib/config";
 import StartJioWizard from "@/components/home/StartJioWizard";
 import HomeJios from "@/components/home/HomeJios";
-import RecosFeed from "@/components/home/RecosFeed";
+import NeedsAvailability from "@/components/home/NeedsAvailability";
 import StreakBanner from "@/components/home/StreakBanner";
 import { LinkButton } from "@/components/ui";
 
@@ -22,12 +22,19 @@ export default async function HomePage() {
 
   // Resolve the display name server-side so the greeting does not flash.
   let name = user.display_name ?? user.email?.split("@")[0] ?? "there";
+  let profile = null;
   try {
     const repo = await getRepoAsync();
-    const profile = await repo.getProfile(user.id);
-    if (profile) name = profile.display_name;
+    profile = await repo.getProfile(user.id);
   } catch {
     // Fall back to whatever we already have.
+  }
+
+  // redirect() throws internally, so it must never sit inside the try/catch
+  // above — a catch there would swallow the redirect itself.
+  if (profile) {
+    name = profile.display_name;
+    if (!profile.onboarded_at) redirect("/welcome");
   }
 
   return (
@@ -56,7 +63,7 @@ export default async function HomePage() {
 
       {features.events && <HomeJios />}
 
-      {features.recos && <RecosFeed />}
+      {features.events && <NeedsAvailability />}
 
       {config.isDemo && (
         <p className="text-dolch-muted border-dolch-border rounded-xl border border-dashed px-4 py-3 text-xs">

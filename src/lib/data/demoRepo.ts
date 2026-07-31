@@ -1,5 +1,12 @@
 import { DEFAULT_OFFICE, DEMO_USER_ID } from "@/lib/constants";
-import { estimateWalkMinutes, generateToken, haversine, uuid } from "@/lib/utils";
+import {
+  estimateWalkMinutes,
+  generateToken,
+  haversine,
+  sortPlacesForList,
+  uuid,
+} from "@/lib/utils";
+import { pickCommitteeSuggestions } from "@/lib/suggestCommittee";
 import { computeWinner } from "@/lib/voting";
 import { rankPlaces } from "@/lib/recommend";
 import {
@@ -13,31 +20,37 @@ import {
   demoEvents,
   demoKakiMembers,
   demoKakis,
+  demoLobangRecipients,
   demoLobangs,
   demoOffices,
   demoProfiles,
-  demoRecos,
   demoUserPrefs,
   demoWishlist,
 } from "./demoData";
 import type { Repo } from "./index";
 import type {
+  EventCandidateDate,
+  EventDateVote,
   EventDetail,
   EventInvitee,
   EventOption,
   EventRsvp,
   EventVote,
   Filters,
+  FlagReason,
+  FlagResolution,
   Kaki,
   KakiDetail,
   KakiMember,
   Lobang,
+  LobangTarget,
   LunchEvent,
+  MemberData,
   ModerationLogEntry,
   Office,
   Place,
+  PlaceFlag,
   Profile,
-  Reco,
   RsvpResponse,
   TeamUser,
   UserPrefs,
@@ -68,13 +81,17 @@ interface DemoStore {
   votes: EventVote[];
   rsvps: EventRsvp[];
   invitees: EventInvitee[];
+  candidateDates: EventCandidateDate[];
+  dateVotes: EventDateVote[];
   wishlist: WishlistEntry[];
-  recos: Reco[];
   lobangs: Lobang[];
+  /** Recipients, snapshotted at send time. */
+  lobangRecipients: { lobang_id: string; user_id: string; seen_at: string | null }[];
   kakis: Kaki[];
   kakiMembers: KakiMember[];
   walkCache: WalkCacheEntry[];
   moderationLog: ModerationLogEntry[];
+  placeFlags: PlaceFlag[];
 }
 
 const globalStore = globalThis as typeof globalThis & {
@@ -93,13 +110,16 @@ function seed(): DemoStore {
     votes: demoEventVotes.map((v) => ({ ...v })),
     rsvps: demoEventRsvps.map((r) => ({ ...r })),
     invitees: [],
+    candidateDates: [],
+    dateVotes: [],
     wishlist: demoWishlist.map((w) => ({ ...w })),
-    recos: demoRecos.map((r) => ({ ...r })),
     lobangs: demoLobangs.map((l) => ({ ...l })),
+    lobangRecipients: demoLobangRecipients.map((r) => ({ ...r })),
     kakis: demoKakis.map((k) => ({ ...k })),
     kakiMembers: demoKakiMembers.map((m) => ({ ...m })),
     walkCache: [],
     moderationLog: [],
+    placeFlags: [],
   };
 }
 
@@ -157,20 +177,61 @@ function enrich(place: Place, officeId: string = DEFAULT_OFFICE.id): Place {
         ? rated.reduce((sum, v) => sum + v.rating, 0) / rated.length
         : null,
     visit_count: visits.length,
+    has_pending_flag: s.placeFlags.some(
+      (f) => f.place_id === place.id && f.status === "pending"
+    ),
   };
 }
 
-function hydrateLobang(lobang: Lobang): Lobang {
+/** Hydrates a lobang for one specific recipient's view (their own seen_at). */
+function hydrateReceivedLobang(lobang: Lobang, viewerId: string): Lobang {
   const s = store();
   const place = s.places.find((p) => p.id === lobang.place_id);
   const event = lobang.event_id
     ? s.events.find((e) => e.id === lobang.event_id)
     : undefined;
+  const recipient = s.lobangRecipients.find(
+    (r) => r.lobang_id === lobang.id && r.user_id === viewerId
+  );
 
   return {
     ...lobang,
     from_display_name: displayNameFor(lobang.from_user_id),
-    to_display_name: displayNameFor(lobang.to_user_id),
+    to_user_id: viewerId,
+    to_display_name: displayNameFor(viewerId),
+    seen_at: recipient?.seen_at ?? null,
+    place: place ? enrich(place) : undefined,
+    event_title: event?.title ?? null,
+  };
+}
+
+/** Hydrates a lobang as the send itself, for the sender's own history. */
+function hydrateSentLobang(lobang: Lobang): Lobang {
+  const s = store();
+  const place = s.places.find((p) => p.id === lobang.place_id);
+  const event = lobang.event_id
+    ? s.events.find((e) => e.id === lobang.event_id)
+    : undefined;
+  const recipients = s.lobangRecipients.filter((r) => r.lobang_id === lobang.id);
+
+  let toUserId: string | undefined;
+  let toDisplayName: string | undefined;
+
+  if (lobang.kaki_id) {
+    const kaki = s.kakis.find((k) => k.id === lobang.kaki_id);
+    toDisplayName = kaki?.name ?? "a Kaki";
+  } else if (recipients.length === 1) {
+    toUserId = recipients[0].user_id;
+    toDisplayName = displayNameFor(recipients[0].user_id);
+  } else if (recipients.length > 1) {
+    toDisplayName = `${recipients.length} teammates`;
+  }
+
+  return {
+    ...lobang,
+    from_display_name: displayNameFor(lobang.from_user_id),
+    to_user_id: toUserId,
+    to_display_name: toDisplayName,
     place: place ? enrich(place) : undefined,
     event_title: event?.title ?? null,
   };
@@ -263,6 +324,23 @@ function canAddOption(event: LunchEvent, userId: string): boolean {
   );
 }
 
+/** Everyone who counts as "coming to this Jio": host, kaki members, invitees. */
+function resolveEventParticipants(event: LunchEvent): string[] {
+  const s = store();
+  const ids = new Set<string>([event.host_id]);
+
+  if (event.kaki_id) {
+    for (const member of s.kakiMembers) {
+      if (member.kaki_id === event.kaki_id) ids.add(member.user_id);
+    }
+  }
+  for (const invitee of s.invitees) {
+    if (invitee.event_id === event.id) ids.add(invitee.user_id);
+  }
+
+  return Array.from(ids);
+}
+
 // ---------------------------------------------------------------------------
 // The repository
 // ---------------------------------------------------------------------------
@@ -270,11 +348,19 @@ function canAddOption(event: LunchEvent, userId: string): boolean {
 export const demoRepo: Repo = {
   // ---- Places ----
 
-  async listPlaces(filters) {
+  async listPlaces(filters, pagination) {
     const officeId = filters?.officeId ?? DEFAULT_OFFICE.id;
     const enriched = store().places.map((p) => enrich(p, officeId));
     const filtered = applyFilters(enriched, filters);
-    return filtered.sort((a, b) => (a.walk_minutes ?? 0) - (b.walk_minutes ?? 0));
+    const sorted = sortPlacesForList(filtered);
+
+    if (!pagination) return { places: sorted, total: sorted.length };
+
+    const { limit, offset } = pagination;
+    return {
+      places: sorted.slice(offset, offset + limit),
+      total: sorted.length,
+    };
   },
 
   async getPlace(id) {
@@ -312,7 +398,6 @@ export const demoRepo: Repo = {
     s.places = s.places.filter((p) => p.id !== id);
     s.visits = s.visits.filter((v) => v.place_id !== id);
     s.wishlist = s.wishlist.filter((w) => w.place_id !== id);
-    s.recos = s.recos.filter((r) => r.place_id !== id);
     s.options = s.options.filter((o) => o.place_id !== id);
     s.votes = s.votes.filter((v) => v.place_id !== id);
   },
@@ -417,6 +502,28 @@ export const demoRepo: Repo = {
     return s.profiles[index];
   },
 
+  async completeOnboarding(userId, displayName) {
+    const s = store();
+    const index = s.profiles.findIndex((p) => p.user_id === userId);
+    const onboardedAt = new Date().toISOString();
+    if (index === -1) {
+      const profile: Profile = {
+        user_id: userId,
+        display_name: displayName,
+        created_at: onboardedAt,
+        onboarded_at: onboardedAt,
+      };
+      s.profiles.push(profile);
+      return profile;
+    }
+    s.profiles[index] = {
+      ...s.profiles[index],
+      display_name: displayName,
+      onboarded_at: onboardedAt,
+    };
+    return s.profiles[index];
+  },
+
   async getDisplayNames(userIds) {
     const map = new Map<string, string>();
     for (const id of userIds) map.set(id, displayNameFor(id));
@@ -468,6 +575,47 @@ export const demoRepo: Repo = {
         event_id: event.id,
         place_id: placeId,
         added_by: hostId,
+        is_suggested: false,
+      });
+    }
+
+    for (const userId of inviteeIds ?? []) {
+      if (userId === hostId) continue;
+      s.invitees.push({ event_id: event.id, user_id: userId });
+    }
+
+    return event;
+  },
+
+  async createFlexiEvent(hostId, title, officeId, candidateDates, kakiId, inviteeIds) {
+    const uniqueDates = Array.from(new Set(candidateDates));
+    if (uniqueDates.length < 2) {
+      throw new Error("A Flexi Jio needs at least 2 candidate dates");
+    }
+
+    const s = store();
+    const earliest = [...uniqueDates].sort()[0];
+    const event: LunchEvent = {
+      id: `demo-event-${uuid().slice(0, 8)}`,
+      office_id: officeId,
+      host_id: hostId,
+      title,
+      scheduled_at: earliest,
+      status: "open",
+      invite_token: generateToken(),
+      winner_place_id: null,
+      kaki_id: kakiId ?? null,
+      date_phase: "polling",
+      created_at: new Date().toISOString(),
+    };
+    s.events.push(event);
+
+    for (const date of uniqueDates) {
+      s.candidateDates.push({
+        event_id: event.id,
+        date,
+        added_by: hostId,
+        created_at: new Date().toISOString(),
       });
     }
 
@@ -504,6 +652,15 @@ export const demoRepo: Repo = {
       .filter((i) => i.event_id === event.id)
       .map((i) => ({ ...i, display_name: displayNameFor(i.user_id) }));
 
+    const candidateDates: EventCandidateDate[] = s.candidateDates
+      .filter((d) => d.event_id === event.id)
+      .map((d) => ({ ...d, added_by_name: displayNameFor(d.added_by) }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    const dateVotes: EventDateVote[] = s.dateVotes
+      .filter((v) => v.event_id === event.id)
+      .map((v) => ({ ...v, display_name: displayNameFor(v.user_id) }));
+
     return {
       ...event,
       host_name: displayNameFor(event.host_id),
@@ -516,6 +673,8 @@ export const demoRepo: Repo = {
       votes: s.votes.filter((v) => v.event_id === event.id),
       rsvps,
       invitees,
+      candidateDates,
+      dateVotes,
       tally: eventTally(event.id),
     };
   },
@@ -555,6 +714,9 @@ export const demoRepo: Repo = {
         winner_place_name: e.winner_place_id
           ? s.places.find((p) => p.id === e.winner_place_id)?.name ?? null
           : null,
+        has_marked_availability: s.dateVotes.some(
+          (v) => v.event_id === e.id && v.user_id === userId
+        ),
       }))
       .sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at));
   },
@@ -593,7 +755,12 @@ export const demoRepo: Repo = {
     );
     if (exists) throw new Error("That place is already an option");
 
-    s.options.push({ event_id: eventId, place_id: placeId, added_by: userId });
+    s.options.push({
+      event_id: eventId,
+      place_id: placeId,
+      added_by: userId,
+      is_suggested: false,
+    });
   },
 
   async removeOptionFromEvent(eventId, placeId, userId) {
@@ -618,6 +785,84 @@ export const demoRepo: Repo = {
     s.votes = s.votes.filter(
       (v) => !(v.event_id === eventId && v.place_id === placeId)
     );
+  },
+
+  async suggestOptionsForEvent(eventId, userId, excludePlaceIds = []) {
+    const s = store();
+    const event = s.events.find((e) => e.id === eventId);
+    if (!event) throw new Error("Event not found");
+    if (event.status !== "open") throw new Error("This Jio is already closed");
+    if (!canAddOption(event, userId)) {
+      throw new Error("Only the host, kaki members or invitees can add places");
+    }
+
+    // A re-roll replaces any earlier suggestion nobody's voted on yet;
+    // anything that already has a vote stays untouched.
+    const votedPlaceIds = new Set(
+      s.votes.filter((v) => v.event_id === eventId).map((v) => v.place_id)
+    );
+    s.options = s.options.filter(
+      (o) =>
+        !(
+          o.event_id === eventId &&
+          o.is_suggested &&
+          !votedPlaceIds.has(o.place_id)
+        )
+    );
+
+    const participantIds = resolveEventParticipants(event);
+    const respondedYesOrMaybe = new Set(
+      s.rsvps
+        .filter(
+          (r) =>
+            r.event_id === eventId &&
+            participantIds.includes(r.user_id) &&
+            (r.response === "yes" || r.response === "maybe")
+        )
+        .map((r) => r.user_id)
+    );
+    const scopedIds =
+      respondedYesOrMaybe.size > 0
+        ? Array.from(respondedYesOrMaybe)
+        : participantIds;
+
+    const membersData: MemberData[] = scopedIds.map((uid) => ({
+      userId: uid,
+      visits: s.visits.filter((v) => v.user_id === uid),
+      prefs: s.prefs.find((p) => p.user_id === uid) ?? null,
+      wishlistPlaceIds: s.wishlist
+        .filter((w) => w.user_id === uid)
+        .map((w) => w.place_id),
+    }));
+
+    const places = s.places
+      .filter((p) => p.status === "active")
+      .map((p) => enrich(p, event.office_id));
+
+    const currentOptionIds = new Set(
+      s.options.filter((o) => o.event_id === eventId).map((o) => o.place_id)
+    );
+    const exclude = new Set([...currentOptionIds, ...excludePlaceIds]);
+
+    const picks = pickCommitteeSuggestions(places, membersData, exclude);
+
+    const added: EventOption[] = [];
+    for (const pick of picks) {
+      const option: EventOption = {
+        event_id: eventId,
+        place_id: pick.place.id,
+        added_by: userId,
+        is_suggested: true,
+      };
+      s.options.push(option);
+      added.push({
+        ...option,
+        place: pick.place,
+        added_by_name: displayNameFor(userId),
+      });
+    }
+
+    return added;
   },
 
   async castBallot(eventId, userId, rankedPlaceIds) {
@@ -645,6 +890,88 @@ export const demoRepo: Repo = {
         created_at: new Date().toISOString(),
       });
     });
+  },
+
+  async addCandidateDate(eventId, date, userId) {
+    const s = store();
+    const event = s.events.find((e) => e.id === eventId);
+    if (!event) throw new Error("Event not found");
+    if (event.status !== "open") throw new Error("This Jio is already closed");
+    if (event.date_phase !== "polling") {
+      throw new Error("This Jio's date is already confirmed");
+    }
+    if (!canAddOption(event, userId)) {
+      throw new Error("Only the host, kaki members or invitees can add dates");
+    }
+
+    const exists = s.candidateDates.some(
+      (d) => d.event_id === eventId && d.date === date
+    );
+    if (exists) throw new Error("That date is already a candidate");
+
+    s.candidateDates.push({
+      event_id: eventId,
+      date,
+      added_by: userId,
+      created_at: new Date().toISOString(),
+    });
+  },
+
+  async markDateAvailability(eventId, userId, dates) {
+    const s = store();
+    const event = s.events.find((e) => e.id === eventId);
+    if (!event) throw new Error("Event not found");
+    if (event.date_phase !== "polling") {
+      throw new Error("This Jio's date is already confirmed");
+    }
+
+    const validDates = new Set(
+      s.candidateDates
+        .filter((d) => d.event_id === eventId)
+        .map((d) => d.date)
+    );
+
+    // Marking availability fully replaces the prior selection.
+    s.dateVotes = s.dateVotes.filter(
+      (v) => !(v.event_id === eventId && v.user_id === userId)
+    );
+
+    for (const date of dates) {
+      if (!validDates.has(date)) continue;
+      s.dateVotes.push({
+        event_id: eventId,
+        user_id: userId,
+        date,
+        created_at: new Date().toISOString(),
+      });
+    }
+  },
+
+  async confirmEventDate(eventId, hostId, date) {
+    const s = store();
+    const index = s.events.findIndex((e) => e.id === eventId);
+    if (index === -1) throw new Error("Event not found");
+    const event = s.events[index];
+
+    if (event.host_id !== hostId) {
+      throw new Error("Only the host can confirm the date");
+    }
+    if (event.date_phase !== "polling") {
+      throw new Error("This Jio's date is already confirmed");
+    }
+
+    const isCandidate = s.candidateDates.some(
+      (d) => d.event_id === eventId && d.date === date
+    );
+    if (!isCandidate) throw new Error("That date was never a candidate");
+
+    s.events[index] = {
+      ...event,
+      scheduled_at: date,
+      date_phase: "confirmed",
+    };
+
+    return s.events[index];
   },
 
   async rsvp(eventId, userId, response) {
@@ -721,58 +1048,6 @@ export const demoRepo: Repo = {
     }
     s.wishlist.splice(index, 1);
     return { added: false };
-  },
-
-  // ---- Recos ----
-
-  async createReco(userId, placeId, comment) {
-    const s = store();
-    const existing = s.recos.find(
-      (r) => r.user_id === userId && r.place_id === placeId
-    );
-    if (existing) {
-      existing.comment = comment ?? null;
-      return { ...existing, display_name: displayNameFor(userId) };
-    }
-    const reco: Reco = {
-      id: `demo-reco-${uuid().slice(0, 8)}`,
-      place_id: placeId,
-      user_id: userId,
-      comment: comment ?? null,
-      created_at: new Date().toISOString(),
-    };
-    s.recos.push(reco);
-    return { ...reco, display_name: displayNameFor(userId) };
-  },
-
-  async deleteReco(userId, placeId) {
-    const s = store();
-    s.recos = s.recos.filter(
-      (r) => !(r.user_id === userId && r.place_id === placeId)
-    );
-  },
-
-  async listRecos(limit = 20) {
-    const s = store();
-    return s.recos
-      .slice()
-      .sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? ""))
-      .slice(0, limit)
-      .map((r) => {
-        const place = s.places.find((p) => p.id === r.place_id);
-        return {
-          ...r,
-          display_name: displayNameFor(r.user_id),
-          place: place ? enrich(place) : undefined,
-        };
-      });
-  },
-
-  async listRecosForPlace(placeId) {
-    return store()
-      .recos.filter((r) => r.place_id === placeId)
-      .map((r) => ({ ...r, display_name: displayNameFor(r.user_id) }))
-      .sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? ""));
   },
 
   // ---- Kakis ----
@@ -860,28 +1135,68 @@ export const demoRepo: Repo = {
 
   // ---- Lobangs ----
 
-  async sendLobang(fromUserId, toUserId, placeId, note, eventId) {
+  async sendLobang(fromUserId, target, placeId, note, eventId) {
     const s = store();
+    let recipientIds: string[];
+    let kakiId: string | null = null;
+
+    if (target.type === "kaki") {
+      const kaki = s.kakis.find((k) => k.id === target.kakiId);
+      if (!kaki) throw new Error("That Kaki does not exist");
+      const isMember = s.kakiMembers.some(
+        (m) => m.kaki_id === target.kakiId && m.user_id === fromUserId
+      );
+      if (!isMember) {
+        throw new Error(
+          "You're not allowed to send a lobang to a Kaki you're not in"
+        );
+      }
+      recipientIds = s.kakiMembers
+        .filter((m) => m.kaki_id === target.kakiId)
+        .map((m) => m.user_id);
+      kakiId = target.kakiId;
+    } else {
+      recipientIds = target.userIds;
+    }
+
+    // The sender never counts as their own recipient, even if the target
+    // Kaki includes them.
+    recipientIds = Array.from(new Set(recipientIds)).filter(
+      (id) => id !== fromUserId
+    );
+    if (recipientIds.length === 0) {
+      throw new Error("At least one recipient is required");
+    }
+
     const lobang: Lobang = {
       id: `demo-lobang-${uuid().slice(0, 8)}`,
       from_user_id: fromUserId,
-      to_user_id: toUserId,
       place_id: placeId,
       note: note ?? null,
       event_id: eventId ?? null,
+      kaki_id: kakiId,
       created_at: new Date().toISOString(),
-      seen_at: null,
     };
     s.lobangs.push(lobang);
-    return hydrateLobang(lobang);
+    for (const userId of recipientIds) {
+      s.lobangRecipients.push({ lobang_id: lobang.id, user_id: userId, seen_at: null });
+    }
+
+    return hydrateSentLobang(lobang);
   },
 
   async listLobangsReceived(userId, limit = 20) {
-    return store()
-      .lobangs.filter((l) => l.to_user_id === userId)
+    const s = store();
+    const lobangIds = new Set(
+      s.lobangRecipients
+        .filter((r) => r.user_id === userId)
+        .map((r) => r.lobang_id)
+    );
+    return s.lobangs
+      .filter((l) => lobangIds.has(l.id))
       .sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? ""))
       .slice(0, limit)
-      .map(hydrateLobang);
+      .map((l) => hydrateReceivedLobang(l, userId));
   },
 
   async listLobangsSent(userId, limit = 20) {
@@ -889,24 +1204,35 @@ export const demoRepo: Repo = {
       .lobangs.filter((l) => l.from_user_id === userId)
       .sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? ""))
       .slice(0, limit)
-      .map(hydrateLobang);
+      .map(hydrateSentLobang);
   },
 
   async markLobangSeen(userId, lobangId) {
-    const lobang = store().lobangs.find(
-      (l) => l.id === lobangId && l.to_user_id === userId
+    const recipient = store().lobangRecipients.find(
+      (r) => r.lobang_id === lobangId && r.user_id === userId
     );
-    if (lobang && !lobang.seen_at) lobang.seen_at = new Date().toISOString();
+    if (recipient && !recipient.seen_at) {
+      recipient.seen_at = new Date().toISOString();
+    }
   },
 
   async dismissLobang(userId, lobangId) {
     const s = store();
-    s.lobangs = s.lobangs.filter(
-      (l) =>
-        !(
-          l.id === lobangId &&
-          (l.to_user_id === userId || l.from_user_id === userId)
-        )
+    const lobang = s.lobangs.find((l) => l.id === lobangId);
+
+    if (lobang && lobang.from_user_id === userId) {
+      // The sender retracts the whole send — every recipient's copy goes.
+      s.lobangs = s.lobangs.filter((l) => l.id !== lobangId);
+      s.lobangRecipients = s.lobangRecipients.filter(
+        (r) => r.lobang_id !== lobangId
+      );
+      return;
+    }
+
+    // A recipient dismissing "their copy" only removes their own row, so a
+    // group send's other recipients are unaffected. A no-op for a stranger.
+    s.lobangRecipients = s.lobangRecipients.filter(
+      (r) => !(r.lobang_id === lobangId && r.user_id === userId)
     );
   },
 
@@ -922,12 +1248,8 @@ export const demoRepo: Repo = {
     const friendVisits = s.visits.filter(
       (v) => v.user_id === toUserId && v.is_public
     );
-    const recoPlaceIds = s.recos.map((r) => r.place_id);
 
-    return rankPlaces(places, friendVisits, null, [], {
-      recoPlaceIds,
-      limit,
-    });
+    return rankPlaces(places, friendVisits, null, [], { limit });
   },
 
   // ---- Admin & moderation ----
@@ -1028,6 +1350,94 @@ export const demoRepo: Repo = {
     };
 
     return enrich(s.places[index]);
+  },
+
+  // ---- Place flags ----
+
+  async flagPlace(userId, placeId, reason, comment) {
+    const s = store();
+    const place = s.places.find((p) => p.id === placeId);
+    if (!place) throw new Error("That place does not exist");
+
+    const flag: PlaceFlag = {
+      id: `demo-flag-${uuid().slice(0, 8)}`,
+      place_id: placeId,
+      flagged_by: userId,
+      reason,
+      comment: comment ?? null,
+      status: "pending",
+      resolution: null,
+      resolved_by: null,
+      resolved_at: null,
+      created_at: new Date().toISOString(),
+    };
+    s.placeFlags.push(flag);
+
+    return { ...flag, place_name: place.name, flagged_by_name: displayNameFor(userId) };
+  },
+
+  async listMyFlags(userId) {
+    const s = store();
+    return s.placeFlags
+      .filter((f) => f.flagged_by === userId)
+      .sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? ""))
+      .map((f) => ({
+        ...f,
+        place_name: s.places.find((p) => p.id === f.place_id)?.name,
+        flagged_by_name: displayNameFor(f.flagged_by),
+      }));
+  },
+
+  async listPendingFlags() {
+    const s = store();
+    return s.placeFlags
+      .filter((f) => f.status === "pending")
+      .sort((a, b) => (a.created_at ?? "").localeCompare(b.created_at ?? ""))
+      .map((f) => ({
+        ...f,
+        place_name: s.places.find((p) => p.id === f.place_id)?.name,
+        flagged_by_name: displayNameFor(f.flagged_by),
+      }));
+  },
+
+  async resolvePlaceFlags(adminId, placeId, resolution, reason) {
+    const admin = adminId === DEMO_USER_ID;
+    if (!admin) throw new Error("Only an admin can resolve a flag");
+
+    if (resolution === "blocked" && (!reason || reason.trim().length === 0)) {
+      throw new Error("A reason is required to block a place");
+    }
+
+    const s = store();
+    const pending = s.placeFlags.filter(
+      (f) => f.place_id === placeId && f.status === "pending"
+    );
+    if (pending.length === 0) {
+      throw new Error("At least one pending flag is required to resolve");
+    }
+
+    const now = new Date().toISOString();
+    for (const flag of pending) {
+      flag.status = "resolved";
+      flag.resolution = resolution;
+      flag.resolved_by = adminId;
+      flag.resolved_at = now;
+    }
+
+    if (resolution === "blocked") {
+      const index = s.places.findIndex((p) => p.id === placeId);
+      if (index !== -1) {
+        s.places[index] = { ...s.places[index], status: "blocked", updated_at: now };
+        s.moderationLog.push({
+          id: uuid(),
+          place_id: placeId,
+          actor_id: adminId,
+          action: "block",
+          reason: reason!.trim(),
+          created_at: now,
+        });
+      }
+    }
   },
 };
 

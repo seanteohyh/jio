@@ -65,7 +65,7 @@ export async function GET(request: NextRequest) {
 
   for (const office of targets) {
     try {
-      const existing = await repo.listPlaces({ status: "all" });
+      const { places: existing } = await repo.listPlaces({ status: "all" });
 
       const { fetched, candidates } = await provider.discover(
         office.lat,

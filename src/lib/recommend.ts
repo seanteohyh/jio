@@ -1,4 +1,5 @@
 import { RECOMMEND_CONFIG as C } from "./recommendConfig";
+import { bayesianRating } from "./rating";
 import { formatCuisine } from "./utils";
 import type {
   MemberData,
@@ -84,38 +85,18 @@ export function cuisineAffinityScore(
 // ---------------------------------------------------------------------------
 
 /**
- * A place with one 5-star rating should not outrank a place with twenty
- * 4.5-star ratings. Blending in a prior fixes that: the fewer real ratings a
- * place has, the harder its score is pulled toward the average.
+ * Centres and scales the shared `bayesianRating()` into roughly [-1, 1] for
+ * use as a score component. The user's own ratings blend in on top of the
+ * community signal, weighted the same as anyone else's.
  */
 export function bayesianRatingScore(place: Place, userVisits: Visit[]): number {
-  const mine = userVisits.filter(
-    (v) => v.place_id === place.id && typeof v.rating === "number"
-  );
+  const mine = userVisits
+    .filter((v) => v.place_id === place.id && typeof v.rating === "number")
+    .map((v) => v.rating);
 
-  let sum = 0;
-  let count = 0;
+  const smoothed = bayesianRating(place.avg_rating, place.visit_count, mine);
+  if (smoothed === null) return 0;
 
-  // Community signal, when the repo has enriched the place with aggregates.
-  if (
-    typeof place.avg_rating === "number" &&
-    typeof place.visit_count === "number" &&
-    place.visit_count > 0
-  ) {
-    sum += place.avg_rating * place.visit_count;
-    count += place.visit_count;
-  }
-
-  // The user's own ratings, weighted the same as anyone else's.
-  for (const visit of mine) {
-    sum += visit.rating;
-    count += 1;
-  }
-
-  if (count === 0) return 0;
-
-  const smoothed =
-    (C.rating.prior * C.rating.priorCount + sum) / (C.rating.priorCount + count);
   return (smoothed - C.rating.midpoint) / C.rating.scale;
 }
 
@@ -223,8 +204,7 @@ function weightedTotal(breakdown: ScoreBreakdown): number {
     breakdown.budgetFit * C.weights.budgetFit +
     breakdown.walkPenalty * C.weights.walkPenalty +
     breakdown.varietyBonus * C.weights.varietyBonus +
-    breakdown.wishlistBoost * C.weights.wishlistBoost +
-    breakdown.recoBoost * C.weights.recoBoost
+    breakdown.wishlistBoost * C.weights.wishlistBoost
   );
 }
 
@@ -236,7 +216,6 @@ function dominantReason(breakdown: ScoreBreakdown): keyof ScoreBreakdown {
     ["walkPenalty", breakdown.walkPenalty * C.weights.walkPenalty],
     ["varietyBonus", breakdown.varietyBonus * C.weights.varietyBonus],
     ["wishlistBoost", breakdown.wishlistBoost * C.weights.wishlistBoost],
-    ["recoBoost", breakdown.recoBoost * C.weights.recoBoost],
   ];
 
   let best = contributions[0];
@@ -261,7 +240,6 @@ export function rankPlaces(
 ): ScoredPlace[] {
   const {
     weatherMultiplier = 1,
-    recoPlaceIds = [],
     now = new Date(),
     limit,
     cuisines,
@@ -270,7 +248,6 @@ export function rankPlaces(
 
   const learned = learnCuisineAffinity(visits, places);
   const wishlist = new Set(wishlistPlaceIds);
-  const recos = new Set(recoPlaceIds);
 
   const scored: ScoredPlace[] = [];
 
@@ -297,7 +274,6 @@ export function rankPlaces(
       walkPenalty: walkPenaltyScore(place, weatherMultiplier),
       varietyBonus: varietyBonusScore(place, visits, now),
       wishlistBoost: wishlist.has(place.id) ? C.boosts.wishlist : 0,
-      recoBoost: recos.has(place.id) ? C.boosts.reco : 0,
     };
 
     scored.push({
@@ -447,8 +423,6 @@ export function whyHint(scored: ScoredPlace): string {
         : `You were here recently`;
     case "wishlistBoost":
       return `On your want-to-try list`;
-    case "recoBoost":
-      return `Recommended by a teammate`;
     default:
       return `Worth a try`;
   }

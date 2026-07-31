@@ -11,6 +11,7 @@ import type { WalkingRoute } from "@/types";
 
 const TOKEN_URL = "https://www.onemap.gov.sg/api/auth/post/getToken";
 const ROUTE_URL = "https://www.onemap.gov.sg/api/public/routingsvc/route";
+const SEARCH_URL = "https://www.onemap.gov.sg/api/common/elastic/search";
 
 const TOKEN_TTL_MS = 72 * 60 * 60 * 1000; // OneMap tokens last 3 days.
 const TOKEN_REFRESH_EARLY_MS = 12 * 60 * 60 * 1000; // Refresh with 12h to spare.
@@ -205,5 +206,68 @@ export async function getWalkingRoute(
     };
   } catch {
     return haversineRoute(from, to);
+  }
+}
+
+export interface GeocodeResult {
+  lat: number;
+  lng: number;
+  /** The building/address OneMap resolved this to, for display/confirmation. */
+  address: string;
+}
+
+interface OneMapSearchResult {
+  SEARCHVAL?: string;
+  BLK_NO?: string;
+  ROAD_NAME?: string;
+  BUILDING?: string;
+  ADDRESS?: string;
+  POSTAL?: string;
+  LATITUDE?: string;
+  LONGITUDE?: string;
+}
+
+interface OneMapSearchResponse {
+  found?: number;
+  results?: OneMapSearchResult[];
+}
+
+/**
+ * Turns an address or postal code into coordinates, so adding a place never
+ * requires typing latitude/longitude by hand. This is OneMap's public
+ * search endpoint — no auth token needed, unlike routing — so it works even
+ * without ONEMAP_EMAIL/ONEMAP_PASSWORD configured.
+ *
+ * Returns `null` on no match or any network failure, same "degrade rather
+ * than throw" spirit as the rest of this file — the caller decides what a
+ * failed lookup means (ask for a more specific address, or fall back to
+ * "use my current location").
+ */
+export async function geocodeAddress(query: string): Promise<GeocodeResult | null> {
+  const trimmed = query.trim();
+  if (!trimmed) return null;
+
+  try {
+    const url =
+      `${SEARCH_URL}?searchVal=${encodeURIComponent(trimmed)}` +
+      `&returnGeom=Y&getAddrDetails=Y&pageNum=1`;
+    const response = await fetch(url);
+    if (!response.ok) return null;
+
+    const json = (await response.json()) as OneMapSearchResponse;
+    const top = json.results?.[0];
+    if (!top?.LATITUDE || !top?.LONGITUDE) return null;
+
+    const lat = Number(top.LATITUDE);
+    const lng = Number(top.LONGITUDE);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+
+    return {
+      lat,
+      lng,
+      address: top.ADDRESS || [top.BLK_NO, top.ROAD_NAME].filter(Boolean).join(" ") || trimmed,
+    };
+  } catch {
+    return null;
   }
 }

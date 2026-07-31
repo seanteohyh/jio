@@ -1,10 +1,18 @@
 import { DEFAULT_OFFICE } from "@/lib/constants";
-import { estimateWalkMinutes, generateToken, haversine } from "@/lib/utils";
+import {
+  estimateWalkMinutes,
+  generateToken,
+  haversine,
+  sortPlacesForList,
+} from "@/lib/utils";
 import { computeWinner } from "@/lib/voting";
 import { rankPlaces } from "@/lib/recommend";
+import { pickCommitteeSuggestions } from "@/lib/suggestCommittee";
 import { createAuthServerClient } from "@/lib/supabase/serverAuth";
 import type { Repo } from "./index";
 import type {
+  EventCandidateDate,
+  EventDateVote,
   EventDetail,
   EventInvitee,
   EventOption,
@@ -15,12 +23,15 @@ import type {
   KakiDetail,
   KakiMember,
   Lobang,
+  LobangTarget,
   LunchEvent,
+  MemberData,
   ModerationLogEntry,
   Office,
   Place,
+  PlaceFlag,
+  PlacesPagination,
   Profile,
-  Reco,
   TeamUser,
   UserPrefs,
   Visit,
@@ -51,52 +62,13 @@ function fail(message: string, error: { message?: string } | null): never {
 // Enrichment helpers
 // ---------------------------------------------------------------------------
 
-interface RatingAggregate {
-  avg_rating: number | null;
-  visit_count: number;
-}
-
 /**
- * Rating aggregates, computed in the app rather than the database.
- *
- * Fine at team scale. If this app ever holds tens of thousands of visits, this
- * is the first thing to replace with a materialised view — see the note in
- * README under "Known limits".
+ * `avg_rating` and `visit_count` are real, trigger-maintained columns on
+ * `places` now (021_place_ratings_trigger.sql) — a plain `select("*")`
+ * already returns them, so there is nothing left for this file to
+ * aggregate. Kept as `place.avg_rating`/`place.visit_count` reads inline
+ * below rather than a helper function, since there's no query left to share.
  */
-async function ratingAggregates(
-  client: SupabaseClient,
-  placeIds: string[]
-): Promise<Map<string, RatingAggregate>> {
-  const map = new Map<string, RatingAggregate>();
-  if (placeIds.length === 0) return map;
-
-  const { data, error } = await client
-    .from("visits")
-    .select("place_id, rating")
-    .in("place_id", placeIds);
-
-  if (error || !data) return map;
-
-  const totals = new Map<string, { sum: number; rated: number; count: number }>();
-  for (const row of data as { place_id: string; rating: number | null }[]) {
-    const entry = totals.get(row.place_id) || { sum: 0, rated: 0, count: 0 };
-    entry.count += 1;
-    if (typeof row.rating === "number") {
-      entry.sum += row.rating;
-      entry.rated += 1;
-    }
-    totals.set(row.place_id, entry);
-  }
-
-  for (const [placeId, entry] of totals) {
-    map.set(placeId, {
-      avg_rating: entry.rated > 0 ? entry.sum / entry.rated : null,
-      visit_count: entry.count,
-    });
-  }
-
-  return map;
-}
 
 /** Walk times from the cache, falling back to straight-line estimates. */
 async function walkTimes(
@@ -174,23 +146,68 @@ async function displayNameMap(
   return map;
 }
 
+/** Everyone who counts as "coming to this Jio": host, kaki members, invitees. */
+async function resolveEventParticipants(
+  client: SupabaseClient,
+  event: { id: string; host_id: string; kaki_id?: string | null }
+): Promise<string[]> {
+  const ids = new Set<string>([event.host_id]);
+
+  const [{ data: memberRows }, { data: inviteeRows }] = await Promise.all([
+    event.kaki_id
+      ? client.from("kaki_members").select("user_id").eq("kaki_id", event.kaki_id)
+      : Promise.resolve({ data: [] as { user_id: string }[] }),
+    client.from("event_invitees").select("user_id").eq("event_id", event.id),
+  ]);
+
+  for (const row of (memberRows ?? []) as { user_id: string }[]) ids.add(row.user_id);
+  for (const row of (inviteeRows ?? []) as { user_id: string }[]) ids.add(row.user_id);
+
+  return Array.from(ids);
+}
+
+/** Hydrates place flags with the place's name and the flagger's display name. */
+async function hydrateFlags(
+  client: SupabaseClient,
+  flags: PlaceFlag[]
+): Promise<PlaceFlag[]> {
+  if (flags.length === 0) return [];
+
+  const [names, { data: placeRows }] = await Promise.all([
+    displayNameMap(client, flags.map((f) => f.flagged_by)),
+    client
+      .from("places")
+      .select("id, name")
+      .in("id", Array.from(new Set(flags.map((f) => f.place_id)))),
+  ]);
+
+  const placeNameById = new Map(
+    ((placeRows ?? []) as { id: string; name: string }[]).map((p) => [p.id, p.name])
+  );
+
+  return flags.map((f) => ({
+    ...f,
+    place_name: placeNameById.get(f.place_id),
+    flagged_by_name: names.get(f.flagged_by),
+  }));
+}
+
 /** Attach display names, the place, and (if any) the source event's title. */
-async function hydrateLobangs(
+interface LobangCommon {
+  placeById: Map<string, Place>;
+  eventTitles: Map<string, string>;
+}
+
+async function lobangCommon(
   client: SupabaseClient,
   lobangs: Lobang[]
-): Promise<Lobang[]> {
-  if (lobangs.length === 0) return [];
-
+): Promise<LobangCommon> {
   const placeIds = Array.from(new Set(lobangs.map((l) => l.place_id)));
   const eventIds = Array.from(
     new Set(lobangs.map((l) => l.event_id).filter((id): id is string => Boolean(id)))
   );
 
-  const [names, { data: placeRows }, eventTitles] = await Promise.all([
-    displayNameMap(client, [
-      ...lobangs.map((l) => l.from_user_id),
-      ...lobangs.map((l) => l.to_user_id),
-    ]),
+  const [{ data: placeRows }, eventTitles] = await Promise.all([
     client.from("places").select("*").in("id", placeIds),
     eventIds.length === 0
       ? Promise.resolve(new Map<string, string>())
@@ -223,13 +240,114 @@ async function hydrateLobangs(
     })
   );
 
+  return { placeById, eventTitles };
+}
+
+/** Hydrates a lobang for one specific recipient's view (their own seen_at). */
+async function hydrateReceivedLobangs(
+  client: SupabaseClient,
+  lobangs: Lobang[],
+  viewerId: string
+): Promise<Lobang[]> {
+  if (lobangs.length === 0) return [];
+
+  const [{ placeById, eventTitles }, names, { data: recipientRows }] =
+    await Promise.all([
+      lobangCommon(client, lobangs),
+      displayNameMap(client, [...lobangs.map((l) => l.from_user_id), viewerId]),
+      client
+        .from("lobang_recipients")
+        .select("lobang_id, seen_at")
+        .eq("user_id", viewerId)
+        .in(
+          "lobang_id",
+          lobangs.map((l) => l.id)
+        ),
+    ]);
+
+  const seenById = new Map(
+    ((recipientRows ?? []) as { lobang_id: string; seen_at: string | null }[]).map(
+      (r) => [r.lobang_id, r.seen_at]
+    )
+  );
+
   return lobangs.map((l) => ({
     ...l,
     from_display_name: names.get(l.from_user_id),
-    to_display_name: names.get(l.to_user_id),
+    to_user_id: viewerId,
+    to_display_name: names.get(viewerId),
+    seen_at: seenById.get(l.id) ?? null,
     place: placeById.get(l.place_id),
     event_title: l.event_id ? eventTitles.get(l.event_id) ?? null : null,
   }));
+}
+
+/** Hydrates a lobang as the send itself, for the sender's own history. */
+async function hydrateSentLobangs(
+  client: SupabaseClient,
+  lobangs: Lobang[]
+): Promise<Lobang[]> {
+  if (lobangs.length === 0) return [];
+
+  const lobangIds = lobangs.map((l) => l.id);
+  const kakiIds = Array.from(
+    new Set(lobangs.map((l) => l.kaki_id).filter((id): id is string => Boolean(id)))
+  );
+
+  const [{ placeById, eventTitles }, { data: recipientRows }, { data: kakiRows }] =
+    await Promise.all([
+      lobangCommon(client, lobangs),
+      client
+        .from("lobang_recipients")
+        .select("lobang_id, user_id")
+        .in("lobang_id", lobangIds),
+      kakiIds.length === 0
+        ? Promise.resolve({ data: [] as { id: string; name: string }[] })
+        : client.from("kakis").select("id, name").in("id", kakiIds),
+    ]);
+
+  const recipientsByLobang = new Map<string, string[]>();
+  for (const row of (recipientRows ?? []) as {
+    lobang_id: string;
+    user_id: string;
+  }[]) {
+    const list = recipientsByLobang.get(row.lobang_id) ?? [];
+    list.push(row.user_id);
+    recipientsByLobang.set(row.lobang_id, list);
+  }
+
+  const kakiNameById = new Map(
+    ((kakiRows ?? []) as { id: string; name: string }[]).map((k) => [k.id, k.name])
+  );
+
+  const names = await displayNameMap(client, [
+    ...lobangs.map((l) => l.from_user_id),
+    ...Array.from(recipientsByLobang.values()).flat(),
+  ]);
+
+  return lobangs.map((l) => {
+    const recipients = recipientsByLobang.get(l.id) ?? [];
+    let toUserId: string | undefined;
+    let toDisplayName: string | undefined;
+
+    if (l.kaki_id) {
+      toDisplayName = kakiNameById.get(l.kaki_id) ?? "a Kaki";
+    } else if (recipients.length === 1) {
+      toUserId = recipients[0];
+      toDisplayName = names.get(recipients[0]);
+    } else if (recipients.length > 1) {
+      toDisplayName = `${recipients.length} teammates`;
+    }
+
+    return {
+      ...l,
+      from_display_name: names.get(l.from_user_id),
+      to_user_id: toUserId,
+      to_display_name: toDisplayName,
+      place: placeById.get(l.place_id),
+      event_title: l.event_id ? eventTitles.get(l.event_id) ?? null : null,
+    };
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -239,7 +357,7 @@ async function hydrateLobangs(
 export const supabaseRepo: Repo = {
   // ---- Places ----
 
-  async listPlaces(filters?: Partial<Filters>) {
+  async listPlaces(filters?: Partial<Filters>, pagination?: PlacesPagination) {
     const client = await db();
     const officeId = filters?.officeId ?? DEFAULT_OFFICE.id;
 
@@ -268,26 +386,23 @@ export const supabaseRepo: Repo = {
     if (error) fail("Could not load places", error);
 
     const places = (data ?? []) as Place[];
-    const ids = places.map((p) => p.id);
-
-    const [aggregates, walks] = await Promise.all([
-      ratingAggregates(client, ids),
-      walkTimes(client, officeId, places),
-    ]);
+    const walks = await walkTimes(client, officeId, places);
 
     let enriched = places.map((place) => {
       const walk = walks.get(place.id);
-      const aggregate = aggregates.get(place.id);
       return {
         ...place,
         walk_minutes: walk?.walk_minutes ?? null,
         distance_m: walk?.distance_m ?? null,
-        avg_rating: aggregate?.avg_rating ?? null,
-        visit_count: aggregate?.visit_count ?? 0,
+        avg_rating: place.avg_rating ?? null,
+        visit_count: place.visit_count ?? 0,
       };
     });
 
-    // Walk time is not a column, so this filter has to happen after enrichment.
+    // Walk time is not a `places` column (it's per-office, in walk_cache), so
+    // this filter — and the sort/pagination below — happen post-enrichment
+    // in JS rather than as a SQL `ORDER BY`/`LIMIT`. Fine at pilot scale; a
+    // real push-down would need a places/walk_cache join.
     if (typeof filters?.maxWalkMinutes === "number") {
       enriched = enriched.filter(
         (p) =>
@@ -296,9 +411,14 @@ export const supabaseRepo: Repo = {
       );
     }
 
-    return enriched.sort(
-      (a, b) => (a.walk_minutes ?? 999) - (b.walk_minutes ?? 999)
-    );
+    const sorted = sortPlacesForList(enriched);
+    if (!pagination) return { places: sorted, total: sorted.length };
+
+    const { limit, offset } = pagination;
+    return {
+      places: sorted.slice(offset, offset + limit),
+      total: sorted.length,
+    };
   },
 
   async getPlace(id) {
@@ -313,20 +433,15 @@ export const supabaseRepo: Repo = {
     if (!data) return null;
 
     const place = data as Place;
-    const [aggregates, walks] = await Promise.all([
-      ratingAggregates(client, [place.id]),
-      walkTimes(client, DEFAULT_OFFICE.id, [place]),
-    ]);
-
+    const walks = await walkTimes(client, DEFAULT_OFFICE.id, [place]);
     const walk = walks.get(place.id);
-    const aggregate = aggregates.get(place.id);
 
     return {
       ...place,
       walk_minutes: walk?.walk_minutes ?? null,
       distance_m: walk?.distance_m ?? null,
-      avg_rating: aggregate?.avg_rating ?? null,
-      visit_count: aggregate?.visit_count ?? 0,
+      avg_rating: place.avg_rating ?? null,
+      visit_count: place.visit_count ?? 0,
     };
   },
 
@@ -543,6 +658,25 @@ export const supabaseRepo: Repo = {
     return data as Profile;
   },
 
+  async completeOnboarding(userId, displayName) {
+    const client = await db();
+    const { data, error } = await client
+      .from("profiles")
+      .upsert(
+        {
+          user_id: userId,
+          display_name: displayName,
+          onboarded_at: new Date().toISOString(),
+        },
+        { onConflict: "user_id" }
+      )
+      .select()
+      .single();
+
+    if (error) fail("Could not save your display name", error);
+    return data as Profile;
+  },
+
   async getDisplayNames(userIds) {
     const client = await db();
     return displayNameMap(client, userIds);
@@ -613,6 +747,55 @@ export const supabaseRepo: Repo = {
     return event;
   },
 
+  async createFlexiEvent(hostId, title, officeId, candidateDates, kakiId, inviteeIds) {
+    const uniqueDates = Array.from(new Set(candidateDates));
+    if (uniqueDates.length < 2) {
+      throw new Error("A Flexi Jio needs at least 2 candidate dates");
+    }
+
+    const client = await db();
+    const earliest = [...uniqueDates].sort()[0];
+
+    const { data: eventRow, error } = await client
+      .from("lunch_events")
+      .insert({
+        host_id: hostId,
+        title,
+        scheduled_at: earliest,
+        office_id: officeId,
+        kaki_id: kakiId ?? null,
+        invite_token: generateToken(),
+        status: "open",
+        date_phase: "polling",
+      })
+      .select()
+      .single();
+
+    if (error) fail("Could not create that Flexi Jio", error);
+    const event = eventRow as LunchEvent;
+
+    const { error: dateError } = await client.from("event_candidate_dates").insert(
+      uniqueDates.map((date) => ({
+        event_id: event.id,
+        date,
+        added_by: hostId,
+      }))
+    );
+    if (dateError) fail("Could not add the candidate dates", dateError);
+
+    const invitees = (inviteeIds ?? []).filter((id) => id !== hostId);
+    if (invitees.length > 0) {
+      const { error: inviteeError } = await client
+        .from("event_invitees")
+        .insert(
+          invitees.map((userId) => ({ event_id: event.id, user_id: userId }))
+        );
+      if (inviteeError) fail("Could not add invitees", inviteeError);
+    }
+
+    return event;
+  },
+
   async getEvent(idOrToken) {
     const client = await db();
 
@@ -646,17 +829,22 @@ export const supabaseRepo: Repo = {
     if (!eventRow) return null;
     const event = eventRow;
 
-    const [optionsRes, votesRes, rsvpsRes, inviteesRes] = await Promise.all([
-      client.from("event_options").select("*").eq("event_id", event.id),
-      client.from("event_votes").select("*").eq("event_id", event.id),
-      client.from("event_rsvps").select("*").eq("event_id", event.id),
-      client.from("event_invitees").select("*").eq("event_id", event.id),
-    ]);
+    const [optionsRes, votesRes, rsvpsRes, inviteesRes, candidateDatesRes, dateVotesRes] =
+      await Promise.all([
+        client.from("event_options").select("*").eq("event_id", event.id),
+        client.from("event_votes").select("*").eq("event_id", event.id),
+        client.from("event_rsvps").select("*").eq("event_id", event.id),
+        client.from("event_invitees").select("*").eq("event_id", event.id),
+        client.from("event_candidate_dates").select("*").eq("event_id", event.id),
+        client.from("event_date_votes").select("*").eq("event_id", event.id),
+      ]);
 
     const optionRows = (optionsRes.data ?? []) as EventOption[];
     const votes = (votesRes.data ?? []) as EventVote[];
     const rsvpRows = (rsvpsRes.data ?? []) as EventRsvp[];
     const inviteeRows = (inviteesRes.data ?? []) as EventInvitee[];
+    const candidateDateRows = (candidateDatesRes.data ?? []) as EventCandidateDate[];
+    const dateVoteRows = (dateVotesRes.data ?? []) as EventDateVote[];
 
     const placeIds = optionRows.map((o) => o.place_id);
     const winnerId = event.winner_place_id;
@@ -688,7 +876,18 @@ export const supabaseRepo: Repo = {
       ...optionRows.map((o) => o.added_by),
       ...rsvpRows.map((r) => r.user_id),
       ...inviteeRows.map((i) => i.user_id),
+      ...candidateDateRows.map((d) => d.added_by),
+      ...dateVoteRows.map((v) => v.user_id),
     ]);
+
+    const candidateDates: EventCandidateDate[] = candidateDateRows
+      .map((d) => ({ ...d, added_by_name: names.get(d.added_by) }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    const dateVotes: EventDateVote[] = dateVoteRows.map((v) => ({
+      ...v,
+      display_name: names.get(v.user_id),
+    }));
 
     const options: EventOption[] = optionRows.map((o) => ({
       ...o,
@@ -734,6 +933,8 @@ export const supabaseRepo: Repo = {
       votes,
       rsvps,
       invitees,
+      candidateDates,
+      dateVotes,
       tally,
     };
 
@@ -797,17 +998,26 @@ export const supabaseRepo: Repo = {
     if (events.length === 0) return [];
 
     const eventIds = events.map((e) => e.id);
-    const [optionCountRes, rsvpCountRes, namesMap] = await Promise.all([
+    const [optionCountRes, rsvpCountRes, dateVoteRes, namesMap] = await Promise.all([
       client.from("event_options").select("event_id").in("event_id", eventIds),
       client
         .from("event_rsvps")
         .select("event_id, response")
+        .in("event_id", eventIds),
+      client
+        .from("event_date_votes")
+        .select("event_id")
+        .eq("user_id", userId)
         .in("event_id", eventIds),
       displayNameMap(
         client,
         events.map((e) => e.host_id)
       ),
     ]);
+
+    const markedAvailability = new Set(
+      ((dateVoteRes.data ?? []) as { event_id: string }[]).map((r) => r.event_id)
+    );
 
     const optionCounts = new Map<string, number>();
     for (const row of (optionCountRes.data ?? []) as { event_id: string }[]) {
@@ -846,6 +1056,7 @@ export const supabaseRepo: Repo = {
         winner_place_name: e.winner_place_id
           ? winnerNames.get(e.winner_place_id) ?? null
           : null,
+        has_marked_availability: markedAvailability.has(e.id),
       }))
       .sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at));
   },
@@ -984,6 +1195,132 @@ export const supabaseRepo: Repo = {
       .eq("place_id", placeId);
   },
 
+  async suggestOptionsForEvent(eventId, userId, excludePlaceIds = []) {
+    const client = await db();
+
+    const { data: eventRow } = await client
+      .from("lunch_events")
+      .select("id, host_id, status, kaki_id, office_id")
+      .eq("id", eventId)
+      .maybeSingle();
+    if (!eventRow) throw new Error("Event not found");
+
+    const event = eventRow as Pick<
+      LunchEvent,
+      "id" | "host_id" | "status" | "kaki_id" | "office_id"
+    >;
+    if (event.status !== "open") throw new Error("This Jio is already closed");
+
+    const participantIds = await resolveEventParticipants(client, event);
+    if (!participantIds.includes(userId)) {
+      throw new Error("Only the host, kaki members or invitees can add places");
+    }
+
+    const [{ data: optionRows }, { data: voteRows }, { data: rsvpRows }] =
+      await Promise.all([
+        client.from("event_options").select("place_id, is_suggested").eq("event_id", eventId),
+        client.from("event_votes").select("place_id").eq("event_id", eventId),
+        client.from("event_rsvps").select("user_id, response").eq("event_id", eventId),
+      ]);
+
+    // A re-roll replaces any earlier suggestion nobody's voted on yet;
+    // anything that already has a vote stays untouched.
+    const votedPlaceIds = new Set(
+      ((voteRows ?? []) as { place_id: string }[]).map((v) => v.place_id)
+    );
+    const options = (optionRows ?? []) as { place_id: string; is_suggested: boolean }[];
+    const staleSuggestedIds = options
+      .filter((o) => o.is_suggested && !votedPlaceIds.has(o.place_id))
+      .map((o) => o.place_id);
+
+    if (staleSuggestedIds.length > 0) {
+      const { error: cleanupError } = await client
+        .from("event_options")
+        .delete()
+        .eq("event_id", eventId)
+        .in("place_id", staleSuggestedIds);
+      if (cleanupError) fail("Could not clear the earlier suggestions", cleanupError);
+    }
+
+    const currentOptionIds = new Set(
+      options
+        .map((o) => o.place_id)
+        .filter((id) => !staleSuggestedIds.includes(id))
+    );
+
+    const respondedYesOrMaybe = new Set(
+      ((rsvpRows ?? []) as { user_id: string; response: string }[])
+        .filter(
+          (r) =>
+            participantIds.includes(r.user_id) &&
+            (r.response === "yes" || r.response === "maybe")
+        )
+        .map((r) => r.user_id)
+    );
+    const scopedIds =
+      respondedYesOrMaybe.size > 0
+        ? Array.from(respondedYesOrMaybe)
+        : participantIds;
+
+    const membersData: MemberData[] = await Promise.all(
+      scopedIds.map(async (uid) => {
+        const [{ data: visitRows }, { data: prefsRow }, { data: wishlistRows }] =
+          await Promise.all([
+            client.from("visits").select("*").eq("user_id", uid),
+            client.from("user_prefs").select("*").eq("user_id", uid).maybeSingle(),
+            client.from("wishlist").select("place_id").eq("user_id", uid),
+          ]);
+        return {
+          userId: uid,
+          visits: (visitRows ?? []) as Visit[],
+          prefs: (prefsRow as UserPrefs | null) ?? null,
+          wishlistPlaceIds: ((wishlistRows ?? []) as { place_id: string }[]).map(
+            (w) => w.place_id
+          ),
+        };
+      })
+    );
+
+    const { data: placeRows } = await client
+      .from("places")
+      .select("*")
+      .eq("status", "active");
+    const places = (placeRows ?? []) as Place[];
+    const walks = await walkTimes(client, event.office_id, places);
+    const enrichedPlaces = places.map((p) => {
+      const walk = walks.get(p.id);
+      return {
+        ...p,
+        walk_minutes: walk?.walk_minutes ?? null,
+        distance_m: walk?.distance_m ?? null,
+      };
+    });
+
+    const exclude = new Set([...currentOptionIds, ...excludePlaceIds]);
+    const picks = pickCommitteeSuggestions(enrichedPlaces, membersData, exclude);
+    if (picks.length === 0) return [];
+
+    const { data: inserted, error } = await client
+      .from("event_options")
+      .insert(
+        picks.map((pick) => ({
+          event_id: eventId,
+          place_id: pick.place.id,
+          added_by: userId,
+          is_suggested: true,
+        }))
+      )
+      .select();
+    if (error) fail("Could not add suggested places", error);
+
+    const names = await displayNameMap(client, [userId]);
+    return ((inserted ?? []) as EventOption[]).map((o) => ({
+      ...o,
+      place: picks.find((p) => p.place.id === o.place_id)?.place,
+      added_by_name: names.get(userId),
+    }));
+  },
+
   async castBallot(eventId, userId, rankedPlaceIds) {
     const client = await db();
 
@@ -1027,6 +1364,119 @@ export const supabaseRepo: Repo = {
 
     const { error } = await client.from("event_votes").insert(rows);
     if (error) fail("Could not save your vote", error);
+  },
+
+  async addCandidateDate(eventId, date, userId) {
+    const client = await db();
+
+    const { data: eventRow } = await client
+      .from("lunch_events")
+      .select("id, host_id, status, kaki_id, date_phase")
+      .eq("id", eventId)
+      .maybeSingle();
+    if (!eventRow) throw new Error("Event not found");
+
+    const event = eventRow as Pick<
+      LunchEvent,
+      "id" | "host_id" | "status" | "kaki_id" | "date_phase"
+    >;
+    if (event.status !== "open") throw new Error("This Jio is already closed");
+    if (event.date_phase !== "polling") {
+      throw new Error("This Jio's date is already confirmed");
+    }
+
+    const participantIds = await resolveEventParticipants(client, event);
+    if (!participantIds.includes(userId)) {
+      throw new Error("Only the host, kaki members or invitees can add dates");
+    }
+
+    const { data: existing } = await client
+      .from("event_candidate_dates")
+      .select("date")
+      .eq("event_id", eventId)
+      .eq("date", date)
+      .maybeSingle();
+    if (existing) throw new Error("That date is already a candidate");
+
+    const { error } = await client
+      .from("event_candidate_dates")
+      .insert({ event_id: eventId, date, added_by: userId });
+    if (error) fail("Could not add that date", error);
+  },
+
+  async markDateAvailability(eventId, userId, dates) {
+    const client = await db();
+
+    const { data: eventRow } = await client
+      .from("lunch_events")
+      .select("date_phase")
+      .eq("id", eventId)
+      .maybeSingle();
+    if (!eventRow) throw new Error("Event not found");
+    if ((eventRow as { date_phase: string | null }).date_phase !== "polling") {
+      throw new Error("This Jio's date is already confirmed");
+    }
+
+    const { data: candidateRows } = await client
+      .from("event_candidate_dates")
+      .select("date")
+      .eq("event_id", eventId);
+    const validDates = new Set(
+      ((candidateRows ?? []) as { date: string }[]).map((d) => d.date)
+    );
+
+    // Marking availability fully replaces the prior selection.
+    const { error: deleteError } = await client
+      .from("event_date_votes")
+      .delete()
+      .eq("event_id", eventId)
+      .eq("user_id", userId);
+    if (deleteError) fail("Could not update your availability", deleteError);
+
+    const toInsert = dates.filter((d) => validDates.has(d));
+    if (toInsert.length === 0) return;
+
+    const { error: insertError } = await client
+      .from("event_date_votes")
+      .insert(toInsert.map((date) => ({ event_id: eventId, user_id: userId, date })));
+    if (insertError) fail("Could not save your availability", insertError);
+  },
+
+  async confirmEventDate(eventId, hostId, date) {
+    const client = await db();
+
+    const { data: eventRow } = await client
+      .from("lunch_events")
+      .select("host_id, date_phase")
+      .eq("id", eventId)
+      .maybeSingle();
+    if (!eventRow) throw new Error("Event not found");
+
+    const event = eventRow as { host_id: string; date_phase: string | null };
+    if (event.host_id !== hostId) {
+      throw new Error("Only the host can confirm the date");
+    }
+    if (event.date_phase !== "polling") {
+      throw new Error("This Jio's date is already confirmed");
+    }
+
+    const { data: candidateRow } = await client
+      .from("event_candidate_dates")
+      .select("date")
+      .eq("event_id", eventId)
+      .eq("date", date)
+      .maybeSingle();
+    if (!candidateRow) throw new Error("That date was never a candidate");
+
+    const { data, error } = await client
+      .from("lunch_events")
+      .update({ scheduled_at: date, date_phase: "confirmed" })
+      .eq("id", eventId)
+      .select()
+      .single();
+    if (error) fail("Could not confirm that date", error);
+
+    return data as LunchEvent;
   },
 
   async rsvp(eventId, userId, response) {
@@ -1150,103 +1600,6 @@ export const supabaseRepo: Repo = {
       .insert({ user_id: userId, place_id: placeId });
     if (error) fail("Could not update your wishlist", error);
     return { added: true };
-  },
-
-  // ---- Recos ----
-
-  async createReco(userId, placeId, comment) {
-    const client = await db();
-    const { data, error } = await client
-      .from("recos")
-      .upsert(
-        { user_id: userId, place_id: placeId, comment: comment ?? null },
-        { onConflict: "place_id,user_id" }
-      )
-      .select()
-      .single();
-
-    if (error) fail("Could not save that recommendation", error);
-    return data as Reco;
-  },
-
-  async deleteReco(userId, placeId) {
-    const client = await db();
-    const { error } = await client
-      .from("recos")
-      .delete()
-      .eq("user_id", userId)
-      .eq("place_id", placeId);
-
-    if (error) fail("Could not remove that recommendation", error);
-  },
-
-  async listRecos(limit = 20) {
-    const client = await db();
-    const { data, error } = await client
-      .from("recos")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .limit(limit);
-
-    if (error) fail("Could not load recommendations", error);
-
-    const recos = (data ?? []) as Reco[];
-    if (recos.length === 0) return [];
-
-    const [names, { data: placeRows }] = await Promise.all([
-      displayNameMap(
-        client,
-        recos.map((r) => r.user_id)
-      ),
-      client
-        .from("places")
-        .select("*")
-        .in(
-          "id",
-          Array.from(new Set(recos.map((r) => r.place_id)))
-        ),
-    ]);
-
-    const places = (placeRows ?? []) as Place[];
-    const walks = await walkTimes(client, DEFAULT_OFFICE.id, places);
-    const placeById = new Map(
-      places.map((p) => {
-        const walk = walks.get(p.id);
-        return [
-          p.id,
-          {
-            ...p,
-            walk_minutes: walk?.walk_minutes ?? null,
-            distance_m: walk?.distance_m ?? null,
-          } as Place,
-        ];
-      })
-    );
-
-    return recos.map((r) => ({
-      ...r,
-      display_name: names.get(r.user_id),
-      place: placeById.get(r.place_id),
-    }));
-  },
-
-  async listRecosForPlace(placeId) {
-    const client = await db();
-    const { data, error } = await client
-      .from("recos")
-      .select("*")
-      .eq("place_id", placeId)
-      .order("created_at", { ascending: false });
-
-    if (error) fail("Could not load recommendations", error);
-
-    const recos = (data ?? []) as Reco[];
-    const names = await displayNameMap(
-      client,
-      recos.map((r) => r.user_id)
-    );
-
-    return recos.map((r) => ({ ...r, display_name: names.get(r.user_id) }));
   },
 
   // ---- Kakis ----
@@ -1400,36 +1753,86 @@ export const supabaseRepo: Repo = {
 
   // ---- Lobangs ----
 
-  async sendLobang(fromUserId, toUserId, placeId, note, eventId) {
+  async sendLobang(fromUserId, target, placeId, note, eventId) {
     const client = await db();
+
+    let recipientIds: string[];
+    let kakiId: string | null = null;
+
+    if (target.type === "kaki") {
+      const { data: memberRows, error: memberError } = await client
+        .from("kaki_members")
+        .select("user_id")
+        .eq("kaki_id", target.kakiId);
+      if (memberError) fail("Could not check that Kaki's membership", memberError);
+
+      const memberIds = ((memberRows ?? []) as { user_id: string }[]).map(
+        (r) => r.user_id
+      );
+      if (!memberIds.includes(fromUserId)) {
+        throw new Error(
+          "You're not allowed to send a lobang to a Kaki you're not in"
+        );
+      }
+      recipientIds = memberIds;
+      kakiId = target.kakiId;
+    } else {
+      recipientIds = target.userIds;
+    }
+
+    recipientIds = Array.from(new Set(recipientIds)).filter(
+      (id) => id !== fromUserId
+    );
+    if (recipientIds.length === 0) {
+      throw new Error("At least one recipient is required");
+    }
+
     const { data, error } = await client
       .from("lobangs")
       .insert({
         from_user_id: fromUserId,
-        to_user_id: toUserId,
         place_id: placeId,
         note: note ?? null,
         event_id: eventId ?? null,
+        kaki_id: kakiId,
       })
       .select()
       .single();
 
     if (error) fail("Could not send that lobang", error);
-    const hydrated = await hydrateLobangs(client, [data as Lobang]);
+    const lobang = data as Lobang;
+
+    const { error: recipientsError } = await client
+      .from("lobang_recipients")
+      .insert(recipientIds.map((userId) => ({ lobang_id: lobang.id, user_id: userId })));
+    if (recipientsError) fail("Could not add the recipients", recipientsError);
+
+    const hydrated = await hydrateSentLobangs(client, [lobang]);
     return hydrated[0];
   },
 
   async listLobangsReceived(userId, limit = 20) {
     const client = await db();
+    const { data: recipientRows, error: recipientError } = await client
+      .from("lobang_recipients")
+      .select("lobang_id")
+      .eq("user_id", userId);
+    if (recipientError) fail("Could not load your lobangs", recipientError);
+
+    const lobangIds = ((recipientRows ?? []) as { lobang_id: string }[]).map(
+      (r) => r.lobang_id
+    );
+    if (lobangIds.length === 0) return [];
+
     const { data, error } = await client
       .from("lobangs")
       .select("*")
-      .eq("to_user_id", userId)
+      .in("id", lobangIds)
       .order("created_at", { ascending: false })
       .limit(limit);
 
     if (error) fail("Could not load your lobangs", error);
-    return hydrateLobangs(client, (data ?? []) as Lobang[]);
+    return hydrateReceivedLobangs(client, (data ?? []) as Lobang[], userId);
   },
 
   async listLobangsSent(userId, limit = 20) {
@@ -1442,16 +1845,16 @@ export const supabaseRepo: Repo = {
       .limit(limit);
 
     if (error) fail("Could not load your sent lobangs", error);
-    return hydrateLobangs(client, (data ?? []) as Lobang[]);
+    return hydrateSentLobangs(client, (data ?? []) as Lobang[]);
   },
 
   async markLobangSeen(userId, lobangId) {
     const client = await db();
     const { error } = await client
-      .from("lobangs")
+      .from("lobang_recipients")
       .update({ seen_at: new Date().toISOString() })
-      .eq("id", lobangId)
-      .eq("to_user_id", userId)
+      .eq("lobang_id", lobangId)
+      .eq("user_id", userId)
       .is("seen_at", null);
 
     if (error) fail("Could not update that lobang", error);
@@ -1459,11 +1862,28 @@ export const supabaseRepo: Repo = {
 
   async dismissLobang(userId, lobangId) {
     const client = await db();
-    const { error } = await client
+
+    const { data: lobangRow } = await client
       .from("lobangs")
-      .delete()
+      .select("from_user_id")
       .eq("id", lobangId)
-      .or(`to_user_id.eq.${userId},from_user_id.eq.${userId}`);
+      .maybeSingle();
+
+    if ((lobangRow as { from_user_id: string } | null)?.from_user_id === userId) {
+      // The sender retracts the whole send — cascades to every recipient's
+      // copy via the lobang_recipients foreign key.
+      const { error } = await client.from("lobangs").delete().eq("id", lobangId);
+      if (error) fail("Could not remove that lobang", error);
+      return;
+    }
+
+    // A recipient dismissing "their copy" only removes their own row, so a
+    // group send's other recipients are unaffected.
+    const { error } = await client
+      .from("lobang_recipients")
+      .delete()
+      .eq("lobang_id", lobangId)
+      .eq("user_id", userId);
 
     if (error) fail("Could not remove that lobang", error);
   },
@@ -1476,41 +1896,28 @@ export const supabaseRepo: Repo = {
     // *public* rows automatically — private ratings never reach this code,
     // let alone the sender. That is also why this only ever needs the anon
     // client: nothing here requires bypassing RLS.
-    const [{ data: placeRows }, { data: visitRows }, { data: recoRows }] =
-      await Promise.all([
-        client.from("places").select("*").eq("status", "active"),
-        client.from("visits").select("*").eq("user_id", toUserId),
-        client.from("recos").select("place_id"),
-      ]);
+    const [{ data: placeRows }, { data: visitRows }] = await Promise.all([
+      client.from("places").select("*").eq("status", "active"),
+      client.from("visits").select("*").eq("user_id", toUserId),
+    ]);
 
     const places = (placeRows ?? []) as Place[];
-    const ids = places.map((p) => p.id);
-    const [aggregates, walks] = await Promise.all([
-      ratingAggregates(client, ids),
-      walkTimes(client, DEFAULT_OFFICE.id, places),
-    ]);
+    const walks = await walkTimes(client, DEFAULT_OFFICE.id, places);
 
     const enriched = places.map((place) => {
       const walk = walks.get(place.id);
-      const aggregate = aggregates.get(place.id);
       return {
         ...place,
         walk_minutes: walk?.walk_minutes ?? null,
         distance_m: walk?.distance_m ?? null,
-        avg_rating: aggregate?.avg_rating ?? null,
-        visit_count: aggregate?.visit_count ?? 0,
+        avg_rating: place.avg_rating ?? null,
+        visit_count: place.visit_count ?? 0,
       };
     });
 
     const friendVisits = (visitRows ?? []) as Visit[];
-    const recoPlaceIds = ((recoRows ?? []) as { place_id: string }[]).map(
-      (r) => r.place_id
-    );
 
-    return rankPlaces(enriched, friendVisits, null, [], {
-      recoPlaceIds,
-      limit,
-    });
+    return rankPlaces(enriched, friendVisits, null, [], { limit });
   },
 
   // ---- Admin & moderation ----
@@ -1626,6 +2033,70 @@ export const supabaseRepo: Repo = {
       .single();
     if (readError) fail("Updated, but could not reload that place", readError);
     return data as Place;
+  },
+
+  // ---- Place flags ----
+
+  async flagPlace(userId, placeId, reason, comment) {
+    const client = await db();
+    const { data, error } = await client
+      .from("place_flags")
+      .insert({
+        place_id: placeId,
+        flagged_by: userId,
+        reason,
+        comment: comment ?? null,
+      })
+      .select()
+      .single();
+
+    if (error) fail("Could not flag that place", error);
+    const flag = data as PlaceFlag;
+
+    const [names, { data: placeRow }] = await Promise.all([
+      displayNameMap(client, [userId]),
+      client.from("places").select("name").eq("id", placeId).maybeSingle(),
+    ]);
+
+    return {
+      ...flag,
+      place_name: (placeRow as { name: string } | null)?.name,
+      flagged_by_name: names.get(userId),
+    };
+  },
+
+  async listMyFlags(userId) {
+    const client = await db();
+    const { data, error } = await client
+      .from("place_flags")
+      .select("*")
+      .eq("flagged_by", userId)
+      .order("created_at", { ascending: false });
+
+    if (error) fail("Could not load your reports", error);
+    return hydrateFlags(client, (data ?? []) as PlaceFlag[]);
+  },
+
+  async listPendingFlags() {
+    const client = await db();
+    const { data, error } = await client
+      .from("place_flags")
+      .select("*")
+      .eq("status", "pending")
+      .order("created_at", { ascending: true });
+
+    if (error) fail("Could not load pending flags", error);
+    return hydrateFlags(client, (data ?? []) as PlaceFlag[]);
+  },
+
+  async resolvePlaceFlags(adminId, placeId, resolution, reason) {
+    const client = await db();
+    const { error } = await client.rpc("resolve_place_flags", {
+      p_place_id: placeId,
+      p_resolution: resolution,
+      p_reason: reason ?? null,
+    });
+    if (error) fail("Could not resolve that flag", error);
   },
 };
 

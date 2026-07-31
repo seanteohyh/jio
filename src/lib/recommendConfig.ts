@@ -13,8 +13,9 @@ export const RECOMMEND_CONFIG = {
     budgetFit: 1.0,
     walkPenalty: 1.0,
     varietyBonus: 1.2,
-    wishlistBoost: 1.0,
-    recoBoost: 1.0,
+    // Was 1.0; absorbed recoBoost's removed weight (also 1.0) when Reco was
+    // retired in favour of Lobang — see CHANGELOG_20260729.md.
+    wishlistBoost: 2.0,
   },
 
   rating: {
@@ -69,8 +70,6 @@ export const RECOMMEND_CONFIG = {
   boosts: {
     /** Added when the place is on the user's want-to-try list. */
     wishlist: 0.4,
-    /** Added when a teammate has recommended the place. */
-    reco: 0.3,
   },
 
   surprise: {

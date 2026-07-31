@@ -1,13 +1,26 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { demoRepo, resetDemoStore } from "@/lib/data/demoRepo";
 import { DEMO_USER_ID } from "@/lib/constants";
-import { DEMO_TEAMMATE_A, DEMO_TEAMMATE_B } from "@/lib/data/demoData";
+import {
+  DEMO_KAKI_ID,
+  DEMO_TEAMMATE_A,
+  DEMO_TEAMMATE_B,
+} from "@/lib/data/demoData";
+import type { LobangTarget } from "@/types";
+
+const toOne = (userId: string): LobangTarget => ({
+  type: "users",
+  userIds: [userId],
+});
 
 /**
- * Lobangs: a personalized recommendation sent to exactly one teammate.
+ * Lobangs: a personalized recommendation sent to specific teammates, or to
+ * every current member of a Kaki at once.
  *
- * The two things worth guarding: a lobang is only ever visible to the two
- * people involved (not broadcast like a `reco`), and the "personalized"
+ * The things worth guarding: a lobang is only ever visible to its sender and
+ * its recipients (never a team-wide broadcast), a group send snapshots
+ * membership at send time rather than resolving it dynamically later, the
+ * sender never ends up as their own recipient, and the "personalized"
  * suggestions that back the composer never leak a recipient's *private*
  * visit history — only what they've already made public is fair game.
  */
@@ -20,7 +33,7 @@ describe("lobangs", () => {
   it("is visible to sender and recipient, not to a third teammate", async () => {
     const lobang = await demoRepo.sendLobang(
       DEMO_TEAMMATE_A,
-      DEMO_USER_ID,
+      toOne(DEMO_USER_ID),
       "demo-place-12",
       "Try the hor fun"
     );
@@ -38,7 +51,7 @@ describe("lobangs", () => {
   it("hydrates the place, both display names, and the note", async () => {
     const lobang = await demoRepo.sendLobang(
       DEMO_TEAMMATE_A,
-      DEMO_USER_ID,
+      toOne(DEMO_USER_ID),
       "demo-place-12",
       "Try the hor fun"
     );
@@ -47,13 +60,12 @@ describe("lobangs", () => {
     expect(lobang.from_display_name).toBeTruthy();
     expect(lobang.to_display_name).toBeTruthy();
     expect(lobang.note).toBe("Try the hor fun");
-    expect(lobang.seen_at).toBeNull();
   });
 
   it("can only be marked seen by the recipient", async () => {
     const lobang = await demoRepo.sendLobang(
       DEMO_TEAMMATE_A,
-      DEMO_USER_ID,
+      toOne(DEMO_USER_ID),
       "demo-place-12"
     );
 
@@ -71,12 +83,12 @@ describe("lobangs", () => {
   it("can be dismissed by either the sender or the recipient", async () => {
     const a = await demoRepo.sendLobang(
       DEMO_TEAMMATE_A,
-      DEMO_USER_ID,
+      toOne(DEMO_USER_ID),
       "demo-place-12"
     );
     const b = await demoRepo.sendLobang(
       DEMO_TEAMMATE_A,
-      DEMO_USER_ID,
+      toOne(DEMO_USER_ID),
       "demo-place-16"
     );
 
@@ -91,7 +103,7 @@ describe("lobangs", () => {
   it("never lets a stranger dismiss someone else's lobang", async () => {
     const lobang = await demoRepo.sendLobang(
       DEMO_TEAMMATE_A,
-      DEMO_USER_ID,
+      toOne(DEMO_USER_ID),
       "demo-place-12"
     );
 
@@ -99,6 +111,77 @@ describe("lobangs", () => {
 
     const received = await demoRepo.listLobangsReceived(DEMO_USER_ID);
     expect(received.map((l) => l.id)).toContain(lobang.id);
+  });
+
+  it("sends to every recipient in a multi-select individual send", async () => {
+    const lobang = await demoRepo.sendLobang(
+      DEMO_TEAMMATE_A,
+      { type: "users", userIds: [DEMO_USER_ID, DEMO_TEAMMATE_B] },
+      "demo-place-12"
+    );
+
+    const forUser = await demoRepo.listLobangsReceived(DEMO_USER_ID);
+    const forTeammateB = await demoRepo.listLobangsReceived(DEMO_TEAMMATE_B);
+    expect(forUser.map((l) => l.id)).toContain(lobang.id);
+    expect(forTeammateB.map((l) => l.id)).toContain(lobang.id);
+  });
+
+  it("group-sends to every current Kaki member except the sender", async () => {
+    // DEMO_USER_ID, DEMO_TEAMMATE_A and DEMO_TEAMMATE_B are all members of
+    // DEMO_KAKI_ID in the seed data.
+    const lobang = await demoRepo.sendLobang(
+      DEMO_USER_ID,
+      { type: "kaki", kakiId: DEMO_KAKI_ID },
+      "demo-place-12"
+    );
+
+    const forSelf = await demoRepo.listLobangsReceived(DEMO_USER_ID);
+    const forA = await demoRepo.listLobangsReceived(DEMO_TEAMMATE_A);
+    const forB = await demoRepo.listLobangsReceived(DEMO_TEAMMATE_B);
+
+    // The sender is never their own recipient, even though they're a member.
+    expect(forSelf.map((l) => l.id)).not.toContain(lobang.id);
+    expect(forA.map((l) => l.id)).toContain(lobang.id);
+    expect(forB.map((l) => l.id)).toContain(lobang.id);
+
+    const sent = await demoRepo.listLobangsSent(DEMO_USER_ID);
+    const sentLobang = sent.find((l) => l.id === lobang.id);
+    expect(sentLobang?.to_display_name).toBe("LazadaOne Lunch Kakis");
+  });
+
+  it("refuses a group send to a Kaki the sender isn't a member of", async () => {
+    await expect(
+      demoRepo.sendLobang(
+        "some-stranger-id",
+        { type: "kaki", kakiId: DEMO_KAKI_ID },
+        "demo-place-12"
+      )
+    ).rejects.toThrow(/not allowed/i);
+  });
+
+  it("refuses a send with no recipients left after excluding the sender", async () => {
+    await expect(
+      demoRepo.sendLobang(
+        DEMO_USER_ID,
+        { type: "users", userIds: [DEMO_USER_ID] },
+        "demo-place-12"
+      )
+    ).rejects.toThrow(/recipient/i);
+  });
+
+  it("dismissing a group send only removes the dismisser's own copy", async () => {
+    const lobang = await demoRepo.sendLobang(
+      DEMO_USER_ID,
+      { type: "kaki", kakiId: DEMO_KAKI_ID },
+      "demo-place-12"
+    );
+
+    await demoRepo.dismissLobang(DEMO_TEAMMATE_A, lobang.id);
+
+    const forA = await demoRepo.listLobangsReceived(DEMO_TEAMMATE_A);
+    const forB = await demoRepo.listLobangsReceived(DEMO_TEAMMATE_B);
+    expect(forA.map((l) => l.id)).not.toContain(lobang.id);
+    expect(forB.map((l) => l.id)).toContain(lobang.id);
   });
 
   it("only draws suggestions from the friend's public visit history", async () => {

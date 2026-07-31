@@ -16,7 +16,7 @@ import RouletteWheel from "@/components/RouletteWheel";
 import { fetcher, mutateJson } from "@/lib/fetcher";
 import { subscribeToEventChanges } from "@/lib/realtime";
 import { features } from "@/lib/config";
-import { formatDateTime } from "@/lib/utils";
+import { formatDate, formatDateTime } from "@/lib/utils";
 import type { EventDetail, Place, RsvpResponse } from "@/types";
 
 interface EventResponse {
@@ -48,6 +48,10 @@ export default function EventDetailPage({
   const [showWheel, setShowWheel] = useState(false);
   const [addQuery, setAddQuery] = useState("");
   const [ballotTouched, setBallotTouched] = useState(false);
+  const [suggesting, setSuggesting] = useState(false);
+  const [suggestedThisSession, setSuggestedThisSession] = useState<string[]>([]);
+  const [newCandidateDate, setNewCandidateDate] = useState("");
+  const [justConfirmedDate, setJustConfirmedDate] = useState<string | null>(null);
 
   // Live updates while people vote. Falls back silently if realtime is off.
   useEffect(() => {
@@ -76,6 +80,30 @@ export default function EventDetailPage({
 
   const { event, viewer } = data;
   const isOpen = event.status === "open";
+  const isDatePolling = event.date_phase === "polling";
+
+  const myAvailability = new Set(
+    event.dateVotes.filter((v) => v.user_id === viewer.id).map((v) => v.date)
+  );
+
+  // Vote counts per candidate date, so the host's confirm step (and
+  // everyone else) can see which date is leading.
+  const availabilityCounts = new Map<string, number>();
+  for (const candidate of event.candidateDates) {
+    availabilityCounts.set(
+      candidate.date,
+      event.dateVotes.filter((v) => v.date === candidate.date).length
+    );
+  }
+  const leadingDate = event.candidateDates.reduce<string | null>(
+    (leader, candidate) => {
+      if (!leader) return candidate.date;
+      const leaderCount = availabilityCounts.get(leader) ?? 0;
+      const count = availabilityCounts.get(candidate.date) ?? 0;
+      return count > leaderCount ? candidate.date : leader;
+    },
+    null
+  );
 
   const move = (index: number, direction: -1 | 1) => {
     const target = index + direction;
@@ -127,6 +155,51 @@ export default function EventDetailPage({
       setBallotTouched(false);
     });
 
+  const suggestOptions = () =>
+    run(async () => {
+      setSuggesting(true);
+      try {
+        const result = await mutateJson<{ added: { place_id: string }[] }>(
+          `/api/events/${id}/suggest-options`,
+          "POST",
+          { exclude_place_ids: suggestedThisSession }
+        );
+        setSuggestedThisSession((prev) => [
+          ...prev,
+          ...result.added.map((o) => o.place_id),
+        ]);
+        setBallotTouched(false);
+      } finally {
+        setSuggesting(false);
+      }
+    });
+
+  const toggleAvailability = (date: string) =>
+    run(async () => {
+      const next = myAvailability.has(date)
+        ? Array.from(myAvailability).filter((d) => d !== date)
+        : [...Array.from(myAvailability), date];
+      await mutateJson(`/api/events/${id}/availability`, "POST", {
+        dates: next,
+      });
+    });
+
+  const addCandidateDate = () =>
+    run(async () => {
+      if (!newCandidateDate) return;
+      await mutateJson(`/api/events/${id}/candidate-dates`, "POST", {
+        date: newCandidateDate,
+      });
+      setNewCandidateDate("");
+    });
+
+  const confirmDate = (date: string) =>
+    run(async () => {
+      await mutateJson(`/api/events/${id}/confirm-date`, "POST", { date });
+      setJustConfirmedDate(date);
+      window.setTimeout(() => setJustConfirmedDate(null), 4000);
+    });
+
   const close = (winnerPlaceId?: string) =>
     run(() =>
       mutateJson(`/api/events/${id}/close`, "POST", {
@@ -162,15 +235,25 @@ export default function EventDetailPage({
               {event.title}
             </h1>
             <p className="text-dolch-muted mt-1 text-sm">
-              {formatDateTime(event.scheduled_at)}
+              {isDatePolling
+                ? `Picking a date — ${event.candidateDates.length} option${event.candidateDates.length === 1 ? "" : "s"}`
+                : formatDateTime(event.scheduled_at)}
               {event.host_name && ` · hosted by ${event.host_name}`}
             </p>
           </div>
           <Chip className={isOpen ? "" : "bg-dolch-border"}>
-            {isOpen ? "Open" : "Closed"}
+            {isDatePolling ? "Picking a date" : isOpen ? "Open" : "Closed"}
           </Chip>
         </div>
       </header>
+
+      {justConfirmedDate && (
+        <Card className="border-dolch-success/40 bg-green-50/60 animate-fade-in">
+          <p className="text-sm font-medium">
+            Confirmed for {formatDate(justConfirmedDate)}!
+          </p>
+        </Card>
+      )}
 
       {!isOpen && (
         <Card className="border-dolch-success/40 bg-green-50/60">
@@ -189,8 +272,96 @@ export default function EventDetailPage({
 
       {actionError && <ErrorNote>{actionError}</ErrorNote>}
 
+      {/* --- Flexi Jio: date polling --- */}
+      {isOpen && isDatePolling && (
+        <Card className="space-y-3">
+          <SectionHeading>When works for you?</SectionHeading>
+          <p className="text-dolch-muted text-xs">
+            Mark every date you&apos;re free.{" "}
+            {viewer.isHost && "You'll confirm one once enough people have answered."}
+          </p>
+
+          <ul className="space-y-1.5">
+            {event.candidateDates.map((candidate) => {
+              const free = myAvailability.has(candidate.date);
+              const count = availabilityCounts.get(candidate.date) ?? 0;
+              const isLeading =
+                candidate.date === leadingDate && count > 0;
+              return (
+                <li key={candidate.date}>
+                  <button
+                    type="button"
+                    onClick={() => toggleAvailability(candidate.date)}
+                    disabled={busy}
+                    className={
+                      "flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-2 text-left text-sm transition-colors " +
+                      (free
+                        ? "border-dolch-accent bg-dolch-accent/10"
+                        : "border-dolch-border bg-dolch-surface/60 hover:border-dolch-accent/40")
+                    }
+                  >
+                    <span>
+                      {formatDate(candidate.date)}
+                      {isLeading && (
+                        <span className="text-dolch-accent ml-1.5 text-xs font-medium">
+                          Leading
+                        </span>
+                      )}
+                    </span>
+                    <span className="text-dolch-muted text-xs tabular-nums">
+                      {free ? "You're free ✓" : "Mark free"} · {count}{" "}
+                      {count === 1 ? "person" : "people"}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+
+          {viewer.canAddOptions && (
+            <div className="flex items-center gap-2 pt-1">
+              <input
+                type="date"
+                value={newCandidateDate}
+                onChange={(e) => setNewCandidateDate(e.target.value)}
+                className={inputClass}
+              />
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={addCandidateDate}
+                disabled={busy || !newCandidateDate}
+              >
+                Add date
+              </Button>
+            </div>
+          )}
+
+          {viewer.isHost && (
+            <div className="border-dolch-border space-y-2 border-t pt-3">
+              <p className="text-dolch-muted text-xs">
+                Confirm a date — any candidate, not just the leader.
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {event.candidateDates.map((candidate) => (
+                  <Button
+                    key={candidate.date}
+                    size="sm"
+                    variant={candidate.date === leadingDate ? "primary" : "secondary"}
+                    onClick={() => confirmDate(candidate.date)}
+                    disabled={busy}
+                  >
+                    Confirm {formatDate(candidate.date)}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          )}
+        </Card>
+      )}
+
       {/* --- RSVP --- */}
-      {isOpen && (
+      {isOpen && !isDatePolling && (
         <Card>
           <SectionHeading>Are you coming?</SectionHeading>
           <div className="flex gap-2">
@@ -237,6 +408,7 @@ export default function EventDetailPage({
       )}
 
       {/* --- Standing --- */}
+      {!isDatePolling && (
       <Card>
         <SectionHeading>
           {isOpen ? "Standing" : "Final count"}
@@ -259,6 +431,11 @@ export default function EventDetailPage({
                   >
                     {option.place?.name ?? "Unknown place"}
                     {isWinner && " ✓"}
+                    {option.is_suggested && (
+                      <span className="bg-dolch-accent/15 text-dolch-accent ml-1.5 rounded-full px-1.5 py-0.5 text-[10px] font-medium">
+                        Suggested
+                      </span>
+                    )}
                   </span>
                   <span className="text-dolch-muted shrink-0 text-xs tabular-nums">
                     {points} pt{points === 1 ? "" : "s"}
@@ -284,9 +461,10 @@ export default function EventDetailPage({
           })}
         </ul>
       </Card>
+      )}
 
       {/* --- Ballot --- */}
-      {isOpen && orderedBallot.length > 0 && (
+      {isOpen && !isDatePolling && orderedBallot.length > 0 && (
         <Card>
           <SectionHeading>Your ranking</SectionHeading>
           <p className="text-dolch-muted mb-3 text-xs">
@@ -339,9 +517,31 @@ export default function EventDetailPage({
       )}
 
       {/* --- Add options --- */}
-      {viewer.canAddOptions && (
+      {viewer.canAddOptions && !isDatePolling && (
         <Card>
           <SectionHeading>Add a place</SectionHeading>
+
+          <div className="mb-3">
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={suggestOptions}
+              disabled={suggesting}
+            >
+              {suggesting
+                ? "Thinking…"
+                : suggestedThisSession.length > 0
+                  ? "Re-roll"
+                  : "Can't decide? Suggest 3"}
+            </Button>
+            {suggestedThisSession.length > 0 && (
+              <p className="text-dolch-muted mt-1.5 text-xs">
+                Re-rolling swaps out whatever nobody&apos;s voted on yet —
+                anything with a vote already stays put.
+              </p>
+            )}
+          </div>
+
           <input
             value={addQuery}
             onChange={(e) => setAddQuery(e.target.value)}
@@ -396,7 +596,7 @@ export default function EventDetailPage({
       )}
 
       {/* --- Host controls --- */}
-      {viewer.isHost && isOpen && (
+      {viewer.isHost && isOpen && !isDatePolling && (
         <Card className="space-y-3">
           <SectionHeading>Close it</SectionHeading>
           <p className="text-dolch-muted text-xs">

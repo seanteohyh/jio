@@ -12,23 +12,35 @@ import {
 import { DEFAULT_OFFICE } from "@/lib/constants";
 import type { BudgetTier, Place, PlaceStatus } from "@/types";
 
+const PAGE_SIZE = 15;
+
 export async function GET(request: NextRequest) {
   try {
     await requireUser();
     const repo = await getRepoAsync();
     const params = request.nextUrl.searchParams;
 
-    const places = await repo.listPlaces({
-      cuisines: listParam(params, "cuisines"),
-      budgetMin: numberParam(params, "budgetMin", 1) as BudgetTier,
-      budgetMax: numberParam(params, "budgetMax", 4) as BudgetTier,
-      maxWalkMinutes: numberParam(params, "maxWalk", 60),
-      status: (params.get("status") as PlaceStatus | "all") ?? "active",
-      search: params.get("q") ?? "",
-      officeId: params.get("officeId") ?? DEFAULT_OFFICE.id,
-    });
+    // Paging is opt-in: only a caller that passes `page` gets a sliced
+    // result. Everyone else (the map, /suggest's ranking, search boxes)
+    // keeps getting the full matching list, unchanged.
+    const pageParam = params.get("page");
+    const page = pageParam ? Math.max(1, numberParam(params, "page", 1)) : null;
+    const limit = numberParam(params, "limit", PAGE_SIZE);
 
-    return json({ places });
+    const { places, total } = await repo.listPlaces(
+      {
+        cuisines: listParam(params, "cuisines"),
+        budgetMin: numberParam(params, "budgetMin", 1) as BudgetTier,
+        budgetMax: numberParam(params, "budgetMax", 4) as BudgetTier,
+        maxWalkMinutes: numberParam(params, "maxWalk", 60),
+        status: (params.get("status") as PlaceStatus | "all") ?? "active",
+        search: params.get("q") ?? "",
+        officeId: params.get("officeId") ?? DEFAULT_OFFICE.id,
+      },
+      page ? { limit, offset: (page - 1) * limit } : undefined
+    );
+
+    return json({ places, total });
   } catch (error) {
     return errorResponse(error);
   }

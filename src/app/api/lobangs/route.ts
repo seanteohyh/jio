@@ -5,8 +5,9 @@ import { badRequest, errorResponse, json, numberParam, readJson } from "@/lib/ap
 import { featureGate } from "@/lib/config";
 
 /**
- * Lobangs: a personalized recommendation sent to exactly one teammate,
- * usually kicked off from a past Jio on the sender's profile.
+ * Lobangs: a personalized recommendation sent to specific teammates or to a
+ * whole Kaki at once, usually kicked off from a past Jio on the sender's
+ * profile.
  *
  * `?direction=received` (default) is the sender's inbox; `?direction=sent`
  * is their own outgoing history. Both are scoped to the signed-in user —
@@ -37,7 +38,10 @@ export async function GET(request: NextRequest) {
 }
 
 interface SendLobangBody {
-  to_user_id?: string;
+  /** Either this... */
+  to_user_ids?: string[];
+  /** ...or this — never both. */
+  kaki_id?: string;
   place_id?: string;
   note?: string;
   event_id?: string | null;
@@ -52,15 +56,21 @@ export async function POST(request: NextRequest) {
     const repo = await getRepoAsync();
     const body = await readJson<SendLobangBody>(request);
 
-    if (!body?.to_user_id) return badRequest("Who is this for?");
-    if (!body.place_id) return badRequest("Which place?");
-    if (body.to_user_id === user.id) {
-      return badRequest("You can't send a lobang to yourself");
+    if (!body?.place_id) return badRequest("Which place?");
+    if (!body.kaki_id && (!body.to_user_ids || body.to_user_ids.length === 0)) {
+      return badRequest("Who is this for?");
     }
+    if (body.kaki_id && body.to_user_ids && body.to_user_ids.length > 0) {
+      return badRequest("Pick either teammates or a Kaki, not both");
+    }
+
+    const target = body.kaki_id
+      ? ({ type: "kaki", kakiId: body.kaki_id } as const)
+      : ({ type: "users", userIds: body.to_user_ids! } as const);
 
     const lobang = await repo.sendLobang(
       user.id,
-      body.to_user_id,
+      target,
       body.place_id,
       body.note?.trim() || null,
       body.event_id ?? null

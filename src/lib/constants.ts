@@ -8,8 +8,8 @@ export const DEFAULT_OFFICE: Office = {
   id: "00000000-0000-0000-0000-000000000001",
   name: process.env.NEXT_PUBLIC_JIO_OFFICE_NAME || "LazadaOne",
   address: "51 Bras Basah Road, Singapore 189554",
-  lat: Number(process.env.NEXT_PUBLIC_JIO_OFFICE_LAT || 1.2966),
-  lng: Number(process.env.NEXT_PUBLIC_JIO_OFFICE_LNG || 103.852),
+  lat: Number(process.env.NEXT_PUBLIC_JIO_OFFICE_LAT || 1.297563),
+  lng: Number(process.env.NEXT_PUBLIC_JIO_OFFICE_LNG || 103.85012),
 };
 
 export const CUISINES: Cuisine[] = [

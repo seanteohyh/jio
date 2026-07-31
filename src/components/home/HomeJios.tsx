@@ -31,6 +31,9 @@ export default function HomeJios() {
   // is still visible to people who missed the notification.
   const relevant = events
     .filter((e) => {
+      // A polling Flexi Jio has no real date yet — see it as a card here
+      // once it's confirmed. NeedsAvailability is its home until then.
+      if (e.date_phase === "polling") return false;
       const when = new Date(e.scheduled_at).getTime();
       if (e.status === "cancelled") return false;
       return when > now - 24 * 3600 * 1000;

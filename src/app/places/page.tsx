@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import useSWR from "swr";
 import PlaceCard from "@/components/PlaceCard";
@@ -9,6 +9,7 @@ import FilterBar, {
   type FilterState,
 } from "@/components/FilterBar";
 import {
+  Button,
   Card,
   EmptyState,
   ErrorNote,
@@ -20,23 +21,51 @@ import { fetcher } from "@/lib/fetcher";
 import { features } from "@/lib/config";
 import type { Place } from "@/types";
 
+const PAGE_SIZE = 15;
+
 export default function PlacesPage() {
   const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
+  const [page, setPage] = useState(1);
+  const [loaded, setLoaded] = useState<Place[]>([]);
 
-  const query = new URLSearchParams({
+  const baseQuery = new URLSearchParams({
     maxWalk: String(filters.maxWalk),
     budgetMax: String(filters.budgetMax),
     status: "active",
   });
   if (filters.cuisines.length > 0) {
-    query.set("cuisines", filters.cuisines.join(","));
+    baseQuery.set("cuisines", filters.cuisines.join(","));
   }
-  if (filters.search) query.set("q", filters.search);
+  if (filters.search) baseQuery.set("q", filters.search);
+  const filterKey = baseQuery.toString();
 
-  const { data, error, isLoading } = useSWR<{ places: Place[] }>(
-    `/api/places?${query.toString()}`,
+  // A filter change starts the list over at page 1.
+  useEffect(() => {
+    setPage(1);
+    setLoaded([]);
+  }, [filterKey]);
+
+  const pageQuery = new URLSearchParams(baseQuery);
+  pageQuery.set("page", String(page));
+  pageQuery.set("limit", String(PAGE_SIZE));
+
+  const { data, error, isLoading } = useSWR<{ places: Place[]; total: number }>(
+    `/api/places?${pageQuery.toString()}`,
     fetcher
   );
+
+  // Each page's results append to what's already shown, keyed by id so a
+  // refetch of a page already on screen (e.g. after adding a place) can't
+  // duplicate rows.
+  useEffect(() => {
+    if (!data) return;
+    setLoaded((prev) => {
+      const seen = new Set(prev.map((p) => p.id));
+      const additions = data.places.filter((p) => !seen.has(p.id));
+      return page === 1 ? data.places : [...prev, ...additions];
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data]);
 
   // The review queue: places the discovery cron found that nobody has vetted.
   const { data: pendingData } = useSWR<{ places: Place[] }>(
@@ -44,7 +73,9 @@ export default function PlacesPage() {
     fetcher
   );
 
-  const places = data?.places ?? [];
+  const places = loaded;
+  const total = data?.total ?? places.length;
+  const hasMore = places.length < total;
   const pending = pendingData?.places ?? [];
 
   return (
@@ -102,7 +133,7 @@ export default function PlacesPage() {
       )}
 
       {error && <ErrorNote>{error.message}</ErrorNote>}
-      {isLoading && <Spinner label="Loading places" />}
+      {isLoading && page === 1 && <Spinner label="Loading places" />}
 
       {!isLoading && places.length === 0 && !error && (
         <EmptyState
@@ -115,7 +146,8 @@ export default function PlacesPage() {
       {places.length > 0 && (
         <>
           <p className="text-dolch-muted text-xs">
-            {places.length} place{places.length === 1 ? "" : "s"}, nearest first
+            {places.length} of {total} place{total === 1 ? "" : "s"}, nearest
+            first
           </p>
           <ul className="space-y-2">
             {places.map((place) => (
@@ -124,6 +156,22 @@ export default function PlacesPage() {
               </li>
             ))}
           </ul>
+
+          {hasMore && (
+            <div className="flex justify-center pt-1">
+              {isLoading && page > 1 ? (
+                <Spinner label="Loading more" />
+              ) : (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setPage((p) => p + 1)}
+                >
+                  Load more
+                </Button>
+              )}
+            </div>
+          )}
         </>
       )}
     </div>

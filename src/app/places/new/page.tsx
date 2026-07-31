@@ -11,9 +11,9 @@ import {
   Spinner,
   inputClass,
 } from "@/components/ui";
-import { BUDGET_TIERS, CUISINES, DEFAULT_OFFICE } from "@/lib/constants";
+import { BUDGET_TIERS, CUISINES } from "@/lib/constants";
 import { formatCuisine } from "@/lib/utils";
-import { mutateJson } from "@/lib/fetcher";
+import { fetcher, mutateJson } from "@/lib/fetcher";
 import type { BudgetTier } from "@/types";
 
 function NewPlaceForm() {
@@ -23,13 +23,14 @@ function NewPlaceForm() {
   // Pre-filled when arriving from the blog importer.
   const [name, setName] = useState(params.get("name") ?? "");
   const [address, setAddress] = useState("");
-  const [lat, setLat] = useState(String(DEFAULT_OFFICE.lat));
-  const [lng, setLng] = useState(String(DEFAULT_OFFICE.lng));
+  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [locatedVia, setLocatedVia] = useState<"geocoded" | "gps" | null>(null);
   const [cuisine, setCuisine] = useState<string[]>([]);
   const [budget, setBudget] = useState<BudgetTier>(2);
   const [dishes, setDishes] = useState("");
   const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState(false);
+  const [geocoding, setGeocoding] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const toggleCuisine = (value: string) => {
@@ -45,18 +46,53 @@ function NewPlaceForm() {
     }
     navigator.geolocation.getCurrentPosition(
       (position) => {
-        setLat(position.coords.latitude.toFixed(6));
-        setLng(position.coords.longitude.toFixed(6));
+        setCoords({
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+        });
+        setLocatedVia("gps");
+        setError(null);
       },
-      () => setError("Could not get your location — enter it by hand")
+      () => setError("Could not get your location — try the address field instead")
     );
   };
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
-    setBusy(true);
     setError(null);
 
+    let resolved = coords;
+
+    // Only geocode if GPS hasn't already pinned it — otherwise the address
+    // text is just a label, not the source of truth for the coordinates.
+    if (!resolved) {
+      if (!address.trim()) {
+        setError("Enter an address or postal code so we can place it on the map");
+        return;
+      }
+      setGeocoding(true);
+      try {
+        const { result, message } = await fetcher<{
+          result: { lat: number; lng: number; address: string } | null;
+          message?: string;
+        }>(`/api/geocode?q=${encodeURIComponent(address.trim())}`);
+        if (!result) {
+          setError(message ?? "Couldn't find that address");
+          setGeocoding(false);
+          return;
+        }
+        resolved = { lat: result.lat, lng: result.lng };
+        setCoords(resolved);
+        setLocatedVia("geocoded");
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Could not look up that address");
+        setGeocoding(false);
+        return;
+      }
+      setGeocoding(false);
+    }
+
+    setBusy(true);
     try {
       const payload = await mutateJson<{ place: { id: string } }>(
         "/api/places",
@@ -64,8 +100,8 @@ function NewPlaceForm() {
         {
           name: name.trim(),
           address: address.trim() || null,
-          lat: Number(lat),
-          lng: Number(lng),
+          lat: resolved.lat,
+          lng: resolved.lng,
           cuisine,
           budget_tier: budget,
           best_dishes: dishes
@@ -105,42 +141,38 @@ function NewPlaceForm() {
             />
           </Field>
 
-          <Field label="Address" hint="Optional, but it helps people find it.">
+          <Field
+            label="Address or postal code"
+            hint="We'll look up the coordinates for you — no need to know them."
+          >
             <input
+              required={!coords}
               value={address}
-              onChange={(e) => setAddress(e.target.value)}
+              onChange={(e) => {
+                setAddress(e.target.value);
+                // A hand-typed address supersedes a previous GPS fix.
+                if (locatedVia === "gps") {
+                  setCoords(null);
+                  setLocatedVia(null);
+                }
+              }}
               className={inputClass}
-              placeholder="466 Crawford Ln, Singapore 190466"
+              placeholder="466 Crawford Ln, Singapore 190466, or just 190466"
             />
           </Field>
 
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Latitude">
-              <input
-                required
-                value={lat}
-                onChange={(e) => setLat(e.target.value)}
-                className={inputClass}
-                inputMode="decimal"
-              />
-            </Field>
-            <Field label="Longitude">
-              <input
-                required
-                value={lng}
-                onChange={(e) => setLng(e.target.value)}
-                className={inputClass}
-                inputMode="decimal"
-              />
-            </Field>
-          </div>
+          {locatedVia === "gps" && (
+            <p className="text-dolch-success text-xs">
+              Using your current location ✓
+            </p>
+          )}
 
           <Button type="button" variant="secondary" size="sm" onClick={useMyLocation}>
-            Use my current location
+            Use my current location instead
           </Button>
           <p className="text-dolch-muted text-xs">
-            Standing outside the place? That button is the quickest way to get
-            the coordinates right.
+            Standing outside the place? That button skips the address lookup
+            and uses exactly where you are.
           </p>
         </Card>
 
@@ -199,8 +231,13 @@ function NewPlaceForm() {
         {error && <ErrorNote>{error}</ErrorNote>}
 
         <div className="flex gap-2">
-          <Button type="submit" disabled={busy || !name.trim()}>
-            {busy ? "Saving…" : "Save place"}
+          <Button
+            type="submit"
+            disabled={
+              busy || geocoding || !name.trim() || (!coords && !address.trim())
+            }
+          >
+            {geocoding ? "Looking up address…" : busy ? "Saving…" : "Save place"}
           </Button>
           <Button type="button" variant="ghost" onClick={() => router.back()}>
             Cancel

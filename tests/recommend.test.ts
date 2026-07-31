@@ -292,19 +292,6 @@ describe("rankPlaces", () => {
     );
   });
 
-  it("applies the teammate reco boost", () => {
-    const without = rankPlaces(places, [], null).find(
-      (s) => s.place.id === "far"
-    )!;
-    const with_ = rankPlaces(places, [], null, [], {
-      recoPlaceIds: ["far"],
-    }).find((s) => s.place.id === "far")!;
-
-    expect(with_.score - without.score).toBeCloseTo(
-      C.boosts.reco * C.weights.recoBoost
-    );
-  });
-
   it("honours the limit", () => {
     expect(rankPlaces(places, [], null, [], { limit: 1 })).toHaveLength(1);
   });

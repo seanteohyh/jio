@@ -16,7 +16,6 @@ export const FEATURE_KEYS = [
   "events",
   "kakis",
   "wishlist",
-  "recos",
   "lobangs",
   "blogImport",
   "discovery",

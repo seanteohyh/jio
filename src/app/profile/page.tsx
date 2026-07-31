@@ -18,6 +18,7 @@ import { UserMetricsCharts } from "@/components/MetricsCharts";
 import PastJios from "@/components/profile/PastJios";
 import LobangInbox from "@/components/profile/LobangInbox";
 import AttachEmailPanel from "@/components/profile/AttachEmailPanel";
+import MyFlagsList from "@/components/profile/MyFlagsList";
 import { fetcher, mutateJson } from "@/lib/fetcher";
 import { config, features } from "@/lib/config";
 import { BUDGET_TIERS, CUISINES } from "@/lib/constants";
@@ -341,6 +342,8 @@ export default function ProfilePage() {
       )}
 
       {features.lobangs && me?.user?.id && <LobangInbox />}
+
+      {me?.user?.id && <MyFlagsList />}
 
       <Card className="space-y-3">
         <SectionHeading>Account</SectionHeading>

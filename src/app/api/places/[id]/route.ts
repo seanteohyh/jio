@@ -22,12 +22,9 @@ export async function GET(_request: NextRequest, { params }: Params) {
     const place = await repo.getPlace(id);
     if (!place) return notFound("That place does not exist");
 
-    const [reviews, recos] = await Promise.all([
-      repo.listPublicReviews(id),
-      repo.listRecosForPlace(id),
-    ]);
+    const reviews = await repo.listPublicReviews(id);
 
-    return json({ place, reviews, recos });
+    return json({ place, reviews });
   } catch (error) {
     return errorResponse(error);
   }

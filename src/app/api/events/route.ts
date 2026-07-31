@@ -26,7 +26,11 @@ interface CreateEventBody {
   place_ids?: string[];
   kaki_id?: string | null;
   invitee_ids?: string[];
+  /** Presence of this field (2+ entries) is what makes this a Flexi Jio. */
+  candidate_dates?: string[];
 }
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 export async function POST(request: NextRequest) {
   const blocked = featureGate("events");
@@ -38,8 +42,25 @@ export async function POST(request: NextRequest) {
     const body = await readJson<CreateEventBody>(request);
 
     if (!body) return badRequest("Expected a JSON body");
-
     const title = body.title?.trim() || "Lunch";
+
+    if (body.candidate_dates) {
+      const dates = body.candidate_dates.filter((d) => DATE_RE.test(d));
+      if (dates.length < 2) {
+        return badRequest("A Flexi Jio needs at least 2 candidate dates");
+      }
+
+      const event = await repo.createFlexiEvent(
+        user.id,
+        title,
+        body.office_id ?? DEFAULT_OFFICE.id,
+        dates,
+        body.kaki_id ?? null,
+        body.invitee_ids ?? []
+      );
+      return json({ event }, 201);
+    }
+
     const scheduledAt = body.scheduled_at;
     if (!scheduledAt) return badRequest("When is this Jio?");
 
