@@ -41,7 +41,8 @@ When you are ready to make it real, see [Going live](#going-live).
 | **Kakis** | Lunch groups with a shareable invite link and shared stats — group favourites, who eats out most, who is most adventurous. |
 | **Places** | Searchable list with cuisine, budget and walk-time filters. Add places by hand, import candidate names from a food blog, or let the daily cron find them on OpenStreetMap. |
 | **Map** | Leaflet map of everything in walking distance, with real walking routes when OneMap is configured. |
-| **Reviews & recos** | Log a visit privately, or share it as a review. Separately, recommend a place to the team — it shows in the food pool and nudges the place up everyone's suggestions. |
+| **Reviews** | Log a visit privately, or share it as a review. Each visit is its own entry, editable and deletable later — including un-sharing a review back to private. |
+| **Saved places** | Bookmark anywhere from any list. `/places` has an All / Saved split, and saving nudges a place up your own suggestions. |
 | **Weather** | Checks the NEA two-hour forecast. When rain is likely, the walk penalty doubles and closer places quietly rise. |
 | **Metrics** | What you actually eat versus what you think you eat, plus a nudge when you have had the same cuisine three days running. |
 
@@ -108,7 +109,7 @@ stripped build has no half-live endpoints.
 NEXT_PUBLIC_JIO_DISABLED_FEATURES=kakis,blogImport,roulette
 ```
 
-Valid keys: `events`, `kakis`, `wishlist`, `recos`, `blogImport`, `discovery`,
+Valid keys: `events`, `kakis`, `wishlist`, `lobangs`, `blogImport`, `discovery`,
 `weather`, `map`, `metrics`, `roulette`, `reviews`, `offices`.
 
 ---
@@ -124,12 +125,18 @@ configure, nothing to verify. You get a distinct user with a real UUID, so
 votes, reviews and recommendations are all properly attributed and everyone can
 tell who is who.
 
+The sign-in screen is the *only* screen a new user sees — it stamps
+`profiles.onboarded_at` itself, so the `/welcome` onboarding step never fires
+in this mode. Asking for a name and then asking again to confirm it was one
+question too many. `/welcome` still exists for `email` mode, where people
+genuinely arrive without having given a name.
+
 Underneath it is a Supabase **anonymous session**. That detail matters: the
 obvious shortcut — a signed cookie holding a user id we made up — would mean no
 `auth.uid()`, which would mean every Row Level Security policy in the schema
 stops working and every query has to run as service role. Anonymous sessions
-give a real row in `auth.users` and a JWT with the `authenticated` role, so all
-fifteen migrations' worth of access control keep applying exactly as written.
+give a real row in `auth.users` and a JWT with the `authenticated` role, so
+every migration's worth of access control keeps applying exactly as written.
 Zero sign-up friction, security model intact.
 
 Two things you are accepting in exchange:
@@ -181,8 +188,7 @@ app's whole personality in one file.
 | Budget fit | 1.0 | In range, one tier out, or out. |
 | Walk penalty | 1.0 | Free for the first five minutes, then a cost per minute, floored. Doubles when rain is likely. |
 | Variety | 1.2 | Rewards somewhere new, penalises somewhere you went yesterday, and lets a favourite come back as the memory fades. |
-| Wishlist | 1.0 | Saving something makes it more likely to be suggested. |
-| Teammate reco | 1.0 | Someone vouched for it. |
+| Wishlist | 2.0 | Saving something makes it more likely to be suggested. Absorbed the old teammate-reco weight when Reco was removed — a received Lobang's "Add to Wishlist" is now the honest downstream path for that signal, and it only fires once the recipient actually acts on it. |
 
 Three things are hard exclusions rather than penalties: a blocked place, a
 place on your personal blocklist, and a place whose *every* cuisine you have
@@ -219,7 +225,7 @@ Roughly 30 minutes end to end. Everything below stays on a free tier.
    `service_role` key. The last one is a secret; it bypasses all access
    control.
 3. **SQL Editor** — run every file in `supabase/migrations/` in numeric order,
-   001 through 025. They are idempotent, so re-running is harmless.
+   001 through 026. They are idempotent, so re-running is harmless.
 4. **Authentication → Providers → Anonymous sign-ins** — turn this on. It is
    what makes name-only sign-in work.
 5. **Authentication → URL Configuration** — set the Site URL to your deployed
@@ -261,6 +267,7 @@ the environment variables. Vercel detects Next.js with no configuration.
 | `NEXT_PUBLIC_DEMO_MODE` | `false` |
 | `NEXT_PUBLIC_JIO_AUTH_ADAPTER` | `name` (or `email` once SMTP is set up) |
 | `CRON_SECRET` | `openssl rand -hex 32` |
+| `NEXT_PUBLIC_SITE_URL` | Your live URL. Used to build shareable invite links — without it the app falls back to the browser's origin, which leaves the first server render showing a bare path. Do **not** use `VERCEL_URL`: it resolves to the per-deployment hostname, not the production alias. |
 | `ONEMAP_EMAIL` / `ONEMAP_PASSWORD` | Optional, from step 3 |
 
 Then go back to Supabase and set the Site URL to your live URL.
@@ -367,7 +374,7 @@ field are for the UI to decide what to render; they are not the enforcement.
 **"Removing" a place blocks it, never deletes it.** `status` moves to
 `blocked` instead — already excluded from recommendations and the default
 places list — because a real `DELETE` risks foreign-key trouble the moment a
-place has visits, recos, event options or lobangs pointing at it. Reaching
+place has visits, event options or lobangs pointing at it. Reaching
 `blocked` only ever happens through `block_place`/`unblock_place`, two
 `SECURITY DEFINER` functions in migration 017: block requires being the
 place's own creator or an admin, plus a non-blank reason; unblock is admin
@@ -388,7 +395,7 @@ on, so it deliberately doesn't share block/unblock's admin-or-creator gate.
 ## Tests
 
 ```bash
-npm test          # 254 tests across 17 files
+npm test          # 261 tests across 18 files
 npm run typecheck
 npm run lint
 ```
@@ -405,6 +412,20 @@ npm run lint
 | `clients.test.ts` | The Supabase client factories cannot escalate privilege |
 | `auth.test.ts` | Every auth adapter answers every method, and refuses cleanly |
 | `repoConformance.test.ts` | Both repos implement the same interface |
+| `rating.test.ts` | Bayesian smoothing over the trigger-maintained columns |
+| `visitEdit.test.ts` | Editing and deleting your own visits: ownership, and which fields an edit may touch |
+| `moderation.test.ts` | Block, unblock, and the admin allowlist |
+| `placeFlags.test.ts` | Flagging a place and resolving the queue |
+| `lobang.test.ts` | Targeted sends, group-send member snapshotting |
+| `flexiJio.test.ts` | Availability voting and host confirmation |
+| `suggestCommittee.test.ts` | The three-pick suggestion and re-roll rules |
+| `onboarding.test.ts` | The one-time welcome gate |
+
+**`npm test` does not typecheck.** Vitest transforms TypeScript with esbuild,
+which strips annotations without checking them, and the suite is all pure
+logic and adapter conformance — no component renders, no route handlers. A
+green run says nothing about whether the app compiles. `npm run typecheck` is
+the other half of the gate.
 
 ---
 
@@ -417,10 +438,11 @@ In rough priority order.
    admin-gated (same permission as place moderation) at the API and RLS
    level, but there's still no form, just the API. An admin view would be
    better.
-2. **Materialised view for ratings.** See "Free-tier realities" above.
-3. **Push notifications.** "Vote closes in 10 minutes" is the obvious use.
-   Needs VAPID keys, a service-worker push handler, and something to send them
-   — a Supabase Edge Function or a second Vercel cron.
+2. **Push notifications.** Migration 025 created the tables; nothing else is
+   wired. Still needs the `web-push` dependency, VAPID keys, a subscribe
+   endpoint, service-worker `push`/`notificationclick` handlers, and the send
+   calls. Note that iOS only delivers Web Push to a PWA installed to the home
+   screen — a normal Safari tab cannot even ask for permission.
 4. **Custom domain.** Currently `*.vercel.app`. Point DNS, add the domain in
    Vercel, then update the Supabase Site URL and redirect URLs.
 5. **Pacing multi-office discovery.** The cron now loops every office rather

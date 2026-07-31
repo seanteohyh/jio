@@ -63,7 +63,7 @@ export default function MapPage() {
     <div className="space-y-4">
       <header>
         <h1 className="text-2xl font-semibold tracking-tight">Map</h1>
-        <p className="text-dolch-muted mt-1 text-sm">
+        <p className="text-stone mt-1 text-sm">
           Everything within walking distance of {office.name}. Tap a pin for the
           walking route.
         </p>
@@ -73,7 +73,7 @@ export default function MapPage() {
 
       {error && <ErrorNote>{error.message}</ErrorNote>}
 
-      <div className="border-dolch-border h-[55vh] min-h-72 overflow-hidden rounded-xl border">
+      <div className="border-line h-[55vh] min-h-72 overflow-hidden rounded-xl border">
         <MapView
           office={office}
           places={places}
@@ -88,7 +88,7 @@ export default function MapPage() {
       {selected && (
         <div className="animate-fade-in space-y-2">
           <div className="flex items-center justify-between">
-            <p className="text-dolch-muted text-xs">
+            <p className="text-stone text-xs">
               {routing ? "Working out the walk…" : "Selected"}
             </p>
             <Button
@@ -106,7 +106,7 @@ export default function MapPage() {
         </div>
       )}
 
-      <p className="text-dolch-muted text-xs">
+      <p className="text-stone text-xs">
         Showing {places.length} place{places.length === 1 ? "" : "s"}. Map data
         © OpenStreetMap contributors.
       </p>

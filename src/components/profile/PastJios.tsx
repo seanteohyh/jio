@@ -55,16 +55,16 @@ export default function PastJios({ selfId }: { selfId: string }) {
                   >
                     {event.title}
                   </Link>
-                  <span className="text-dolch-muted shrink-0 text-xs">
+                  <span className="text-stone shrink-0 text-xs">
                     {formatDate(event.scheduled_at)}
                   </span>
                 </div>
 
-                <p className="text-dolch-muted text-xs">
+                <p className="text-stone text-xs">
                   {event.winner_place_name ? (
                     <>
                       Decided:{" "}
-                      <span className="text-dolch-text">
+                      <span className="text-ink">
                         {event.winner_place_name}
                       </span>
                     </>
@@ -77,7 +77,7 @@ export default function PastJios({ selfId }: { selfId: string }) {
                 {features.lobangs && (
                   <>
                     {justSent === event.id ? (
-                      <p className="text-dolch-success text-xs">
+                      <p className="text-sage text-xs">
                         Lobang sent.
                       </p>
                     ) : (

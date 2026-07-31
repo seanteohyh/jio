@@ -1,0 +1,408 @@
+
+# Jio — Brand & Design System Specification
+
+> Canonical brand + visual foundation for the Jio app. Feature- and layout-agnostic: it defines the **system**, not page layouts. Any AI agent or designer updating the app should treat this as the single source of truth and apply it across all screens and components.
+>
+> Status: **Locked** (logo, palette, type, icon direction). Dark mode and motion are specified for later implementation.
+
+---
+
+## 0. How to use this document
+
+- Apply these tokens, components, and rules to **every** screen and component. Do not invent new colors, fonts, or icon styles outside this spec.
+- **Fixed vocabulary — do not rename or reword:** `Jio`, `Jios`, `Kakis`, `Lobang`, `Suggest`, `Places`, `Map`, `Recos`, `Metrics`, `Profile`. UI labels, nav items, and microcopy must use only these terms.
+- **Guiding design idea:** *"the lunch conversation, resolved."* The product arc — **invitation → together → decided** — should drive hierarchy, motion, and the signature "decision resolved" moment.
+- **Appetite-first:** the palette is deliberately warm. Never introduce blue/cool tones as primary or background colors; they suppress appetite and break the system.
+
+---
+
+## 1. Brand essence & voice
+
+- **Jio** — Singlish, *"to invite someone along."* An office lunch copilot: decides where the team eats in under two minutes, fairly (ranked-choice voting), socially (Kakis groups), and smartly (a learning recommendation engine).
+- **Personality:** warm, social, smart-but-unpretentious, fast, proudly local.
+- **Tone of voice:** casual and human, never corporate. Insider/community flavor. Microcopy should feel like a helpful colleague, not a system message.
+  - Do: "What's for lunch?", "Let the votes decide", "Jio your teammates".
+  - Don't: "Please select your dining preference", "Operation completed successfully".
+- **Naming note:** `Lobang` = user-to-user insider tip / deal. `Kakis` = lunch group / friends. Lean into these; they're the differentiation.
+
+---
+
+## 2. Logo
+
+### 2.1 The mark — "Gather" convergence
+
+Three warm-red pebble-like forms converge on a single **espresso** center disc, on a Paper-cream background.
+
+- **Geometry:** three rounded, slightly irregular pebble shapes (~120° apart), converging toward (not perfectly radial from) a solid center disc. The arrangement reads as teammates gathering, with a **subtle, incidental** flower read — it is intentionally **not** overtly floral. Avoid perfectly symmetrical petal/trefoil renderings.
+- **Colors:**
+  - Pebbles: **Ember** `#c0392b`
+  - Center disc: **Espresso** `#3d342c`
+  - Background (in lockup/clear-space): **Paper** `#fbf6ef`
+- **Proportions:** center disc diameter ≈ 35–40% of the mark's overall diameter; pebbles slightly larger than the disc; generous gap between disc and pebbles.
+
+### 2.2 Lockup
+
+Mark + lowercase wordmark **`jio`** set in **Bricolage Grotesque** (700, geometric). The dot of the `j` may be set as a small Ember disc. Mark sits left of the wordmark, vertically centered, with clear space = one center-disc diameter between mark and wordmark.
+
+### 2.3 Variants (to be produced as assets)
+
+| Variant | Use |
+|---|---|
+| Mark + wordmark (horizontal lockup) | Header, auth, marketing |
+| Mark only | Favicon, app icon, avatar |
+| Monochrome (single Ink color) | Stamps, single-color contexts |
+| Maskable | PWA install icon (see §12) |
+| Reversed (mark in Paper on Ember) | Solid Ember tiles / app store icon (optional alt) |
+
+### 2.4 Usage rules
+
+- **Clear space:** one center-disc diameter on all sides.
+- **Min size:** 24px (mark), 80px (lockup).
+- **Don't:** recolor the pebbles or center independently; rotate the mark; add shadows/gradients/effects; stretch; place on busy/photo backgrounds without a Paper container.
+- **Do:** keep the center Espresso and pebbles Ember; place on Paper/Cream/Espresso (dark) only.
+
+---
+
+## 3. Color system
+
+Unified warm palette. **Ember** carries the brand; **Amber** is the single "delight" accent; **Sage** = success; **Slate** = data; **Espresso** = deep neutral. No per-function color splits (Lobang/Kakis/Jios do not each get a unique hue).
+
+### 3.1 Tokens
+
+| Token | Hex | Role |
+|---|---|---|
+| **Ember** | `#c0392b` | Primary: brand, CTAs, active states, focus, voting |
+| **Espresso** | `#3d342c` | Deep neutral: logo core, footers, dark-mode base |
+| **Paper** | `#fbf6ef` | Canvas background (light cream) |
+| **Cream** | `#f4ede2` | Surface: cards, elevated panels |
+| **Ink** | `#2b2b2b` | Body text |
+| **Stone** | `#6b665c` | Muted/secondary text |
+| **Sage** | `#567b57` | Success: confirmed votes, healthy/success |
+| **Amber** | `#d98a2b` | Delight: streaks, roulette, confetti (sparingly) |
+| **Slate** | `#547691` | Data: maps, metrics, cartography |
+| **Line** | `#ece5d8` | Hairline borders/dividers |
+
+### 3.2 Pill/tint pairs (background + accessible text)
+
+Small tag pills use a light tint background with a deeper text color for WCAG-AA at 11–13px.
+
+| Pill | Background | Text |
+|---|---|---|
+| Cuisine | `#f7e4e0` | `#9c2b1e` (deep Ember) |
+| Budget | `#e4eee5` | `#3f5d40` (deep Sage) |
+| Walk-time | `#e6edf3` | `#3d5a72` (deep Slate) |
+| Delight/Amber | `#f6e9d6` | `#8a5a16` (deep Amber) |
+
+### 3.3 Tailwind v4 `@theme` block (drop into `globals.css`)
+
+```css
+@theme {
+  /* Brand palette */
+  --color-ember: #c0392b;
+  --color-espresso: #3d342c;
+  --color-paper: #fbf6ef;
+  --color-cream: #f4ede2;
+  --color-ink: #2b2b2b;
+  --color-stone: #6b665c;
+  --color-sage: #567b57;
+  --color-amber: #d98a2b;
+  --color-slate: #547691;
+  --color-line: #ece5d8;
+
+  /* Pill tints */
+  --color-ember-tint: #f7e4e0;
+  --color-ember-tint-text: #9c2b1e;
+  --color-sage-tint: #e4eee5;
+  --color-sage-tint-text: #3f5d40;
+  --color-slate-tint: #e6edf3;
+  --color-slate-tint-text: #3d5a72;
+  --color-amber-tint: #f6e9d6;
+  --color-amber-tint-text: #8a5a16;
+
+  /* Semantic aliases */
+  --color-background: #fbf6ef;
+  --color-foreground: #2b2b2b;
+  --color-primary: #c0392b;
+  --color-muted: #6b665c;
+  --color-border: #ece5d8;
+
+  /* Fonts */
+  --font-sans: var(--font-geist-sans);
+  --font-display: var(--font-bricolage);
+  --font-mono: var(--font-geist-mono);
+
+  /* Radius */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+}
+```
+
+### 3.4 Usage rules
+
+- **Ember** for primary action only (CTAs, active nav, focus rings, primary vote). Not for large background fills.
+- **Amber** is an accent for delight moments, never a primary button or large surface.
+- **Slate** stays neutral-functional (maps/metrics); do not use it for brand or action.
+- Never use blue as a primary or background.
+- All text/background pairs meet **WCAG-AA** (4.5:1 body, 3:1 large). Ink and Stone on Paper/Cream are AA-compliant.
+
+### 3.5 Migration from the old "Dolch" tokens
+
+The current `globals.css` uses `--color-dolch-*` names and remapped Tailwind ramps. Replace as follows:
+
+| Old | New |
+|---|---|
+| `dolch-bg` `#faf7f2` | `paper` |
+| `dolch-surface` `#f5f0e8` | `cream` |
+| `dolch-text` `#2b2b2b` | `ink` |
+| `dolch-muted` `#6b665c` | `stone` |
+| `dolch-accent` `#b4532f` | `ember` |
+| `dolch-accent-soft` `#f4c9b0` | `ember-tint` |
+| `dolch-border` `#e8e1d6` | `line` |
+| `dolch-success` `#567b57` | `sage` |
+| `dolch-warn` `#a87b2d` | `amber` |
+
+Also replace raw Tailwind color utilities (`bg-orange-500`, `text-orange-700`, `bg-green-100`, etc.) with the semantic tokens above.
+
+---
+
+## 4. Typography
+
+### 4.1 Families
+
+- **Display / wordmark / headlines:** **Bricolage Grotesque** (Google Fonts) — bold, warm, geometric; matches the geometric mark.
+- **UI / body:** **Geist** (keep) — neutral workhorse for dense screens.
+- **Data / mono:** **Geist Mono** (keep) — walk-times, vote counts, metrics.
+
+### 4.2 `next/font` setup (`src/app/layout.tsx`)
+
+```tsx
+import { Bricolage_Grotesque, Geist, Geist_Mono } from "next/font/google";
+
+const bricolage = Bricolage_Grotesque({
+  variable: "--font-bricolage",
+  subsets: ["latin"],
+  weight: ["600", "700", "800"],
+});
+
+const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
+const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
+
+// Apply all three CSS variables on <html> or <body>:
+// className={`${bricolage.variable} ${geistSans.variable} ${geistMono.variable}`}
+```
+
+### 4.3 Type scale
+
+| Style | Font | Size / weight | Use |
+|---|---|---|---|
+| Display | Bricolage Grotesque | 32–40px / 700 | Hero headlines, wordmark |
+| H1 | Bricolage Grotesque | 26px / 700 | Page titles |
+| H2 | Bricolage Grotesque | 20px / 600 | Section titles |
+| H3 | Geist | 16px / 600 | Card titles, labels |
+| Body | Geist | 15px / 400 | Default copy |
+| Small | Geist | 13px / 500 | Secondary, hints |
+| Caption | Geist | 11px / 500 | Metadata, timestamps |
+| Data | Geist Mono | 13px / 500 | Walk-times, vote counts, metrics |
+
+Use generous line-height on place/food names (hero content). Headlines use Bricolage; everything else uses Geist.
+
+---
+
+## 5. Iconography
+
+### 5.1 Spec
+
+Custom **1.5–2px stroke** line icons, rounded line-joins/caps, **Ink/Espresso** color, **Ember** for the active state. **Replace all emoji** currently used for navigation and status (emoji render inconsistently across platforms and read as unbranded).
+
+### 5.2 Library
+
+Use **Lucide** (`lucide-react`, MIT, tree-shakeable, 1.5px default stroke) as the base icon set. Override stroke color via tokens; size at 20–24px in nav, 16px inline.
+
+### 5.3 Bottom-nav mapping
+
+| Tab | Term | Lucide icon |
+|---|---|---|
+| Home | Home | `Home` |
+| Suggest | Suggest | `Sparkles` |
+| Jios | Jios | `Users` |
+| Map | Map | `MapPin` |
+| Places | Places | `UtensilsCrossed` |
+| Profile | Profile | `CircleUser` |
+
+### 5.4 Feature icons
+
+- Vote / decision: `Vote` or `CheckCheck`
+- Roulette: `Dices`
+- Lobang (tip/deal): `Tag` (with an Amber accent on the card, see §6.4)
+- Wishlist: `Bookmark`
+- Rain / weather: `CloudRain`
+- Streak: `Flame` (Amber)
+- Rating star: `Star`
+
+---
+
+## 6. Components
+
+### 6.1 Cards
+
+- Surface: **Cream** `#f4ede2`, 1px **Line** border, soft warm shadow (§7.3), `--radius-lg` (16px).
+- Padding: 12–16px. Stack with 8–12px gaps.
+- **Signature component — "why we suggest this" reason card:** a standard card whose footer carries a one-line reason ("You rated similar places highly · 6 min walk"). This is the brand's signature content pattern; make it visually consistent everywhere recommendations appear.
+
+### 6.2 Buttons
+
+| Variant | Style |
+|---|---|
+| Primary | `bg-ember` text-white, `--radius-md`, hover darkens ~8% |
+| Secondary | `bg-paper` border-Line text-Ink |
+| Success | `bg-sage` text-white |
+| Ghost | text-Ink, hover bg-Cream |
+| Disabled | `bg-cream` text-Stone, no pointer |
+
+Min touch target **44×44px**. Focus: 2px Ember outline, 2px offset.
+
+### 6.3 Pills / tags
+
+`--radius-full`, 4–6px vertical / 8–10px horizontal padding, 11–13px / 500. Use the tint pairs in §3.2. Status badges: open = Ember, closed = Sage, cancelled = Stone.
+
+### 6.4 Lobang card variant (distinct without a new color)
+
+Lobang (user-to-user tip/deal) stays within the unified palette but gets a recognizable treatment: a **`Tag` icon in Amber** at the card's corner + an Amber-tint left accent stripe. This signals "hot tip" without introducing a per-function color.
+
+### 6.5 Weather cue
+
+When rain is likely, surfaces that reflect outdoor context use a **Slate-tint** wash (e.g., walk-time pill becomes Slate) and a small `CloudRain` icon. This is the only cool-tone usage allowed, scoped to weather context only.
+
+### 6.6 Bottom navigation
+
+White bar (Paper/Cream), soft top shadow, 6 Lucide icons, active item in **Ember** with a 2px Ember top indicator. Fixed, safe-area aware.
+
+### 6.7 Inputs
+
+Cream or Paper field, Line border, `--radius-md`, 44px height. Focus: Ember border + Ember ring.
+
+---
+
+## 7. Shape, spacing, elevation, layout
+
+### 7.1 Radius
+`sm` 8px (pills-small, chips) · `md` 12px (buttons, inputs) · `lg` 16px (cards) · `xl` 24px (sheets, modals). Pills/badges use `full`.
+
+### 7.2 Spacing
+4px base grid. Use the Tailwind default scale (`gap-2`, `p-4`, etc.). Mobile-first; content column `max-w-lg` with `px-4` and bottom padding to clear the fixed nav.
+
+### 7.3 Elevation (warm shadows — Espresso-tinted, not black)
+```css
+--shadow-sm: 0 1px 2px rgba(61, 52, 44, 0.05), 0 1px 3px rgba(61, 52, 44, 0.06);
+--shadow-md: 0 4px 12px rgba(61, 52, 44, 0.08);
+--shadow-lg: 0 10px 24px rgba(61, 52, 44, 0.10);
+```
+
+---
+
+## 8. Motion
+
+| Token | Duration / easing | Use |
+|---|---|---|
+| fast | 150ms ease-out | Hover, tap |
+| base | 220ms cubic-bezier(0.22, 1, 0.36, 1) | Card transitions, reveals |
+| slow | 320ms cubic-bezier(0.22, 1, 0.36, 1) | Sheets, modals |
+
+- **Signature "decision resolved" moment** (vote closes / top suggestion lands): scale 0.96 → 1 + a brief Ember pulse, ~400ms spring. This is the emotional core — give it a confident payoff, not a silent state change.
+- Keep the Lobang confetti pop.
+- **Reduced motion:** under `prefers-reduced-motion`, disable transforms/scale; keep opacity fades only.
+
+---
+
+## 9. States
+
+- **Loading:** skeleton placeholders in Cream with a soft shimmer (no spinners for content).
+- **Empty:** warm, friendly, mark-led illustration/motif + a single clear next action. Never a bare "No data."
+- **Error:** Sage-tinted calm message + retry; never alarming red blocks.
+- **Offline:** on-brand offline fallback (the PWA `offline.html` should use this system).
+
+---
+
+## 10. Imagery & illustration (optional)
+
+- **No stock photography.** If imagery is needed, use simple geometric illustrations matching the pebble mark: 2-color (Ember + Espresso), rounded, on Cream.
+- The Gather mark motif (three pebbles + disc) can be used decoratively at low opacity in empty states and auth backgrounds.
+- No mascot character.
+
+---
+
+## 11. Dark mode (spec for later)
+
+"Midnight kitchen" — warm dark, never zinc-black. Token mapping:
+
+| Light | Dark |
+|---|---|
+| Paper `#fbf6ef` | `#241f1b` (Espresso-dark) |
+| Cream `#f4ede2` | `#2e2823` (surface) |
+| Ink `#2b2b2b` | `#f4ede2` (Cream as text) |
+| Stone `#6b665c` | `#b9ad9c` |
+| Line `#ece5d8` | `#3d342c` |
+| Ember `#c0392b` | `#d44637` (slightly lifted for contrast) |
+| Amber `#d98a2b` | `#e6a045` |
+
+Espresso/Sage/Amber lift against the dark base; tints invert to low-opacity light fills.
+
+---
+
+## 12. PWA manifest & app icons
+
+Update `public/manifest.json`:
+```json
+{
+  "name": "Jio",
+  "short_name": "Jio",
+  "description": "Lunch recommendations near the office",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#fbf6ef",
+  "theme_color": "#c0392b",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-192-maskable.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "/icon-512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
+```
+- **App icon:** mark on a Paper-cream tile (default). Alternative for app stores: reversed mark (Paper pebbles + Espresso disc) on an Ember tile. Produce 192/512, any + maskable.
+- `theme_color` = Ember `#c0392b`; `background_color` = Paper `#fbf6ef`.
+
+---
+
+## 13. Implementation checklist
+
+1. **`src/app/globals.css`** — replace the `--color-dolch-*` `@theme` block with the tokens in §3.3; add radius/shadow tokens (§7); remove the old remapped Tailwind color ramps (orange/amber/green/etc. overrides).
+2. **`src/app/layout.tsx`** — add `Bricolage_Grotesque` via `next/font`; apply the three font variables; set `<body>` font to Geist, headlines to Bricolage via the `--font-display` token.
+3. **`public/manifest.json`** — update per §12.
+4. **Icons** — install `lucide-react`; replace emoji in `src/components/BottomNav.tsx` and elsewhere per §5.
+5. **Components** — sweep components for `dolch-*` / raw `orange-*` / `green-*` / `blue-*` utilities and swap to semantic tokens; apply the card/button/pill specs (§6).
+6. **Assets** — produce logo SVG (mark + lockup), favicon, app icons (192/512, any + maskable), monochrome variant. Place in `public/`.
+7. **Accessibility pass** — verify focus styles (Ember), 44px targets, AA contrast, `prefers-reduced-motion`.
+8. **States** — implement skeleton/empty/error/offline treatments per §9.
+
+---
+
+## 14. Do's and Don'ts (quick reference)
+
+**Do**
+- Keep the palette warm and unified; Ember leads, Amber accents.
+- Use Bricolage for display, Geist for UI.
+- Replace emoji with Lucide line icons.
+- Use warm Espresso-tinted shadows.
+- Give the "decision resolved" moment a confident motion payoff.
+
+**Don't**
+- Don't introduce blue/cool primaries or backgrounds.
+- Don't use raw Tailwind `orange`/`green`/`blue` utilities — use semantic tokens.
+- Don't recolor or over-stylize the logo; keep center Espresso, pebbles Ember.
+- Don't make the mark overtly floral/symmetric.
+- Don't use spinners where skeletons fit; don't show bare "No data."
+- Don't rename the fixed vocabulary (Jio, Jios, Kakis, Lobang, Suggest, Places, Map, Recos, Metrics, Profile).
+

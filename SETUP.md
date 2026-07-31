@@ -8,7 +8,7 @@ folder alongside `jio.md`.
 The git repository is already inside it, with the first commit made. Check with:
 
 ```powershell
-cd C:\Users\Seant\OneDrive\Desktop\Jio\jio
+cd C:\Users\Seant\Desktop\jio
 git log --oneline
 ```
 
@@ -36,7 +36,11 @@ npm test
 npm run typecheck
 ```
 
-254 tests. If these pass, the business logic is sound.
+261 tests. If these pass, the business logic is sound.
+
+Note that `npm test` transforms TypeScript without checking it, so a green run
+says nothing about whether the app compiles. Treat `typecheck` as the other
+half of the gate, not an optional extra.
 
 ## 4. Put it on GitHub
 
@@ -53,7 +57,7 @@ accident.
 
 Follow **Going live** in `README.md`. Roughly 20 minutes:
 
-1. Create a Supabase project, run the 25 migrations in the SQL editor
+1. Create a Supabase project, run the 26 migrations in the SQL editor
 2. Turn on **Authentication → Providers → Anonymous sign-ins**. This is the one
    dashboard toggle name-only sign-in needs, and the only thing that will make
    it fail with a confusing error if you miss it

@@ -34,8 +34,8 @@ export default function NeedsAvailability() {
                 className={
                   "block rounded-xl border p-3 transition-colors " +
                   (answered
-                    ? "border-dolch-border bg-dolch-bg opacity-70"
-                    : "border-dolch-border bg-dolch-surface/60 hover:border-dolch-accent/40")
+                    ? "border-line bg-paper opacity-70"
+                    : "border-line bg-cream/60 hover:border-ember/40")
                 }
               >
                 <div className="flex items-baseline justify-between gap-2">
@@ -43,14 +43,14 @@ export default function NeedsAvailability() {
                   <span
                     className={
                       "shrink-0 text-xs " +
-                      (answered ? "text-dolch-success" : "text-dolch-accent")
+                      (answered ? "text-sage" : "text-ember")
                     }
                   >
                     {answered ? "Answered ✓" : "Mark your availability"}
                   </span>
                 </div>
                 {event.host_name && (
-                  <p className="text-dolch-muted mt-1 text-xs">
+                  <p className="text-stone mt-1 text-xs">
                     hosted by {event.host_name}
                   </p>
                 )}

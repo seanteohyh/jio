@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { BudgetBadge, Chip, Stars } from "./ui";
+import { ArrowRight, Footprints } from "lucide-react";
+import { BudgetBadge, Stars, TintPill } from "./ui";
 import { cn, formatCuisine } from "@/lib/utils";
 import type { Place } from "@/types";
 
@@ -28,13 +29,13 @@ export default function PlaceCard({
   return (
     <div
       className={cn(
-        "border-dolch-border bg-dolch-surface/60 hover:border-dolch-accent/40 rounded-xl border transition-colors",
+        "border-line bg-cream/60 hover:border-ember/40 rounded-xl border transition-colors",
         compact ? "p-3" : "p-4"
       )}
     >
       <div className="flex items-start gap-3">
         {typeof rank === "number" && (
-          <span className="bg-dolch-accent-soft text-dolch-accent mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold">
+          <span className="bg-ember-tint text-ember mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold">
             {rank}
           </span>
         )}
@@ -43,45 +44,53 @@ export default function PlaceCard({
           <div className="flex items-start justify-between gap-2">
             <Link
               href={`/places/${place.id}`}
-              className="text-dolch-text hover:text-dolch-accent truncate font-medium"
+              className="text-ink hover:text-ember truncate font-medium"
             >
               {place.name}
             </Link>
             {action}
           </div>
 
-          <div className="text-dolch-muted mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-            {typeof place.walk_minutes === "number" && (
-              <span>{place.walk_minutes} min walk</span>
-            )}
+          {/* Cuisine, budget, walk time — one tinted row, the shape the brand
+              leads with. Rating and visit count stay plain text so the row
+              does not turn into a wall of colour. */}
+          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+            {place.cuisine.slice(0, compact ? 2 : 3).map((cuisine) => (
+              <TintPill key={cuisine} tone="cuisine">
+                {formatCuisine(cuisine)}
+              </TintPill>
+            ))}
             <BudgetBadge tier={place.budget_tier} />
-            {typeof place.avg_rating === "number" && (
-              <Stars rating={place.avg_rating} />
+            {typeof place.walk_minutes === "number" && (
+              <TintPill tone="walk">
+                <Footprints className="h-3 w-3" aria-hidden="true" />
+                {place.walk_minutes} min
+              </TintPill>
             )}
-            {place.visit_count ? (
-              <span>
-                {place.visit_count} visit{place.visit_count === 1 ? "" : "s"}
-              </span>
-            ) : null}
           </div>
 
-          {!compact && place.cuisine.length > 0 && (
-            <div className="mt-2 flex flex-wrap gap-1">
-              {place.cuisine.slice(0, 4).map((cuisine) => (
-                <Chip key={cuisine}>{formatCuisine(cuisine)}</Chip>
-              ))}
+          {(typeof place.avg_rating === "number" || place.visit_count) && (
+            <div className="text-stone mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+              {typeof place.avg_rating === "number" && (
+                <Stars rating={place.avg_rating} />
+              )}
+              {place.visit_count ? (
+                <span>
+                  {place.visit_count} visit{place.visit_count === 1 ? "" : "s"}
+                </span>
+              ) : null}
             </div>
           )}
 
           {why && (
-            <p className="text-dolch-accent mt-2 text-xs">
-              <span aria-hidden="true">→ </span>
+            <p className="text-ember mt-2 text-xs">
+              <ArrowRight className="mr-1 inline h-3 w-3 align-[-1px]" aria-hidden="true" />
               {why}
             </p>
           )}
 
           {!compact && place.best_dishes.length > 0 && (
-            <p className="text-dolch-muted mt-2 truncate text-xs">
+            <p className="text-stone mt-2 truncate text-xs">
               Try: {place.best_dishes.slice(0, 3).join(", ")}
             </p>
           )}

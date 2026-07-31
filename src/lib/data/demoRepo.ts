@@ -427,6 +427,42 @@ export const demoRepo: Repo = {
     return visit;
   },
 
+  async updateVisit(id, userId, patch) {
+    const visits = store().visits;
+    const index = visits.findIndex((v) => v.id === id);
+
+    // Not-found and not-yours are answered identically on purpose: telling
+    // someone a visit exists but is not theirs leaks that they visited.
+    if (index === -1 || visits[index].user_id !== userId) {
+      throw new Error("That visit is not yours to change");
+    }
+
+    // Whitelist, not a spread of `patch`: user_id and place_id must not be
+    // reassignable, or an "edit" becomes a way to attribute a review to
+    // somebody else.
+    const current = visits[index];
+    const next: Visit = {
+      ...current,
+      rating: patch.rating ?? current.rating,
+      best_dishes: patch.best_dishes ?? current.best_dishes,
+      notes: patch.notes !== undefined ? patch.notes : current.notes,
+      visited_at: patch.visited_at ?? current.visited_at,
+      is_public: patch.is_public ?? current.is_public,
+    };
+
+    visits[index] = next;
+    return next;
+  },
+
+  async deleteVisit(id, userId) {
+    const visits = store().visits;
+    const index = visits.findIndex((v) => v.id === id);
+    if (index === -1 || visits[index].user_id !== userId) {
+      throw new Error("That visit is not yours to delete");
+    }
+    visits.splice(index, 1);
+  },
+
   async listPublicReviews(placeId) {
     return store()
       .visits.filter((v) => v.place_id === placeId && v.is_public)

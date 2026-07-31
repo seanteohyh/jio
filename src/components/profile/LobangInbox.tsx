@@ -67,32 +67,32 @@ export default function LobangInbox() {
                       <span className="font-medium">
                         {l.from_display_name ?? "A teammate"}
                       </span>
-                      <span className="text-dolch-muted"> recommends </span>
+                      <span className="text-stone"> recommends </span>
                       {l.place ? (
                         <Link
                           href={`/places/${l.place_id}`}
-                          className="text-dolch-accent font-medium hover:underline"
+                          className="text-ember font-medium hover:underline"
                         >
                           {l.place.name}
                         </Link>
                       ) : (
                         <span className="font-medium">a place</span>
                       )}
-                      <span className="text-dolch-muted"> for you</span>
+                      <span className="text-stone"> for you</span>
                       {!l.seen_at && (
-                        <span className="bg-dolch-accent ml-2 rounded-full px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                        <span className="bg-ember ml-2 rounded-full px-1.5 py-0.5 text-[10px] font-semibold text-white">
                           New
                         </span>
                       )}
                     </p>
 
                     {l.note && (
-                      <p className="text-dolch-muted mt-1 text-sm italic">
+                      <p className="text-stone mt-1 text-sm italic">
                         “{l.note}”
                       </p>
                     )}
 
-                    <p className="text-dolch-muted mt-1 text-xs">
+                    <p className="text-stone mt-1 text-xs">
                       {l.event_title && `From ${l.event_title} · `}
                       {l.created_at && relativeDayLabel(l.created_at)}
                     </p>
@@ -100,7 +100,7 @@ export default function LobangInbox() {
                   <button
                     type="button"
                     onClick={() => dismiss(l.id)}
-                    className="text-dolch-muted hover:text-dolch-text shrink-0 text-xs underline"
+                    className="text-stone hover:text-ink shrink-0 text-xs underline"
                   >
                     Dismiss
                   </button>
@@ -118,11 +118,11 @@ export default function LobangInbox() {
             {history.map((l) => (
               <li
                 key={l.id}
-                className="text-dolch-muted flex items-center justify-between gap-2 text-xs"
+                className="text-stone flex items-center justify-between gap-2 text-xs"
               >
                 <span className="truncate">
                   To {l.to_display_name ?? "a teammate"}:{" "}
-                  <span className="text-dolch-text">
+                  <span className="text-ink">
                     {l.place?.name ?? "a place"}
                   </span>
                 </span>

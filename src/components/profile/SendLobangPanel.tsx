@@ -279,7 +279,7 @@ export default function SendLobangPanel({
 
       {hasRecipient && (
         <div className="space-y-3">
-          <p className="text-dolch-text text-sm font-medium">Place</p>
+          <p className="text-ink text-sm font-medium">Place</p>
 
           {defaultPlaceId && (
             <Chip
@@ -296,7 +296,7 @@ export default function SendLobangPanel({
 
           {!loadingSuggestions && suggestions.length > 0 && (
             <div>
-              <p className="text-dolch-muted mb-1.5 text-xs font-medium">
+              <p className="text-stone mb-1.5 text-xs font-medium">
                 Quick picks
               </p>
               <ul className="space-y-1.5">
@@ -311,14 +311,14 @@ export default function SendLobangPanel({
                         className={
                           "flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left text-sm transition-colors " +
                           (placeId === s.place.id
-                            ? "border-dolch-accent bg-dolch-accent/10"
-                            : "border-dolch-border bg-dolch-surface/60 hover:border-dolch-accent/40")
+                            ? "border-ember bg-ember/10"
+                            : "border-line bg-cream/60 hover:border-ember/40")
                         }
                       >
                         <span className="min-w-0 truncate font-medium">
                           {s.place.name}
                         </span>
-                        <span className="text-dolch-muted shrink-0 text-xs">
+                        <span className="text-stone shrink-0 text-xs">
                           {s.why}
                         </span>
                       </button>
@@ -329,7 +329,7 @@ export default function SendLobangPanel({
           )}
 
           <div>
-            <p className="text-dolch-muted mb-1.5 text-xs font-medium">
+            <p className="text-stone mb-1.5 text-xs font-medium">
               Or search
             </p>
             <input
@@ -344,7 +344,7 @@ export default function SendLobangPanel({
             {!searching && search.trim().length >= 2 && (
               <ul className="mt-1.5 space-y-1.5">
                 {searchResults.length === 0 && (
-                  <li className="text-dolch-muted text-xs">
+                  <li className="text-stone text-xs">
                     No matches. Not registered yet? Add it below.
                   </li>
                 )}
@@ -356,15 +356,15 @@ export default function SendLobangPanel({
                       className={
                         "flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left text-sm transition-colors " +
                         (placeId === p.id
-                          ? "border-dolch-accent bg-dolch-accent/10"
-                          : "border-dolch-border bg-dolch-surface/60 hover:border-dolch-accent/40")
+                          ? "border-ember bg-ember/10"
+                          : "border-line bg-cream/60 hover:border-ember/40")
                       }
                     >
                       <span className="min-w-0 truncate font-medium">
                         {p.name}
                       </span>
                       {p.address && (
-                        <span className="text-dolch-muted shrink-0 truncate text-xs">
+                        <span className="text-stone shrink-0 truncate text-xs">
                           {p.address}
                         </span>
                       )}
@@ -376,21 +376,21 @@ export default function SendLobangPanel({
           </div>
 
           {placeId && selectedPlaceName && (
-            <p className="text-dolch-muted text-xs">
-              Selected: <span className="text-dolch-text font-medium">{selectedPlaceName}</span>
+            <p className="text-stone text-xs">
+              Selected: <span className="text-ink font-medium">{selectedPlaceName}</span>
             </p>
           )}
 
           <button
             type="button"
             onClick={() => setAddingPlace((v) => !v)}
-            className="text-dolch-accent text-xs underline"
+            className="text-ember text-xs underline"
           >
             {addingPlace ? "Never mind" : "Can't find it? Add it here"}
           </button>
 
           {addingPlace && (
-            <Card className="bg-dolch-bg space-y-3">
+            <Card className="bg-paper space-y-3">
               <form onSubmit={addPlace} className="space-y-3">
                 <Field label="Name">
                   <input
@@ -422,7 +422,7 @@ export default function SendLobangPanel({
                 </Field>
 
                 {newLocatedVia === "gps" && (
-                  <p className="text-dolch-success text-xs">
+                  <p className="text-sage text-xs">
                     Using your current location ✓
                   </p>
                 )}
@@ -454,7 +454,7 @@ export default function SendLobangPanel({
                       ? "Adding…"
                       : "Add & select"}
                 </Button>
-                <p className="text-dolch-muted text-xs">
+                <p className="text-stone text-xs">
                   Cuisine, budget and dishes can be filled in later from the
                   place's own page.
                 </p>
@@ -493,7 +493,7 @@ export default function SendLobangPanel({
         {placeId && (
           <Link
             href={`/places/${placeId}`}
-            className="text-dolch-accent ml-auto text-xs underline"
+            className="text-ember ml-auto text-xs underline"
           >
             View place
           </Link>

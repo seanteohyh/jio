@@ -25,6 +25,15 @@ on conflict (lobang_id, user_id) do nothing;
 
 alter table lobangs add column if not exists kaki_id uuid references kakis(id);
 
+-- The old policies from 016_lobangs.sql reference to_user_id directly, so
+-- they must go before the column does — Postgres won't drop a column a
+-- policy still depends on. lobangs_select/delete are recreated further
+-- down; lobangs_update has nothing left to do once seen_at moves off this
+-- table, so it's dropped for good.
+drop policy if exists "lobangs_select" on lobangs;
+drop policy if exists "lobangs_update" on lobangs;
+drop policy if exists "lobangs_delete" on lobangs;
+
 -- Dropping these columns also drops the inline `check (from_user_id <>
 -- to_user_id)` constraint automatically, since it references to_user_id.
 alter table lobangs drop column if exists to_user_id;
@@ -74,7 +83,6 @@ create policy "lobang_recipients_delete" on lobang_recipients
     )
   );
 
-drop policy if exists "lobangs_select" on lobangs;
 create policy "lobangs_select" on lobangs
   for select to authenticated
   using (
@@ -85,11 +93,6 @@ create policy "lobangs_select" on lobangs
     )
   );
 
--- seen_at moved off this table; there is nothing left for a plain UPDATE on
--- `lobangs` to legitimately do.
-drop policy if exists "lobangs_update" on lobangs;
-
-drop policy if exists "lobangs_delete" on lobangs;
 create policy "lobangs_delete" on lobangs
   for delete to authenticated
   using (from_user_id = auth.uid());

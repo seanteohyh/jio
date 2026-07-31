@@ -4,6 +4,7 @@ import { getRepoAsync } from "@/lib/data/repo";
 import {
   badRequest,
   errorResponse,
+  forbidden,
   json,
   notFound,
   readJson,
@@ -65,11 +66,34 @@ export async function PUT(request: NextRequest, { params }: Params) {
   }
 }
 
+/**
+ * Hard-delete a place. **Admin only.**
+ *
+ * This previously required nothing beyond a signed-in session — the same
+ * class of gap that the 30 Jul change closed for `status` on PUT, but the
+ * DELETE verb was missed. Nothing in the UI calls this, so the exposure was
+ * never reachable through the app, but the endpoint was live.
+ *
+ * Deleting is deliberately the rarer path. The ordinary way to take a place
+ * out of circulation is `/block`, which any signed-in user can do with a
+ * reason and which leaves the row (and its visits, options and lobangs)
+ * intact. A real DELETE risks foreign-key trouble the moment a place has any
+ * of those pointing at it, so it exists only for genuine junk — an OSM vending
+ * machine tagged as a café — and only an admin gets to make that call.
+ */
 export async function DELETE(_request: NextRequest, { params }: Params) {
   try {
-    await requireUser();
+    const user = await requireUser();
     const { id } = await params;
     const repo = await getRepoAsync();
+
+    const admin = await repo.isAdmin(user.id);
+    if (!admin) {
+      return forbidden(
+        "Only an admin can delete a place. Use block to take it out of " +
+          "suggestions instead."
+      );
+    }
 
     await repo.deletePlace(id);
     return json({ ok: true });

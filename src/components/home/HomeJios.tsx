@@ -17,7 +17,7 @@ export default function HomeJios() {
   if (isLoading) {
     return (
       <Card>
-        <p className="text-dolch-muted text-sm">Loading your Jios…</p>
+        <p className="text-stone text-sm">Loading your Jios…</p>
       </Card>
     );
   }
@@ -53,7 +53,7 @@ export default function HomeJios() {
     <section>
       <SectionHeading
         action={
-          <Link href="/events" className="text-dolch-accent text-xs underline">
+          <Link href="/events" className="text-ember text-xs underline">
             See all
           </Link>
         }
@@ -66,20 +66,20 @@ export default function HomeJios() {
           <li key={event.id}>
             <Link
               href={`/events/${event.id}`}
-              className="border-dolch-border bg-dolch-surface/60 hover:border-dolch-accent/40 block rounded-xl border p-3 transition-colors"
+              className="border-line bg-cream/60 hover:border-ember/40 block rounded-xl border p-3 transition-colors"
             >
               <div className="flex items-baseline justify-between gap-2">
                 <span className="truncate font-medium">{event.title}</span>
-                <span className="text-dolch-muted shrink-0 text-xs">
+                <span className="text-stone shrink-0 text-xs">
                   {relativeDayLabel(event.scheduled_at)} ·{" "}
                   {formatTime(event.scheduled_at)}
                 </span>
               </div>
 
-              <p className="text-dolch-muted mt-1 text-xs">
+              <p className="text-stone mt-1 text-xs">
                 {event.status === "closed" ? (
                   event.winner_place_name ? (
-                    <span className="text-dolch-success">
+                    <span className="text-sage">
                       Decided: {event.winner_place_name}
                     </span>
                   ) : (

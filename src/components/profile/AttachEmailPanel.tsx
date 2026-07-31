@@ -71,11 +71,11 @@ export default function AttachEmailPanel({ onAttached }: AttachEmailPanelProps) 
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="text-dolch-accent text-sm underline"
+          className="text-ember text-sm underline"
         >
           Attach an email to this account
         </button>
-        <p className="text-dolch-muted mt-1 text-xs">
+        <p className="text-stone mt-1 text-xs">
           You&apos;re signed in on this browser only right now — clearing site
           data or switching devices means starting over with no history.
           Attaching an email keeps everything and lets you sign back in from
@@ -126,8 +126,8 @@ export default function AttachEmailPanel({ onAttached }: AttachEmailPanelProps) 
 
   return (
     <form onSubmit={verify} className="space-y-3">
-      <p className="text-dolch-muted text-sm">
-        Check <span className="text-dolch-text font-medium">{email}</span>.
+      <p className="text-stone text-sm">
+        Check <span className="text-ink font-medium">{email}</span>.
         Tap the link, or type the 6-digit code here.
       </p>
 

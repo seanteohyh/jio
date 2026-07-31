@@ -30,7 +30,7 @@ export default async function KakiInvitePage({
     return (
       <div className="space-y-4 py-10 text-center">
         <h1 className="text-xl font-semibold">This invite is not valid</h1>
-        <p className="text-dolch-muted text-sm">
+        <p className="text-stone text-sm">
           The link may have been mistyped, or the group may have been deleted.
         </p>
         <LinkButton href="/kakis">Your groups</LinkButton>
@@ -47,11 +47,11 @@ export default async function KakiInvitePage({
   return (
     <div className="mx-auto max-w-sm space-y-5 py-10 text-center">
       <div>
-        <p className="text-dolch-muted text-sm">You have been invited to</p>
+        <p className="text-stone text-sm">You have been invited to</p>
         <h1 className="mt-1 text-2xl font-semibold tracking-tight">
           {kaki.name}
         </h1>
-        <p className="text-dolch-muted mt-2 text-sm">
+        <p className="text-stone mt-2 text-sm">
           {kaki.members.length} member
           {kaki.members.length === 1 ? "" : "s"} already in
         </p>
@@ -59,7 +59,7 @@ export default async function KakiInvitePage({
 
       <JoinKakiButton token={token} />
 
-      <p className="text-dolch-muted text-xs">
+      <p className="text-stone text-xs">
         Joining lets you vote on the group&apos;s Jios and shows your shared
         visits in the group stats.
       </p>

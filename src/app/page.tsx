@@ -7,6 +7,7 @@ import HomeJios from "@/components/home/HomeJios";
 import NeedsAvailability from "@/components/home/NeedsAvailability";
 import StreakBanner from "@/components/home/StreakBanner";
 import { LinkButton } from "@/components/ui";
+import JioLockup from "@/components/brand/JioLockup";
 
 function greeting(now = new Date()): string {
   const hour = now.getHours();
@@ -39,12 +40,19 @@ export default async function HomePage() {
 
   return (
     <div className="space-y-6">
+      {/* The lockup only appears on Home. Everywhere else the side rail or the
+          page title carries the identity, and repeating it would be noise. */}
+      <JioLockup className="md:hidden" size="sm" beta={config.isDemo} />
+
       <header>
-        <h1 className="text-2xl font-semibold tracking-tight">
+        <p className="text-stone text-sm">
           {greeting()}, {name}.
+        </p>
+        <h1 className="font-display text-ink mt-1 text-4xl leading-[1.05] font-bold tracking-tight">
+          What&rsquo;s for lunch?
         </h1>
-        <p className="text-dolch-muted mt-1 text-sm">
-          Where are we eating today?
+        <p className="text-stone mt-2 text-sm">
+          Pick somewhere, or let the votes decide.
         </p>
       </header>
 
@@ -64,15 +72,6 @@ export default async function HomePage() {
       {features.events && <HomeJios />}
 
       {features.events && <NeedsAvailability />}
-
-      {config.isDemo && (
-        <p className="text-dolch-muted border-dolch-border rounded-xl border border-dashed px-4 py-3 text-xs">
-          You are in demo mode: 22 sample places, two invented teammates and one
-          Jio mid-vote. Everything is in memory and resets when the dev server
-          restarts. Add Supabase credentials to <code>.env.local</code> to make
-          it real.
-        </p>
-      )}
     </div>
   );
 }

@@ -12,6 +12,7 @@ import {
   EmptyState,
   ErrorNote,
   Field,
+  LinkButton,
   SectionHeading,
   Spinner,
   Stars,
@@ -208,10 +209,10 @@ export default function PlaceDetailPage({
       <header>
         <h1 className="text-2xl font-semibold tracking-tight">{place.name}</h1>
         {place.address && (
-          <p className="text-dolch-muted mt-1 text-sm">{place.address}</p>
+          <p className="text-stone mt-1 text-sm">{place.address}</p>
         )}
 
-        <div className="text-dolch-muted mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+        <div className="text-stone mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
           {typeof place.walk_minutes === "number" && (
             <span>{place.walk_minutes} min walk</span>
           )}
@@ -219,7 +220,7 @@ export default function PlaceDetailPage({
           <Stars rating={place.avg_rating} size="md" />
           {place.visit_count ? <span>{place.visit_count} visits</span> : null}
           {place.has_pending_flag && (
-            <span className="bg-dolch-warn/20 text-dolch-warn rounded-full px-2 py-0.5 text-xs font-medium">
+            <span className="bg-amber/20 text-amber rounded-full px-2 py-0.5 text-xs font-medium">
               Reported
             </span>
           )}
@@ -235,7 +236,7 @@ export default function PlaceDetailPage({
       </header>
 
       {place.status === "needs_review" && (
-        <Card className="border-dolch-warn/40 bg-amber-50/60 space-y-3">
+        <Card className="border-amber/40 bg-amber-tint/60 space-y-3">
           <p className="text-sm">
             <span className="font-medium">Waiting for review.</span> This came
             from OpenStreetMap automatically — is it a real place people would
@@ -253,7 +254,7 @@ export default function PlaceDetailPage({
       )}
 
       {place.status === "blocked" && (
-        <Card className="space-y-3 border-red-200 bg-red-50/60">
+        <Card className="space-y-3 border-ember/30 bg-ember-tint/50">
           <p className="text-sm">
             <span className="font-medium">This place is hidden.</span> It
             won&apos;t appear in search, suggestions, or new events until an
@@ -299,10 +300,20 @@ export default function PlaceDetailPage({
           href={`https://www.google.com/maps/dir/?api=1&destination=${place.lat},${place.lng}&travelmode=walking`}
           target="_blank"
           rel="noopener noreferrer"
-          className="border-dolch-border bg-dolch-bg text-dolch-text hover:bg-dolch-surface inline-flex items-center rounded-lg border px-4 py-2.5 text-sm font-medium"
+          className="border-line bg-paper text-ink hover:bg-cream inline-flex items-center rounded-lg border px-4 py-2.5 text-sm font-medium"
         >
           Directions
         </a>
+        {/*
+          Open to anyone signed in, deliberately. Correcting a wrong cuisine or
+          a bad pin is the sort of thing that should take five seconds, not a
+          report and a wait. Taking a place *out* of circulation is the gated
+          action — that is "Remove this place" below, and archiving is
+          admin-only.
+        */}
+        <LinkButton href={`/places/${place.id}/edit`} variant="secondary">
+          Edit details
+        </LinkButton>
         {canBlock && (
           <Button
             variant="danger"
@@ -325,7 +336,7 @@ export default function PlaceDetailPage({
       </div>
 
       {reportSent && (
-        <p className="text-dolch-muted text-xs">
+        <p className="text-stone text-xs">
           Thanks — an admin will take a look. You can track it under My
           Reports on your profile.
         </p>
@@ -355,7 +366,7 @@ export default function PlaceDetailPage({
                 placeholder="Anything that helps an admin check this"
               />
             </Field>
-            <p className="text-dolch-muted text-xs">
+            <p className="text-stone text-xs">
               The place stays visible while this is reviewed — reporting
               doesn&apos;t remove it.
             </p>
@@ -395,7 +406,7 @@ export default function PlaceDetailPage({
         <Card className="animate-fade-in">
           <form onSubmit={logVisit} className="space-y-3">
             <div>
-              <p className="text-dolch-text mb-1.5 text-sm font-medium">
+              <p className="text-ink mb-1.5 text-sm font-medium">
                 How was it?
               </p>
               <div className="flex gap-1">
@@ -407,8 +418,8 @@ export default function PlaceDetailPage({
                     aria-label={`${n} star${n === 1 ? "" : "s"}`}
                     className={
                       n <= rating
-                        ? "text-dolch-warn text-2xl"
-                        : "text-dolch-border text-2xl"
+                        ? "text-amber text-2xl"
+                        : "text-line text-2xl"
                     }
                   >
                     ★
@@ -440,7 +451,7 @@ export default function PlaceDetailPage({
                 type="checkbox"
                 checked={isPublic}
                 onChange={(e) => setIsPublic(e.target.checked)}
-                className="accent-dolch-accent"
+                className="accent-ember"
               />
               <span>Share this as a review the team can read</span>
             </label>
@@ -465,7 +476,7 @@ export default function PlaceDetailPage({
               {reviews.map((review) => (
                 <li
                   key={review.id}
-                  className="border-dolch-border bg-dolch-surface/60 rounded-xl border p-3"
+                  className="border-line bg-cream/60 rounded-xl border p-3"
                 >
                   <div className="flex items-start gap-2.5">
                     <Avatar
@@ -477,7 +488,7 @@ export default function PlaceDetailPage({
                         <span className="text-sm font-medium">
                           {review.display_name ?? "A teammate"}
                         </span>
-                        <span className="text-dolch-muted shrink-0 text-xs">
+                        <span className="text-stone shrink-0 text-xs">
                           {formatDate(review.visited_at)}
                         </span>
                       </div>
@@ -486,7 +497,7 @@ export default function PlaceDetailPage({
                         <p className="mt-1 text-sm">{review.notes}</p>
                       )}
                       {review.best_dishes.length > 0 && (
-                        <p className="text-dolch-muted mt-1 text-xs">
+                        <p className="text-stone mt-1 text-xs">
                           Had: {review.best_dishes.join(", ")}
                         </p>
                       )}

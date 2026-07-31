@@ -13,7 +13,9 @@ import {
   inputClass,
 } from "@/components/ui";
 import RouletteWheel from "@/components/RouletteWheel";
+import ShareLink from "@/components/ShareLink";
 import { fetcher, mutateJson } from "@/lib/fetcher";
+import { eventInviteUrl } from "@/lib/shareUrl";
 import { subscribeToEventChanges } from "@/lib/realtime";
 import { features } from "@/lib/config";
 import { formatDate, formatDateTime } from "@/lib/utils";
@@ -234,21 +236,34 @@ export default function EventDetailPage({
             <h1 className="text-2xl font-semibold tracking-tight">
               {event.title}
             </h1>
-            <p className="text-dolch-muted mt-1 text-sm">
+            <p className="text-stone mt-1 text-sm">
               {isDatePolling
                 ? `Picking a date — ${event.candidateDates.length} option${event.candidateDates.length === 1 ? "" : "s"}`
                 : formatDateTime(event.scheduled_at)}
               {event.host_name && ` · hosted by ${event.host_name}`}
             </p>
           </div>
-          <Chip className={isOpen ? "" : "bg-dolch-border"}>
+          <Chip className={isOpen ? "" : "bg-line"}>
             {isDatePolling ? "Picking a date" : isOpen ? "Open" : "Closed"}
           </Chip>
         </div>
       </header>
 
+      {/*
+        Share sits directly under the header, not at the foot of the page.
+        Inviting people is the whole reason a Jio exists, and buried at the
+        bottom of a long vote list it was effectively invisible.
+      */}
+      {isOpen && event.invite_token && (
+        <ShareLink
+          url={eventInviteUrl(event.invite_token)}
+          label="Share this Jio"
+          shareText={`${event.title} — come vote on where we eat.`}
+        />
+      )}
+
       {justConfirmedDate && (
-        <Card className="border-dolch-success/40 bg-green-50/60 animate-fade-in">
+        <Card className="border-sage/40 bg-sage-tint/70 animate-fade-in">
           <p className="text-sm font-medium">
             Confirmed for {formatDate(justConfirmedDate)}!
           </p>
@@ -256,7 +271,7 @@ export default function EventDetailPage({
       )}
 
       {!isOpen && (
-        <Card className="border-dolch-success/40 bg-green-50/60">
+        <Card className="border-sage/40 bg-sage-tint/70">
           {event.winner_place_name ? (
             <p className="text-sm">
               <span className="font-medium">Decided:</span>{" "}
@@ -276,7 +291,7 @@ export default function EventDetailPage({
       {isOpen && isDatePolling && (
         <Card className="space-y-3">
           <SectionHeading>When works for you?</SectionHeading>
-          <p className="text-dolch-muted text-xs">
+          <p className="text-stone text-xs">
             Mark every date you&apos;re free.{" "}
             {viewer.isHost && "You'll confirm one once enough people have answered."}
           </p>
@@ -296,19 +311,19 @@ export default function EventDetailPage({
                     className={
                       "flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-2 text-left text-sm transition-colors " +
                       (free
-                        ? "border-dolch-accent bg-dolch-accent/10"
-                        : "border-dolch-border bg-dolch-surface/60 hover:border-dolch-accent/40")
+                        ? "border-ember bg-ember/10"
+                        : "border-line bg-cream/60 hover:border-ember/40")
                     }
                   >
                     <span>
                       {formatDate(candidate.date)}
                       {isLeading && (
-                        <span className="text-dolch-accent ml-1.5 text-xs font-medium">
+                        <span className="text-ember ml-1.5 text-xs font-medium">
                           Leading
                         </span>
                       )}
                     </span>
-                    <span className="text-dolch-muted text-xs tabular-nums">
+                    <span className="text-stone text-xs tabular-nums">
                       {free ? "You're free ✓" : "Mark free"} · {count}{" "}
                       {count === 1 ? "person" : "people"}
                     </span>
@@ -338,8 +353,8 @@ export default function EventDetailPage({
           )}
 
           {viewer.isHost && (
-            <div className="border-dolch-border space-y-2 border-t pt-3">
-              <p className="text-dolch-muted text-xs">
+            <div className="border-line space-y-2 border-t pt-3">
+              <p className="text-stone text-xs">
                 Confirm a date — any candidate, not just the leader.
               </p>
               <div className="flex flex-wrap gap-1.5">
@@ -399,7 +414,7 @@ export default function EventDetailPage({
                     {rsvp.display_name}
                   </span>
                 ))}
-              <span className="text-dolch-muted text-xs">
+              <span className="text-stone text-xs">
                 {event.going_count ?? 0} going
               </span>
             </div>
@@ -413,7 +428,7 @@ export default function EventDetailPage({
         <SectionHeading>
           {isOpen ? "Standing" : "Final count"}
         </SectionHeading>
-        <p className="text-dolch-muted mb-3 text-xs">
+        <p className="text-stone mb-3 text-xs">
           {voterCount === 0
             ? "Nobody has voted yet."
             : `${voterCount} ballot${voterCount === 1 ? "" : "s"} in. Points come from everyone's rankings, not just first choices.`}
@@ -427,30 +442,30 @@ export default function EventDetailPage({
               <li key={option.place_id} className="text-sm">
                 <div className="flex items-baseline justify-between gap-2">
                   <span
-                    className={isWinner ? "text-dolch-success font-medium" : ""}
+                    className={isWinner ? "text-sage font-medium" : ""}
                   >
                     {option.place?.name ?? "Unknown place"}
                     {isWinner && " ✓"}
                     {option.is_suggested && (
-                      <span className="bg-dolch-accent/15 text-dolch-accent ml-1.5 rounded-full px-1.5 py-0.5 text-[10px] font-medium">
+                      <span className="bg-ember/15 text-ember ml-1.5 rounded-full px-1.5 py-0.5 text-[10px] font-medium">
                         Suggested
                       </span>
                     )}
                   </span>
-                  <span className="text-dolch-muted shrink-0 text-xs tabular-nums">
+                  <span className="text-stone shrink-0 text-xs tabular-nums">
                     {points} pt{points === 1 ? "" : "s"}
                   </span>
                 </div>
-                <div className="bg-dolch-bg mt-1 h-2 overflow-hidden rounded-full">
+                <div className="bg-paper mt-1 h-2 overflow-hidden rounded-full">
                   <div
                     className={
-                      isWinner ? "bg-dolch-success h-full" : "bg-dolch-accent h-full"
+                      isWinner ? "bg-sage h-full" : "bg-ember h-full"
                     }
                     style={{ width: `${(points / maxPoints) * 100}%` }}
                   />
                 </div>
                 {option.added_by_name && (
-                  <p className="text-dolch-muted mt-0.5 text-[11px]">
+                  <p className="text-stone mt-0.5 text-[11px]">
                     added by {option.added_by_name}
                     {typeof option.place?.walk_minutes === "number" &&
                       ` · ${option.place.walk_minutes} min walk`}
@@ -467,7 +482,7 @@ export default function EventDetailPage({
       {isOpen && !isDatePolling && orderedBallot.length > 0 && (
         <Card>
           <SectionHeading>Your ranking</SectionHeading>
-          <p className="text-dolch-muted mb-3 text-xs">
+          <p className="text-stone mb-3 text-xs">
             Order them best first. You do not have to rank all of them.
           </p>
 
@@ -477,9 +492,9 @@ export default function EventDetailPage({
               return (
                 <li
                   key={placeId}
-                  className="border-dolch-border bg-dolch-bg flex items-center gap-2 rounded-lg border px-3 py-2"
+                  className="border-line bg-paper flex items-center gap-2 rounded-lg border px-3 py-2"
                 >
-                  <span className="text-dolch-muted w-5 shrink-0 text-xs tabular-nums">
+                  <span className="text-stone w-5 shrink-0 text-xs tabular-nums">
                     {index + 1}
                   </span>
                   <span className="min-w-0 flex-1 truncate text-sm">
@@ -491,7 +506,7 @@ export default function EventDetailPage({
                       onClick={() => move(index, -1)}
                       disabled={index === 0}
                       aria-label="Move up"
-                      className="text-dolch-muted hover:text-dolch-text px-1.5 disabled:opacity-30"
+                      className="text-stone hover:text-ink px-1.5 disabled:opacity-30"
                     >
                       ↑
                     </button>
@@ -500,7 +515,7 @@ export default function EventDetailPage({
                       onClick={() => move(index, 1)}
                       disabled={index === orderedBallot.length - 1}
                       aria-label="Move down"
-                      className="text-dolch-muted hover:text-dolch-text px-1.5 disabled:opacity-30"
+                      className="text-stone hover:text-ink px-1.5 disabled:opacity-30"
                     >
                       ↓
                     </button>
@@ -535,7 +550,7 @@ export default function EventDetailPage({
                   : "Can't decide? Suggest 3"}
             </Button>
             {suggestedThisSession.length > 0 && (
-              <p className="text-dolch-muted mt-1.5 text-xs">
+              <p className="text-stone mt-1.5 text-xs">
                 Re-rolling swaps out whatever nobody&apos;s voted on yet —
                 anything with a vote already stays put.
               </p>
@@ -557,10 +572,10 @@ export default function EventDetailPage({
                     type="button"
                     onClick={() => addOption(place.id)}
                     disabled={busy}
-                    className="hover:bg-dolch-bg flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-left text-sm"
+                    className="hover:bg-paper flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-left text-sm"
                   >
                     <span className="truncate">{place.name}</span>
-                    <span className="text-dolch-muted shrink-0 text-xs">
+                    <span className="text-stone shrink-0 text-xs">
                       {place.walk_minutes} min
                     </span>
                   </button>
@@ -574,7 +589,7 @@ export default function EventDetailPage({
             (o) => o.added_by === viewer.id || viewer.isHost
           ) && (
             <div className="mt-3">
-              <p className="text-dolch-muted mb-1.5 text-xs">Remove</p>
+              <p className="text-stone mb-1.5 text-xs">Remove</p>
               <div className="flex flex-wrap gap-1.5">
                 {event.options
                   .filter((o) => viewer.isHost || o.added_by === viewer.id)
@@ -584,7 +599,7 @@ export default function EventDetailPage({
                       type="button"
                       onClick={() => removeOption(option.place_id)}
                       disabled={busy}
-                      className="border-dolch-border text-dolch-muted rounded-full border px-2.5 py-1 text-xs hover:border-red-300 hover:text-red-700"
+                      className="border-line text-stone rounded-full border px-2.5 py-1 text-xs hover:border-ember hover:text-ember"
                     >
                       {option.place?.name} ×
                     </button>
@@ -599,7 +614,7 @@ export default function EventDetailPage({
       {viewer.isHost && isOpen && !isDatePolling && (
         <Card className="space-y-3">
           <SectionHeading>Close it</SectionHeading>
-          <p className="text-dolch-muted text-xs">
+          <p className="text-stone text-xs">
             Locks the vote and announces the winner. The Borda count decides
             unless you override it.
           </p>
@@ -620,7 +635,7 @@ export default function EventDetailPage({
 
           {showWheel && (
             <div className="pt-2">
-              <p className="text-dolch-muted mb-3 text-xs">
+              <p className="text-stone mb-3 text-xs">
                 When the vote is deadlocked or nobody cares enough to rank. The
                 spin picks and closes.
               </p>
@@ -634,15 +649,6 @@ export default function EventDetailPage({
         </Card>
       )}
 
-      {/* --- Share --- */}
-      {isOpen && (
-        <p className="text-dolch-muted text-xs">
-          Share this Jio:{" "}
-          <code className="bg-dolch-surface rounded px-1.5 py-0.5">
-            /e/{event.invite_token}
-          </code>
-        </p>
-      )}
     </div>
   );
 }

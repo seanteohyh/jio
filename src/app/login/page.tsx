@@ -4,6 +4,8 @@ import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button, Card, ErrorNote, Field, inputClass } from "@/components/ui";
 import { config } from "@/lib/config";
+import { DEFAULT_OFFICE } from "@/lib/constants";
+import JioLockup from "@/components/brand/JioLockup";
 
 /**
  * Sign in.
@@ -61,13 +63,29 @@ function NameForm({ next }: { next: string }) {
         />
       </Field>
 
+      {/*
+        The office used to be shown on /welcome, one screen later. It carries
+        no input — it is a locked label — so folding it in here costs nothing
+        and lets name-mode sign-in be the only screen a new user sees.
+      */}
+      <Field label="Office">
+        <input
+          value={DEFAULT_OFFICE.name}
+          disabled
+          className={`${inputClass} cursor-not-allowed opacity-70`}
+        />
+        <p className="text-stone mt-1 text-xs">
+          This pilot only supports one office for now.
+        </p>
+      </Field>
+
       {error && <ErrorNote>{error}</ErrorNote>}
 
       <Button type="submit" className="w-full" disabled={busy || !name.trim()}>
         {busy ? "One moment…" : "Start eating"}
       </Button>
 
-      <p className="text-dolch-muted text-xs">
+      <p className="text-stone text-xs">
         No password, no email. You stay signed in on this browser — use the same
         one and you keep your history.
       </p>
@@ -152,7 +170,7 @@ function EmailForm({ next }: { next: string }) {
         </Button>
 
         {!config.openSignup && (
-          <p className="text-dolch-muted text-xs">
+          <p className="text-stone text-xs">
             Sign-up is closed — only existing members can get in.
           </p>
         )}
@@ -162,8 +180,8 @@ function EmailForm({ next }: { next: string }) {
 
   return (
     <form onSubmit={verify} className="space-y-3">
-      <p className="text-dolch-muted text-sm">
-        Check <span className="text-dolch-text font-medium">{email}</span>. Tap
+      <p className="text-stone text-sm">
+        Check <span className="text-ink font-medium">{email}</span>. Tap
         the link, or type the 6-digit code here.
       </p>
 
@@ -201,7 +219,7 @@ function EmailForm({ next }: { next: string }) {
           setCode("");
           setError(null);
         }}
-        className="text-dolch-muted w-full text-center text-xs underline"
+        className="text-stone w-full text-center text-xs underline"
       >
         Use a different email
       </button>
@@ -218,11 +236,9 @@ function LoginBody() {
 
   return (
     <div className="mx-auto flex min-h-[80vh] max-w-sm flex-col justify-center">
-      <div className="mb-8 text-center">
-        <h1 className="text-dolch-accent text-4xl font-semibold tracking-tight">
-          {config.appName}
-        </h1>
-        <p className="text-dolch-muted mt-2 text-sm">
+      <div className="mb-8 flex flex-col items-center text-center">
+        <JioLockup size="lg" />
+        <p className="text-stone mt-3 text-sm">
           Find, decide on and share lunch near the office.
         </p>
       </div>
@@ -231,7 +247,7 @@ function LoginBody() {
         {urlError && <ErrorNote>{urlError}</ErrorNote>}
 
         {mode === "demo" && (
-          <p className="text-dolch-muted text-sm">
+          <p className="text-stone text-sm">
             Demo mode — there is no real sign-in. Put in a name and carry on.
           </p>
         )}
@@ -239,7 +255,7 @@ function LoginBody() {
         {mode === "email" ? <EmailForm next={next} /> : <NameForm next={next} />}
       </Card>
 
-      <p className="text-dolch-muted mt-6 text-center text-xs">
+      <p className="text-stone mt-6 text-center text-xs">
         Runs on free tiers. No tracking, no ads.
       </p>
     </div>

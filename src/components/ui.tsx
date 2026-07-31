@@ -21,7 +21,7 @@ export function Card({
   return (
     <Component
       className={cn(
-        "border-dolch-border bg-dolch-surface/70 rounded-xl border p-4",
+        "border-line bg-cream rounded-2xl border p-4 shadow-[var(--shadow-sm)]",
         className
       )}
     >
@@ -43,16 +43,16 @@ export function Button({
   return (
     <button
       className={cn(
-        "inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50",
-        size === "sm" ? "px-3 py-1.5 text-sm" : "px-4 py-2.5 text-sm",
-        variant === "primary" &&
-          "bg-dolch-accent text-white hover:bg-orange-600",
+        "inline-flex items-center justify-center gap-2 rounded-xl font-medium transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-50",
+        // 44px minimum touch target, per the accessibility rule in the brief.
+        size === "sm" ? "min-h-9 px-3 py-1.5 text-sm" : "min-h-11 px-4 py-2.5 text-sm",
+        variant === "primary" && "bg-ember hover:bg-ember-deep text-white shadow-[var(--shadow-sm)]",
         variant === "secondary" &&
-          "border-dolch-border bg-dolch-bg text-dolch-text hover:bg-dolch-surface border",
+          "border-line bg-paper text-ink hover:bg-cream border",
         variant === "ghost" &&
-          "text-dolch-muted hover:bg-dolch-surface hover:text-dolch-text",
+          "text-stone hover:bg-cream hover:text-ink",
         variant === "danger" &&
-          "border border-red-200 bg-red-50 text-red-700 hover:bg-red-100",
+          "border-ember-tint bg-ember-tint text-ember-tint-text hover:bg-ember-tint/70 border",
         className
       )}
       {...props}
@@ -77,13 +77,12 @@ export function LinkButton({
     <Link
       href={href}
       className={cn(
-        "inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors",
-        variant === "primary" &&
-          "bg-dolch-accent text-white hover:bg-orange-600",
+        "inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition-colors duration-150",
+        variant === "primary" && "bg-ember hover:bg-ember-deep text-white shadow-[var(--shadow-sm)]",
         variant === "secondary" &&
-          "border-dolch-border bg-dolch-bg text-dolch-text hover:bg-dolch-surface border",
+          "border-line bg-paper text-ink hover:bg-cream border",
         variant === "ghost" &&
-          "text-dolch-muted hover:bg-dolch-surface hover:text-dolch-text",
+          "text-stone hover:bg-cream hover:text-ink",
         className
       )}
     >
@@ -111,9 +110,9 @@ export function Chip({
       className={cn(
         "inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-xs transition-colors",
         active
-          ? "bg-dolch-accent text-white"
-          : "border-dolch-border bg-dolch-bg text-dolch-muted border",
-        onClick && !active && "hover:border-dolch-accent hover:text-dolch-text",
+          ? "bg-ember text-white"
+          : "border-line bg-paper text-stone border",
+        onClick && !active && "hover:border-ember hover:text-ink",
         className
       )}
     >
@@ -122,15 +121,53 @@ export function Chip({
   );
 }
 
+/**
+ * Tinted metadata pill.
+ *
+ * Cuisine, budget and walk-time each get a light fill and a deeper text from
+ * the same hue, which is what keeps them legible at 11-13px — a mid-tone
+ * chip with white text fails AA at this size, and grey-on-grey reads as
+ * disabled. Walk-time is the one place a cool tone is allowed, and only
+ * because it is wayfinding rather than brand.
+ */
+export function TintPill({
+  tone,
+  children,
+  title,
+  className,
+}: {
+  tone: "cuisine" | "budget" | "walk" | "delight";
+  children: React.ReactNode;
+  title?: string;
+  className?: string;
+}) {
+  const tones = {
+    cuisine: "bg-ember-tint text-ember-tint-text",
+    budget: "bg-sage-tint text-sage-tint-text",
+    walk: "bg-slate-tint text-slate-tint-text",
+    delight: "bg-amber-tint text-amber-tint-text",
+  } as const;
+
+  return (
+    <span
+      title={title}
+      className={cn(
+        "inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium",
+        tones[tone],
+        className
+      )}
+    >
+      {children}
+    </span>
+  );
+}
+
 export function BudgetBadge({ tier }: { tier: number }) {
   const entry = BUDGET_TIERS.find((t) => t.tier === tier) ?? BUDGET_TIERS[1];
   return (
-    <span
-      className="text-dolch-muted font-mono text-xs"
-      title={entry.description}
-    >
-      {entry.label}
-    </span>
+    <TintPill tone="budget" title={entry.description}>
+      <span className="font-mono">{entry.label}</span>
+    </TintPill>
   );
 }
 
@@ -142,13 +179,13 @@ export function Stars({
   size?: "sm" | "md";
 }) {
   if (typeof rating !== "number") {
-    return <span className="text-dolch-muted text-xs">Not rated yet</span>;
+    return <span className="text-stone text-xs">Not rated yet</span>;
   }
   const rounded = Math.round(rating * 2) / 2;
   return (
     <span
       className={cn(
-        "text-dolch-warn inline-flex items-center gap-0.5",
+        "text-amber inline-flex items-center gap-0.5",
         size === "sm" ? "text-xs" : "text-sm"
       )}
       aria-label={`${rating.toFixed(1)} out of 5`}
@@ -158,7 +195,7 @@ export function Stars({
           {rounded >= n ? "★" : rounded >= n - 0.5 ? "⯨" : "☆"}
         </span>
       ))}
-      <span className="text-dolch-muted ml-1">{rating.toFixed(1)}</span>
+      <span className="text-stone ml-1">{rating.toFixed(1)}</span>
     </span>
   );
 }
@@ -199,10 +236,10 @@ export function EmptyState({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="border-dolch-border rounded-xl border border-dashed px-6 py-10 text-center">
-      <p className="text-dolch-text font-medium">{title}</p>
+    <div className="border-line rounded-xl border border-dashed px-6 py-10 text-center">
+      <p className="text-ink font-medium">{title}</p>
       {description && (
-        <p className="text-dolch-muted mx-auto mt-1 max-w-sm text-sm">
+        <p className="text-stone mx-auto mt-1 max-w-sm text-sm">
           {description}
         </p>
       )}
@@ -214,8 +251,8 @@ export function EmptyState({
 export function Spinner({ label = "Loading" }: { label?: string }) {
   return (
     <div className="flex items-center justify-center gap-2 py-10" role="status">
-      <span className="border-dolch-border border-t-dolch-accent h-5 w-5 animate-spin rounded-full border-2" />
-      <span className="text-dolch-muted text-sm">{label}…</span>
+      <span className="border-line border-t-ember h-5 w-5 animate-spin rounded-full border-2" />
+      <span className="text-stone text-sm">{label}…</span>
     </div>
   );
 }
@@ -224,7 +261,7 @@ export function ErrorNote({ children }: { children: React.ReactNode }) {
   return (
     <p
       role="alert"
-      className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
+      className="border-ember-tint bg-ember-tint text-ember-tint-text rounded-xl border px-3 py-2 text-sm"
     >
       {children}
     </p>
@@ -240,7 +277,7 @@ export function SectionHeading({
 }) {
   return (
     <div className="mb-3 flex items-baseline justify-between gap-3">
-      <h2 className="text-dolch-text text-base font-semibold">{children}</h2>
+      <h2 className="text-ink text-base font-semibold">{children}</h2>
       {action}
     </div>
   );
@@ -257,14 +294,14 @@ export function Field({
 }) {
   return (
     <label className="block">
-      <span className="text-dolch-text mb-1 block text-sm font-medium">
+      <span className="text-ink mb-1 block text-sm font-medium">
         {label}
       </span>
       {children}
-      {hint && <span className="text-dolch-muted mt-1 block text-xs">{hint}</span>}
+      {hint && <span className="text-stone mt-1 block text-xs">{hint}</span>}
     </label>
   );
 }
 
 export const inputClass =
-  "border-dolch-border bg-dolch-bg text-dolch-text placeholder:text-dolch-muted w-full rounded-lg border px-3 py-2 text-base outline-none focus:border-dolch-accent md:text-sm";
+  "border-line bg-frost text-ink placeholder:text-stone focus:border-ember focus:ring-ember/25 min-h-11 w-full rounded-xl border px-3 py-2 text-base outline-none focus:ring-2 md:text-sm";

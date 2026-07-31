@@ -58,14 +58,14 @@ function SuggestBody() {
     <div className="space-y-5">
       <header>
         <h1 className="text-2xl font-semibold tracking-tight">Suggest</h1>
-        <p className="text-dolch-muted mt-1 text-sm">
+        <p className="text-stone mt-1 text-sm">
           Ranked on what you rate highly, what fits your budget, how far it is
           and how recently you were there.
         </p>
       </header>
 
       {data?.weather?.rainLikely && (
-        <div className="border-dolch-border bg-dolch-surface flex items-start gap-2 rounded-xl border px-4 py-3 text-sm">
+        <div className="border-line bg-cream flex items-start gap-2 rounded-xl border px-4 py-3 text-sm">
           <span aria-hidden="true">🌧️</span>
           <p>
             <span className="font-medium">Rain expected</span> around{" "}
@@ -95,7 +95,7 @@ function SuggestBody() {
             <select
               value={kakiId}
               onChange={(e) => setKakiId(e.target.value)}
-              className="border-dolch-border bg-dolch-bg rounded-lg border px-2 py-1.5 text-sm"
+              className="border-line bg-paper rounded-lg border px-2 py-1.5 text-sm"
               aria-label="Which group"
             >
               <option value="">Pick a group…</option>
@@ -110,7 +110,7 @@ function SuggestBody() {
       )}
 
       {mode === "group" && (
-        <p className="text-dolch-muted text-xs">
+        <p className="text-stone text-xs">
           Group mode averages everyone&apos;s score. Anything a single member
           has blocked or dislikes is dropped entirely.
         </p>
@@ -119,7 +119,7 @@ function SuggestBody() {
       <FilterBar value={filters} onChange={setFilters} showSearch={false} />
 
       {data?.surprise && (
-        <Card className="border-dolch-accent/30 bg-dolch-accent-soft/20">
+        <Card className="border-ember/30 bg-ember-tint/20">
           <SectionHeading>Surprise me</SectionHeading>
           <PlaceCard
             place={data.surprise.place}
@@ -155,7 +155,7 @@ function SuggestBody() {
                 <button
                   type="button"
                   onClick={() => setShowWheel((s) => !s)}
-                  className="text-dolch-accent text-xs underline"
+                  className="text-ember text-xs underline"
                 >
                   {showWheel ? "Hide wheel" : "Can't decide?"}
                 </button>

@@ -23,16 +23,16 @@ export default function StreakBanner() {
   if (!streak || streak.days < 3) return null;
 
   return (
-    <div className="border-dolch-accent-soft bg-dolch-accent-soft/30 flex items-center justify-between gap-3 rounded-xl border px-4 py-3">
-      <p className="text-dolch-text text-sm">
+    <div className="border-ember-tint bg-ember-tint/30 flex items-center justify-between gap-3 rounded-xl border px-4 py-3">
+      <p className="text-ink text-sm">
         <span className="font-medium">
           {streak.days} days of {formatCuisine(streak.cuisine)}
         </span>
-        <span className="text-dolch-muted"> in a row.</span>
+        <span className="text-stone"> in a row.</span>
       </p>
       <Link
         href={`/suggest?exclude=${streak.cuisine}`}
-        className="text-dolch-accent shrink-0 text-sm font-medium underline"
+        className="text-ember shrink-0 text-sm font-medium underline"
       >
         Break it
       </Link>

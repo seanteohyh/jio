@@ -6,7 +6,7 @@ export default function NotFound() {
       <h1 className="text-2xl font-semibold tracking-tight">
         Nothing here
       </h1>
-      <p className="text-dolch-muted text-sm">
+      <p className="text-stone text-sm">
         That page does not exist. It may have been a link to something that has
         since been deleted.
       </p>

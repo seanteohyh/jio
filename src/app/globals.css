@@ -4,122 +4,71 @@
 @source "../";
 
 /**
- * Dolch Light.
+ * Jio brand system.
  *
- * A warm, low-contrast palette — off-white paper, terracotta accent, muted
- * everything else. Lunch apps that use saturated reds and yellows all end up
- * looking like a food delivery ad; this reads more like a notebook.
+ * Warm and unified: Ember leads, Amber accents sparingly, Sage means success,
+ * Slate is functional-only (maps, metrics, weather). Never blue as a primary
+ * or a background — cool tones suppress appetite, which is the one thing a
+ * lunch app cannot afford.
  *
- * Every default Tailwind ramp is remapped, so `bg-orange-100` and friends land
- * in the same world instead of punching a hole in it.
+ * This replaces the old "Dolch" tokens, which also remapped every default
+ * Tailwind ramp so `bg-orange-100` and friends landed somewhere warm. Those
+ * remaps are gone: every component now names a semantic token instead, so a
+ * stray `bg-red-500` will look wrong rather than being quietly absorbed. That
+ * is the point — the system should fail loudly when someone steps outside it.
  */
 @theme {
-  /* Semantic tokens */
-  --color-dolch-bg: #faf7f2;
-  --color-dolch-surface: #f5f0e8;
-  --color-dolch-text: #2b2b2b;
-  --color-dolch-muted: #6b665c;
-  --color-dolch-accent: #b4532f;
-  --color-dolch-accent-soft: #f4c9b0;
-  --color-dolch-border: #e8e1d6;
-  --color-dolch-success: #567b57;
-  --color-dolch-warn: #a87b2d;
+  /* ---- Brand palette ---- */
+  --color-ember: #c0392b;
+  --color-ember-deep: #a5311f; /* ~8% darker, for hover on primary */
+  --color-espresso: #3d342c;
+  --color-paper: #fbf6ef;
+  --color-cream: #f7e9de;
+  --color-frost: #fffdf9;
+  --color-ink: #2b2b2b;
+  --color-stone: #6b665c;
+  --color-sage: #567b57;
+  --color-amber: #d98a2b;
+  --color-slate: #547691;
+  --color-line: #ece5d8;
 
-  /* Warm stone, replacing the default cool grays */
-  --color-gray-50: #faf8f5;
-  --color-gray-100: #f3efe8;
-  --color-gray-200: #e8e1d6;
-  --color-gray-300: #d5ccbe;
-  --color-gray-400: #a9a094;
-  --color-gray-500: #857d72;
-  --color-gray-600: #6b665c;
-  --color-gray-700: #514d46;
-  --color-gray-800: #3a3733;
-  --color-gray-900: #2b2b2b;
+  /* ---- Pill tints: light fill + a deeper text that clears AA at 11-13px ---- */
+  --color-ember-tint: #f7e4e0;
+  --color-ember-tint-text: #9c2b1e;
+  --color-sage-tint: #e4eee5;
+  --color-sage-tint-text: #3f5d40;
+  --color-slate-tint: #e6edf3;
+  --color-slate-tint-text: #3d5a72;
+  --color-amber-tint: #f6e9d6;
+  --color-amber-tint-text: #8a5a16;
 
-  /* Terracotta */
-  --color-orange-50: #fdf5f1;
-  --color-orange-100: #f9e6dc;
-  --color-orange-200: #f4c9b0;
-  --color-orange-300: #e8a582;
-  --color-orange-400: #d47f56;
-  --color-orange-500: #b4532f;
-  --color-orange-600: #9c4728;
-  --color-orange-700: #7e3a21;
-  --color-orange-800: #632e1a;
-  --color-orange-900: #4a2214;
+  /* ---- Semantic aliases ---- */
+  --color-background: #fbf6ef;
+  --color-foreground: #2b2b2b;
+  --color-primary: #c0392b;
+  --color-muted: #6b665c;
+  --color-border: #ece5d8;
 
-  /* Muted amber */
-  --color-amber-50: #fbf7ee;
-  --color-amber-100: #f5ecd7;
-  --color-amber-200: #ead6ad;
-  --color-amber-300: #d9bb7e;
-  --color-amber-400: #c39c50;
-  --color-amber-500: #a87b2d;
-  --color-amber-600: #8f6726;
-  --color-amber-700: #73521f;
-  --color-amber-800: #5a4018;
-  --color-amber-900: #423011;
+  /* ---- Fonts ---- */
+  --font-sans: var(--font-geist-sans);
+  --font-display: var(--font-bricolage);
+  --font-mono: var(--font-geist-mono);
 
-  /* Sage */
-  --color-green-50: #f2f6f2;
-  --color-green-100: #e0eae0;
-  --color-green-200: #c3d5c4;
-  --color-green-300: #9fbaa0;
-  --color-green-400: #7a9b7c;
-  --color-green-500: #567b57;
-  --color-green-600: #4a6a4b;
-  --color-green-700: #3c563d;
-  --color-green-800: #2f432f;
-  --color-green-900: #233223;
+  /* ---- Radius ---- */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
 
-  /* Plum */
-  --color-purple-50: #f6f4f8;
-  --color-purple-100: #eae5ef;
-  --color-purple-200: #d3cadd;
-  --color-purple-300: #b4a7c4;
-  --color-purple-400: #9082a8;
-  --color-purple-500: #6b6091;
-  --color-purple-600: #5c527d;
-  --color-purple-700: #4a4265;
-  --color-purple-800: #3a344f;
-  --color-purple-900: #2b273a;
+  /* ---- Elevation: Espresso-tinted, never black. Black shadows on a cream
+         canvas read as grey smudge; tinting them keeps the warmth. ---- */
+  --shadow-sm:
+    0 1px 2px rgba(61, 52, 44, 0.05), 0 1px 3px rgba(61, 52, 44, 0.06);
+  --shadow-md: 0 4px 12px rgba(61, 52, 44, 0.08);
+  --shadow-lg: 0 10px 24px rgba(61, 52, 44, 0.1);
 
-  /* Slate blue */
-  --color-blue-50: #f2f6f7;
-  --color-blue-100: #e0eaed;
-  --color-blue-200: #c2d5db;
-  --color-blue-300: #9bb9c2;
-  --color-blue-400: #6d97a3;
-  --color-blue-500: #3f6b78;
-  --color-blue-600: #375d68;
-  --color-blue-700: #2c4b54;
-  --color-blue-800: #233a42;
-  --color-blue-900: #1a2b31;
-
-  /* Teal */
-  --color-teal-50: #f1f7f6;
-  --color-teal-100: #dfebe9;
-  --color-teal-200: #bfd7d3;
-  --color-teal-300: #97bbb5;
-  --color-teal-400: #6a9a92;
-  --color-teal-500: #427a70;
-  --color-teal-600: #396961;
-  --color-teal-700: #2e554e;
-  --color-teal-800: #24423d;
-  --color-teal-900: #1a312d;
-
-  /* Clay red */
-  --color-red-50: #fbf3f3;
-  --color-red-100: #f5e2e2;
-  --color-red-200: #e9c4c5;
-  --color-red-300: #d79fa1;
-  --color-red-400: #bf7377;
-  --color-red-500: #8c4a52;
-  --color-red-600: #7a4047;
-  --color-red-700: #62333a;
-  --color-red-800: #4d282d;
-  --color-red-900: #391e22;
+  /* ---- Motion ---- */
+  --ease-jio: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 html,
@@ -129,10 +78,21 @@ body {
 }
 
 body {
-  background: var(--color-dolch-bg);
-  color: var(--color-dolch-text);
+  background: var(--color-paper);
+  color: var(--color-ink);
   font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
   -webkit-font-smoothing: antialiased;
+}
+
+/* Headlines carry the brand; body stays on the neutral workhorse. Espresso
+   here, not ink, echoes the logo's centre disc without spending the colour
+   anywhere else. */
+h1,
+h2,
+.font-display {
+  font-family: var(--font-bricolage), var(--font-geist-sans), sans-serif;
+  letter-spacing: -0.01em;
+  color: var(--color-espresso);
 }
 
 * {
@@ -141,7 +101,7 @@ body {
 
 /* Visible keyboard focus. The default ring disappears against warm off-white. */
 :focus-visible {
-  outline: 2px solid var(--color-dolch-accent);
+  outline: 2px solid var(--color-ember);
   outline-offset: 2px;
   border-radius: 4px;
 }
@@ -151,23 +111,12 @@ body {
   height: 100%;
   width: 100%;
   z-index: 0;
-  background: var(--color-dolch-surface);
+  background: var(--color-cream);
   font-family: inherit;
 }
 
 .leaflet-popup-content-wrapper {
-  border-radius: 10px;
-}
-
-/* Respect a user's reduced-motion setting — the roulette wheel especially. */
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-  }
+  border-radius: 12px;
 }
 
 /* Utility: hide scrollbars on horizontal filter strips. */
@@ -204,6 +153,74 @@ body {
   }
 }
 
+/**
+ * The "decision resolved" moment.
+ *
+ * A vote closing is the emotional core of the product — the lunch conversation
+ * actually ending. A silent state change wastes it. Scale up from just under
+ * full size with a brief Ember glow, ~400ms.
+ */
+@keyframes jio-resolved {
+  0% {
+    transform: scale(0.96);
+    box-shadow: 0 0 0 0 rgba(192, 57, 43, 0.35);
+  }
+  60% {
+    transform: scale(1.01);
+    box-shadow: 0 0 0 10px rgba(192, 57, 43, 0);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(192, 57, 43, 0);
+  }
+}
+
+/* Skeletons, not spinners, for content that is about to arrive. */
+@keyframes jio-shimmer {
+  from {
+    background-position: -200% 0;
+  }
+  to {
+    background-position: 200% 0;
+  }
+}
+
 .animate-fade-in {
   animation: jio-fade-in 0.25s ease-out;
+}
+
+.animate-resolved {
+  animation: jio-resolved 400ms var(--ease-jio);
+}
+
+.skeleton {
+  background-image: linear-gradient(
+    90deg,
+    var(--color-cream) 25%,
+    color-mix(in srgb, var(--color-cream) 60%, white) 37%,
+    var(--color-cream) 63%
+  );
+  background-size: 200% 100%;
+  animation: jio-shimmer 1.4s linear infinite;
+  border-radius: var(--radius-md);
+}
+
+/**
+ * Reduced motion: drop transforms and looping animation, keep opacity fades.
+ * The roulette wheel and the resolved pulse are the ones that matter here.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .animate-resolved,
+  .skeleton {
+    animation: none !important;
+    transform: none !important;
+  }
 }

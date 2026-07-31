@@ -68,7 +68,7 @@ export default function FilterBar({
 
       <div className="flex flex-wrap items-center gap-4">
         <label className="flex items-center gap-2 text-xs">
-          <span className="text-dolch-muted">Up to</span>
+          <span className="text-stone">Up to</span>
           <select
             value={value.budgetMax}
             onChange={(e) =>
@@ -77,7 +77,7 @@ export default function FilterBar({
                 budgetMax: Number(e.target.value) as BudgetTier,
               })
             }
-            className="border-dolch-border bg-dolch-bg rounded-lg border px-2 py-1 text-xs"
+            className="border-line bg-paper rounded-lg border px-2 py-1 text-xs"
             aria-label="Maximum budget"
           >
             {BUDGET_TIERS.map((tier) => (
@@ -89,7 +89,7 @@ export default function FilterBar({
         </label>
 
         <label className="flex flex-1 items-center gap-2 text-xs">
-          <span className="text-dolch-muted whitespace-nowrap">
+          <span className="text-stone whitespace-nowrap">
             Within {value.maxWalk} min
           </span>
           <input
@@ -101,7 +101,7 @@ export default function FilterBar({
             onChange={(e) =>
               onChange({ ...value, maxWalk: Number(e.target.value) })
             }
-            className="accent-dolch-accent min-w-24 flex-1"
+            className="accent-ember min-w-24 flex-1"
             aria-label="Maximum walking minutes"
           />
         </label>
@@ -113,7 +113,7 @@ export default function FilterBar({
           <button
             type="button"
             onClick={() => onChange(DEFAULT_FILTERS)}
-            className="text-dolch-accent text-xs underline"
+            className="text-ember text-xs underline"
           >
             Clear
           </button>

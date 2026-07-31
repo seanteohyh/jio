@@ -61,7 +61,7 @@ export default function WelcomePage() {
         <h1 className="text-2xl font-semibold tracking-tight">
           Welcome to Jio.
         </h1>
-        <p className="text-dolch-muted mt-1 text-sm">
+        <p className="text-stone mt-1 text-sm">
           One quick thing before you get to lunch.
         </p>
       </header>
@@ -88,7 +88,7 @@ export default function WelcomePage() {
               disabled
               className={`${inputClass} cursor-not-allowed opacity-70`}
             />
-            <p className="text-dolch-muted mt-1 text-xs">
+            <p className="text-stone mt-1 text-xs">
               This pilot only supports one office for now.
             </p>
           </Field>

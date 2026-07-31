@@ -49,7 +49,7 @@ export default function KakisPage() {
       <header className="flex items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Kakis</h1>
-          <p className="text-dolch-muted mt-1 text-sm">
+          <p className="text-stone mt-1 text-sm">
             Your lunch groups. Members share stats and can join any Jio linked
             to the group.
           </p>
@@ -97,10 +97,10 @@ export default function KakisPage() {
             <li key={kaki.id}>
               <Link
                 href={`/kakis/${kaki.id}`}
-                className="border-dolch-border bg-dolch-surface/60 hover:border-dolch-accent/40 flex items-center justify-between gap-3 rounded-xl border p-4 transition-colors"
+                className="border-line bg-cream/60 hover:border-ember/40 flex items-center justify-between gap-3 rounded-xl border p-4 transition-colors"
               >
                 <span className="truncate font-medium">{kaki.name}</span>
-                <span className="text-dolch-muted shrink-0 text-xs">
+                <span className="text-stone shrink-0 text-xs">
                   {kaki.member_count} member
                   {kaki.member_count === 1 ? "" : "s"}
                 </span>

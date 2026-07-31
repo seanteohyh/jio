@@ -12,7 +12,7 @@ import type { Office, Place } from "@/types";
 const LeafletMap = dynamic(() => import("./LeafletMap"), {
   ssr: false,
   loading: () => (
-    <div className="bg-dolch-surface text-dolch-muted flex h-full w-full items-center justify-center rounded-xl text-sm">
+    <div className="bg-cream text-stone flex h-full w-full items-center justify-center rounded-xl text-sm">
       Loading map…
     </div>
   ),

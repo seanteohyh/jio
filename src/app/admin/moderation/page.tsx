@@ -166,7 +166,7 @@ export default function ModerationPage() {
     <div className="space-y-5">
       <header>
         <h1 className="text-2xl font-semibold tracking-tight">Moderation</h1>
-        <p className="text-dolch-muted mt-1 text-sm">
+        <p className="text-stone mt-1 text-sm">
           Every place, who added it, and the block/unblock history.
         </p>
       </header>
@@ -182,7 +182,7 @@ export default function ModerationPage() {
           <ul className="space-y-2">
             {Array.from(flagsByPlace.entries()).map(([placeId, flags]) => (
               <li key={placeId}>
-                <Card className="space-y-2 border-amber-300/50 bg-amber-50/50">
+                <Card className="space-y-2 border-amber/40 bg-amber-tint/60">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <Link
@@ -191,7 +191,7 @@ export default function ModerationPage() {
                       >
                         {flags[0].place_name ?? "A place"}
                       </Link>
-                      <ul className="text-dolch-muted mt-1 space-y-0.5 text-xs">
+                      <ul className="text-stone mt-1 space-y-0.5 text-xs">
                         {flags.map((f) => (
                           <li key={f.id}>
                             {FLAG_REASON_LABELS[f.reason]} —{" "}
@@ -309,7 +309,7 @@ export default function ModerationPage() {
                       >
                         {place.name}
                       </Link>
-                      <p className="text-dolch-muted text-xs">
+                      <p className="text-stone text-xs">
                         Added by{" "}
                         {place.created_by
                           ? (nameById.get(place.created_by) ??
@@ -330,7 +330,7 @@ export default function ModerationPage() {
                     )}
                   </div>
                   {place.status === "blocked" && lastAction?.action === "block" && (
-                    <p className="text-dolch-muted text-xs">
+                    <p className="text-stone text-xs">
                       Blocked by {lastAction.actor_display_name ?? "someone"}{" "}
                       {lastAction.created_at
                         ? `on ${formatDateTime(lastAction.created_at)}`
@@ -350,12 +350,12 @@ export default function ModerationPage() {
           <SectionHeading>Full activity log</SectionHeading>
           <ul className="space-y-1.5">
             {logData.log.map((entry) => (
-              <li key={entry.id} className="text-dolch-muted text-xs">
-                <span className="text-dolch-text font-medium">
+              <li key={entry.id} className="text-stone text-xs">
+                <span className="text-ink font-medium">
                   {entry.actor_display_name ?? "Someone"}
                 </span>{" "}
                 {entry.action === "block" ? "blocked" : "restored"}{" "}
-                <span className="text-dolch-text font-medium">
+                <span className="text-ink font-medium">
                   {entry.place_name ?? "a place"}
                 </span>
                 {entry.reason ? ` — "${entry.reason}"` : ""}

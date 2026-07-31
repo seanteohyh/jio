@@ -141,7 +141,7 @@ export default function ProfilePage() {
     <div className="space-y-6">
       <header>
         <h1 className="text-2xl font-semibold tracking-tight">You</h1>
-        <p className="text-dolch-muted mt-1 text-sm">
+        <p className="text-stone mt-1 text-sm">
           {/* Name-only users have no email, so fall back to who they said
               they are rather than showing an empty line. */}
           {me?.user?.email ?? me?.user?.display_name ?? "Signed in"}
@@ -183,13 +183,13 @@ export default function ProfilePage() {
 
       <Card className="space-y-4">
         <SectionHeading>Taste</SectionHeading>
-        <p className="text-dolch-muted text-xs">
+        <p className="text-stone text-xs">
           Jio learns from what you rate, but these give it a head start.
           Anything you dislike across the board gets excluded entirely.
         </p>
 
         <div>
-          <p className="text-dolch-text mb-2 text-sm font-medium">Like</p>
+          <p className="text-ink mb-2 text-sm font-medium">Like</p>
           <div className="flex flex-wrap gap-1.5">
             {CUISINES.map((c) => (
               <Chip
@@ -206,7 +206,7 @@ export default function ProfilePage() {
         </div>
 
         <div>
-          <p className="text-dolch-text mb-2 text-sm font-medium">
+          <p className="text-ink mb-2 text-sm font-medium">
             Rather not
           </p>
           <div className="flex flex-wrap gap-1.5">
@@ -261,7 +261,7 @@ export default function ProfilePage() {
           {busy ? "Saving…" : "Save"}
         </Button>
         {saved && (
-          <span className="text-dolch-success text-sm" role="status">
+          <span className="text-sage text-sm" role="status">
             Saved
           </span>
         )}
@@ -284,13 +284,13 @@ export default function ProfilePage() {
                 <li key={entry.place_id}>
                   <Link
                     href={`/places/${entry.place_id}`}
-                    className="border-dolch-border bg-dolch-surface/60 flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm"
+                    className="border-line bg-cream/60 flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm"
                   >
                     <span className="truncate">
                       {entry.place?.name ?? "A place"}
                     </span>
                     {typeof entry.place?.walk_minutes === "number" && (
-                      <span className="text-dolch-muted shrink-0 text-xs">
+                      <span className="text-stone shrink-0 text-xs">
                         {entry.place.walk_minutes} min
                       </span>
                     )}
@@ -307,7 +307,7 @@ export default function ProfilePage() {
           <div className="space-y-4">
             {months.slice(0, 6).map((month) => (
               <div key={month}>
-                <p className="text-dolch-muted mb-1.5 text-xs font-medium">
+                <p className="text-stone mb-1.5 text-xs font-medium">
                   {formatMonthKey(month)}
                 </p>
                 <ul className="space-y-1">
@@ -324,7 +324,7 @@ export default function ProfilePage() {
                       </Link>
                       <span className="flex shrink-0 items-center gap-2">
                         <Stars rating={visit.rating} />
-                        <span className="text-dolch-muted text-xs">
+                        <span className="text-stone text-xs">
                           {formatDate(visit.visited_at)}
                         </span>
                       </span>
@@ -348,14 +348,14 @@ export default function ProfilePage() {
       <Card className="space-y-3">
         <SectionHeading>Account</SectionHeading>
         {features.kakis && (
-          <Link href="/kakis" className="text-dolch-accent block text-sm underline">
+          <Link href="/kakis" className="text-ember block text-sm underline">
             Your kaki groups
           </Link>
         )}
         {me?.user?.is_admin && (
           <Link
             href="/admin/moderation"
-            className="text-dolch-accent block text-sm underline"
+            className="text-ember block text-sm underline"
           >
             Moderation
           </Link>
@@ -364,7 +364,7 @@ export default function ProfilePage() {
         {config.authAdapter === "name" && !config.isDemo && (
           <>
             {emailAttached ? (
-              <p className="text-dolch-success text-sm">
+              <p className="text-sage text-sm">
                 Email attached — you can sign back in from any device.
               </p>
             ) : me?.user && !me.user.email ? (
@@ -377,7 +377,7 @@ export default function ProfilePage() {
             ) : null}
           </>
         )}
-        <p className="text-dolch-muted text-xs">
+        <p className="text-stone text-xs">
           Push notifications are not built yet — see the README for what would
           be involved.
         </p>
@@ -389,7 +389,7 @@ export default function ProfilePage() {
             want, and that is the field at the top of this page. */}
         {config.authAdapter === "name" && !config.isDemo && (
           <>
-            <p className="text-dolch-muted text-xs">
+            <p className="text-stone text-xs">
               You are signed in on this browser only. Signing out gives you a
               blank slate — your ratings, wishlist and history stay with the old
               identity and there is no way back to them.

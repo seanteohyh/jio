@@ -100,10 +100,21 @@ export const nameAuth: AuthAdapter = {
       // The migration 011 trigger will have inserted a placeholder profile,
       // since an anonymous user has no email to derive a name from. Overwrite
       // it with what they actually typed.
+      //
+      // `onboarded_at` is stamped here, not left for /welcome. The onboarding
+      // screen exists to collect a display name from someone who arrived
+      // without one — which is the `email` mode story. In `name` mode the name
+      // was just typed on the previous screen, so leaving this null sent every
+      // new user to /welcome to confirm a value they had already given. One
+      // question, asked once.
       const { error: profileError } = await client
         .from("profiles")
         .upsert(
-          { user_id: data.user.id, display_name: name },
+          {
+            user_id: data.user.id,
+            display_name: name,
+            onboarded_at: new Date().toISOString(),
+          },
           { onConflict: "user_id" }
         );
 

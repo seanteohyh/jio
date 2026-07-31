@@ -80,7 +80,7 @@ export default function KakiDetailPage({
     <div className="space-y-5">
       <header>
         <h1 className="text-2xl font-semibold tracking-tight">{kaki.name}</h1>
-        <p className="text-dolch-muted mt-1 text-sm">
+        <p className="text-stone mt-1 text-sm">
           {kaki.members.length} member{kaki.members.length === 1 ? "" : "s"}
           {kaki.created_at && ` · since ${formatDate(kaki.created_at)}`}
         </p>
@@ -100,10 +100,10 @@ export default function KakiDetailPage({
               <span className="text-sm">
                 {member.display_name ?? `Teammate ${member.user_id.slice(0, 6)}`}
                 {member.user_id === kaki.created_by && (
-                  <span className="text-dolch-muted text-xs"> · created it</span>
+                  <span className="text-stone text-xs"> · created it</span>
                 )}
                 {member.user_id === viewer.id && (
-                  <span className="text-dolch-muted text-xs"> · you</span>
+                  <span className="text-stone text-xs"> · you</span>
                 )}
               </span>
             </li>
@@ -113,7 +113,7 @@ export default function KakiDetailPage({
 
       <Card>
         <SectionHeading>Invite link</SectionHeading>
-        <p className="text-dolch-muted mb-2 text-xs">
+        <p className="text-stone mb-2 text-xs">
           Anyone with this link can join. It is unguessable, but it is not a
           secret once you have shared it.
         </p>
@@ -121,7 +121,7 @@ export default function KakiDetailPage({
           <input
             readOnly
             value={inviteUrl}
-            className="border-dolch-border bg-dolch-bg text-dolch-muted flex-1 truncate rounded-lg border px-3 py-2 text-xs"
+            className="border-line bg-paper text-stone flex-1 truncate rounded-lg border px-3 py-2 text-xs"
             onFocus={(e) => e.currentTarget.select()}
           />
           <Button size="sm" onClick={copyInvite}>
@@ -132,7 +132,7 @@ export default function KakiDetailPage({
 
       <section>
         <SectionHeading>Group stats</SectionHeading>
-        <p className="text-dolch-muted mb-3 text-xs">
+        <p className="text-stone mb-3 text-xs">
           Built from visits members have shared. Private visits stay private, so
           these numbers are a floor, not a full picture.
         </p>

@@ -1,6 +1,7 @@
 "use client";
 
 import { formatCuisine, formatMonthKey } from "@/lib/utils";
+import { Star } from "lucide-react";
 import { Card, SectionHeading } from "./ui";
 import type { KakiMetrics, UserMetrics } from "@/types";
 
@@ -44,10 +45,10 @@ function CuisineBars({
       <ul className="space-y-2">
         {entries.map(([cuisine, share], index) => (
           <li key={cuisine} className="flex items-center gap-3 text-xs">
-            <span className="text-dolch-muted w-24 shrink-0 truncate">
+            <span className="text-stone w-24 shrink-0 truncate">
               {formatCuisine(cuisine)}
             </span>
-            <span className="bg-dolch-bg h-3 flex-1 overflow-hidden rounded-full">
+            <span className="bg-paper h-3 flex-1 overflow-hidden rounded-full">
               <span
                 className="block h-full rounded-full"
                 style={{
@@ -56,7 +57,7 @@ function CuisineBars({
                 }}
               />
             </span>
-            <span className="text-dolch-muted w-10 shrink-0 text-right tabular-nums">
+            <span className="text-stone w-10 shrink-0 text-right tabular-nums">
               {Math.round(share * 100)}%
             </span>
           </li>
@@ -76,12 +77,12 @@ function StatTile({
   sub?: string;
 }) {
   return (
-    <div className="border-dolch-border bg-dolch-surface/60 rounded-xl border p-3">
-      <p className="text-dolch-text text-xl font-semibold tabular-nums">
+    <div className="border-line bg-cream/60 rounded-xl border p-3">
+      <p className="text-ink text-xl font-semibold tabular-nums">
         {value}
       </p>
-      <p className="text-dolch-muted mt-0.5 text-xs">{label}</p>
-      {sub && <p className="text-dolch-muted mt-0.5 text-[11px]">{sub}</p>}
+      <p className="text-stone mt-0.5 text-xs">{label}</p>
+      {sub && <p className="text-stone mt-0.5 text-[11px]">{sub}</p>}
     </div>
   );
 }
@@ -89,7 +90,7 @@ function StatTile({
 export function UserMetricsCharts({ metrics }: { metrics: UserMetrics }) {
   if (metrics.totalVisits === 0) {
     return (
-      <p className="text-dolch-muted text-sm">
+      <p className="text-stone text-sm">
         Log a few visits and your stats will show up here.
       </p>
     );
@@ -113,7 +114,7 @@ export function UserMetricsCharts({ metrics }: { metrics: UserMetrics }) {
       </div>
 
       {metrics.mostActiveMonth && (
-        <p className="text-dolch-muted text-xs">
+        <p className="text-stone text-xs">
           Busiest month: {formatMonthKey(metrics.mostActiveMonth)}
         </p>
       )}
@@ -133,13 +134,14 @@ export function UserMetricsCharts({ metrics }: { metrics: UserMetrics }) {
                 className="flex items-center justify-between gap-3 text-sm"
               >
                 <span className="truncate">
-                  <span className="text-dolch-muted mr-2 text-xs">
+                  <span className="text-stone mr-2 text-xs">
                     {index + 1}
                   </span>
                   {fav.place_name}
                 </span>
-                <span className="text-dolch-muted shrink-0 text-xs tabular-nums">
-                  {fav.visit_count}× · {fav.avg_rating.toFixed(1)}★
+                <span className="text-stone shrink-0 text-xs tabular-nums">
+                  {fav.visit_count} visits · {fav.avg_rating.toFixed(1)}
+                  <Star className="ml-0.5 inline h-3 w-3 align-[-1px]" fill="currentColor" strokeWidth={1.5} aria-hidden="true" />
                 </span>
               </li>
             ))}
@@ -159,7 +161,7 @@ export function KakiMetricsCharts({
 }) {
   if (metrics.groupTotalVisits === 0) {
     return (
-      <p className="text-dolch-muted text-sm">
+      <p className="text-stone text-sm">
         Nobody in this group has logged a visit yet.
       </p>
     );
@@ -202,7 +204,7 @@ export function KakiMetricsCharts({
       {metrics.groupFavouritePlaces.length > 0 && (
         <Card>
           <SectionHeading>Group favourites</SectionHeading>
-          <p className="text-dolch-muted mb-2 text-xs">
+          <p className="text-stone mb-2 text-xs">
             Ranked by how many members have been, not by raw visit count.
           </p>
           <ol className="space-y-1.5">
@@ -212,13 +214,14 @@ export function KakiMetricsCharts({
                 className="flex items-center justify-between gap-3 text-sm"
               >
                 <span className="truncate">
-                  <span className="text-dolch-muted mr-2 text-xs">
+                  <span className="text-stone mr-2 text-xs">
                     {index + 1}
                   </span>
                   {fav.place_name}
                 </span>
-                <span className="text-dolch-muted shrink-0 text-xs tabular-nums">
-                  {fav.visit_count}× · {fav.avg_rating.toFixed(1)}★
+                <span className="text-stone shrink-0 text-xs tabular-nums">
+                  {fav.visit_count} visits · {fav.avg_rating.toFixed(1)}
+                  <Star className="ml-0.5 inline h-3 w-3 align-[-1px]" fill="currentColor" strokeWidth={1.5} aria-hidden="true" />
                 </span>
               </li>
             ))}

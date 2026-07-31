@@ -60,6 +60,29 @@ export interface Repo {
   // ---- Visits & reviews ----
   listVisits(placeId?: string, userId?: string): Promise<Visit[]>;
   createVisit(data: Omit<Visit, "id" | "created_at">): Promise<Visit>;
+
+  /**
+   * Amend one of your own visits.
+   *
+   * `userId` is passed and checked in the implementation as well as being
+   * enforced by the `visits_update` RLS policy. Belt and braces on purpose:
+   * demoRepo has no RLS to lean on, and a silent no-op in demo mode that
+   * becomes a refusal in production is a difference worth not having.
+   *
+   * Changing `rating` re-fires migration 021's trigger, so `places.avg_rating`
+   * and `visit_count` stay correct with nothing extra to call here.
+   */
+  updateVisit(
+    id: string,
+    userId: string,
+    patch: Partial<
+      Pick<Visit, "rating" | "best_dishes" | "notes" | "visited_at" | "is_public">
+    >
+  ): Promise<Visit>;
+
+  /** Remove one of your own visits. Same ownership rule as `updateVisit`. */
+  deleteVisit(id: string, userId: string): Promise<void>;
+
   listPublicReviews(placeId: string): Promise<Visit[]>;
 
   // ---- Walk cache & offices ----
@@ -286,6 +309,8 @@ export const REPO_METHODS = [
   "deletePlace",
   "listVisits",
   "createVisit",
+  "updateVisit",
+  "deleteVisit",
   "listPublicReviews",
   "getWalkCache",
   "upsertWalkCache",

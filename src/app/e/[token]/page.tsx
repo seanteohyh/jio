@@ -29,7 +29,7 @@ export default async function EventInvitePage({
     return (
       <div className="space-y-4 py-10 text-center">
         <h1 className="text-xl font-semibold">This invite is not valid</h1>
-        <p className="text-dolch-muted text-sm">
+        <p className="text-stone text-sm">
           The link may have been mistyped, or the Jio may have been cancelled.
         </p>
         <LinkButton href="/events">Your Jios</LinkButton>

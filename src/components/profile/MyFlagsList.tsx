@@ -42,16 +42,16 @@ export default function MyFlagsList() {
               <div className="min-w-0">
                 <Link
                   href={`/places/${flag.place_id}`}
-                  className="text-dolch-accent font-medium hover:underline"
+                  className="text-ember font-medium hover:underline"
                 >
                   {flag.place_name ?? "A place"}
                 </Link>
-                <p className="text-dolch-muted text-xs">
+                <p className="text-stone text-xs">
                   {FLAG_REASON_LABELS[flag.reason]}
                   {flag.created_at && ` · ${relativeDayLabel(flag.created_at)}`}
                 </p>
               </div>
-              <span className="text-dolch-muted shrink-0 text-xs">
+              <span className="text-stone shrink-0 text-xs">
                 {flag.status === "pending"
                   ? "Pending review"
                   : (RESOLUTION_LABELS[flag.resolution ?? ""] ?? "Reviewed")}

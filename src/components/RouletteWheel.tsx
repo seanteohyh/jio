@@ -85,7 +85,7 @@ export default function RouletteWheel({
         </div>
 
         <div
-          className="border-dolch-border h-56 w-56 rounded-full border-4 shadow-inner"
+          className="border-line h-56 w-56 rounded-full border-4 shadow-inner"
           style={{
             background: `conic-gradient(${gradient})`,
             transform: `rotate(${rotation}deg)`,
@@ -97,12 +97,12 @@ export default function RouletteWheel({
           aria-label={`Roulette wheel with ${places.length} options`}
         />
 
-        <div className="bg-dolch-bg border-dolch-border absolute top-1/2 left-1/2 flex h-16 w-16 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 text-center text-[10px] leading-tight font-medium">
+        <div className="bg-paper border-line absolute top-1/2 left-1/2 flex h-16 w-16 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 text-center text-[10px] leading-tight font-medium">
           {spinning ? "…" : winner ? "🎉" : "Spin"}
         </div>
       </div>
 
-      <ol className="text-dolch-muted grid w-full grid-cols-2 gap-x-3 gap-y-1 text-xs">
+      <ol className="text-stone grid w-full grid-cols-2 gap-x-3 gap-y-1 text-xs">
         {places.map((place, index) => (
           <li key={place.id} className="flex items-center gap-1.5 truncate">
             <span
@@ -120,7 +120,7 @@ export default function RouletteWheel({
       </Button>
 
       {winner && !spinning && (
-        <p aria-live="polite" className="text-dolch-text text-sm font-medium">
+        <p aria-live="polite" className="text-ink text-sm font-medium">
           {winner.name}
         </p>
       )}

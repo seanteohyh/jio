@@ -537,6 +537,46 @@ export const supabaseRepo: Repo = {
     return row as Visit;
   },
 
+  async updateVisit(id, userId, patch) {
+    const client = await db();
+
+    // Only the fields a person is allowed to amend. Spreading `patch`
+    // straight in would let an "edit" reassign user_id or place_id — RLS
+    // would catch the first but not the second.
+    const fields: Record<string, unknown> = {};
+    if (patch.rating !== undefined) fields.rating = patch.rating;
+    if (patch.best_dishes !== undefined) fields.best_dishes = patch.best_dishes;
+    if (patch.notes !== undefined) fields.notes = patch.notes;
+    if (patch.visited_at !== undefined) fields.visited_at = patch.visited_at;
+    if (patch.is_public !== undefined) fields.is_public = patch.is_public;
+
+    const { data: row, error } = await client
+      .from("visits")
+      .update(fields)
+      .eq("id", id)
+      .eq("user_id", userId)
+      .select()
+      .single();
+
+    // The `visits_update` RLS policy already restricts this to your own rows;
+    // the explicit user_id filter is what turns "policy refused" into a plain
+    // no-rows result, which reads as a clean 404 rather than a database error.
+    if (error) fail("Could not update that visit", error);
+    if (!row) throw new Error("That visit is not yours to change");
+    return row as Visit;
+  },
+
+  async deleteVisit(id, userId) {
+    const client = await db();
+    const { error } = await client
+      .from("visits")
+      .delete()
+      .eq("id", id)
+      .eq("user_id", userId);
+
+    if (error) fail("Could not delete that visit", error);
+  },
+
   async listPublicReviews(placeId) {
     const client = await db();
     const { data, error } = await client

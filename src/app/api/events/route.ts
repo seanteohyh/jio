@@ -4,6 +4,7 @@ import { getRepoAsync } from "@/lib/data/repo";
 import { badRequest, errorResponse, json, readJson } from "@/lib/api";
 import { featureGate } from "@/lib/config";
 import { DEFAULT_OFFICE } from "@/lib/constants";
+import type { Repo } from "@/lib/data";
 
 export async function GET() {
   const blocked = featureGate("events");
@@ -24,13 +25,53 @@ interface CreateEventBody {
   scheduled_at?: string;
   office_id?: string;
   place_ids?: string[];
+  /** Display provenance — "Jio with the lunch kakis". */
   kaki_id?: string | null;
+  /** Groups whose members should be invited. See `expandInvitees`. */
+  kaki_ids?: string[];
   invitee_ids?: string[];
   /** Presence of this field (2+ entries) is what makes this a Flexi Jio. */
   candidate_dates?: string[];
 }
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Turn the picker's selection into a flat invitee list.
+ *
+ * A chosen group is **snapshotted** — its members become individual invitees
+ * right now, rather than being resolved from live membership later. Migration
+ * 019 settled this for lobangs and the same reasoning applies: if membership
+ * were read at read-time, someone joining the group next week would silently
+ * become a person who "was invited" to last week's lunch, and someone leaving
+ * would vanish from it.
+ *
+ * The group id is *also* kept on the event (`kaki_id`) so the Jio can still say
+ * who it was with. Both, not either.
+ *
+ * Deliberately server-side: the client has no business deciding who counts as a
+ * member, and `getKaki` is already subject to the same RLS as everything else.
+ * Overlaps are deduped silently — picking a group and then someone already in
+ * it is a normal thing to do, not an error. The host is dropped because they
+ * are the host.
+ */
+async function expandInvitees(
+  repo: Repo,
+  hostId: string,
+  explicit: string[],
+  kakiIds: string[]
+): Promise<string[]> {
+  const ids = new Set(explicit);
+
+  for (const kakiId of kakiIds) {
+    const kaki = await repo.getKaki(kakiId);
+    if (!kaki) continue;
+    for (const member of kaki.members) ids.add(member.user_id);
+  }
+
+  ids.delete(hostId);
+  return [...ids];
+}
 
 export async function POST(request: NextRequest) {
   const blocked = featureGate("events");
@@ -44,6 +85,15 @@ export async function POST(request: NextRequest) {
     if (!body) return badRequest("Expected a JSON body");
     const title = body.title?.trim() || "Lunch";
 
+    const kakiIds = body.kaki_ids ?? (body.kaki_id ? [body.kaki_id] : []);
+    const invitees = await expandInvitees(
+      repo,
+      user.id,
+      body.invitee_ids ?? [],
+      kakiIds
+    );
+    const kakiId = body.kaki_id ?? kakiIds[0] ?? null;
+
     if (body.candidate_dates) {
       const dates = body.candidate_dates.filter((d) => DATE_RE.test(d));
       if (dates.length < 2) {
@@ -55,8 +105,8 @@ export async function POST(request: NextRequest) {
         title,
         body.office_id ?? DEFAULT_OFFICE.id,
         dates,
-        body.kaki_id ?? null,
-        body.invitee_ids ?? []
+        kakiId,
+        invitees
       );
       return json({ event }, 201);
     }
@@ -75,8 +125,8 @@ export async function POST(request: NextRequest) {
       when.toISOString(),
       body.office_id ?? DEFAULT_OFFICE.id,
       body.place_ids ?? [],
-      body.kaki_id ?? null,
-      body.invitee_ids ?? []
+      kakiId,
+      invitees
     );
 
     return json({ event }, 201);
