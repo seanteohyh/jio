@@ -37,7 +37,8 @@ When you are ready to make it real, see [Going live](#going-live).
 | | |
 |---|---|
 | **Suggest** | Ranks places on what you rate highly, what fits your budget, how far it is, and how recently you were there. Every suggestion says *why* it is there. |
-| **Jios** | Create a lunch outing, everyone ranks the options, a Borda count decides. RSVP, live vote updates, and a roulette wheel for when the group genuinely cannot choose. |
+| **Jios** | Create a lunch outing, everyone ranks the options, a Borda count decides. RSVP, live vote updates, a roulette wheel for when the group genuinely cannot choose, and a month calendar with Hosting / Invited / Past filters for browsing. Anyone can edit a place, any signed-in user may edit any place's details, and the host can cancel a Jio outright — it stays visible, marked cancelled, rather than vanishing. |
+| **Vote on a place that isn't listed yet** | Typing a name the search doesn't find logs it as a vote option immediately, no place record required. A non-blocking prompt afterward offers to add it to the pool; declining leaves it exactly as a text-only choice, permanently. |
 | **Kakis** | Lunch groups with a shareable invite link and shared stats — group favourites, who eats out most, who is most adventurous. |
 | **Places** | Searchable list with cuisine, budget and walk-time filters. Add places by hand, import candidate names from a food blog, or let the daily cron find them on OpenStreetMap. |
 | **Map** | Leaflet map of everything in walking distance, with real walking routes when OneMap is configured. |
@@ -45,6 +46,9 @@ When you are ready to make it real, see [Going live](#going-live).
 | **Saved places** | Bookmark anywhere from any list. `/places` has an All / Saved split, and saving nudges a place up your own suggestions. |
 | **Weather** | Checks the NEA two-hour forecast. When rain is likely, the walk penalty doubles and closer places quietly rise. |
 | **Metrics** | What you actually eat versus what you think you eat, plus a nudge when you have had the same cuisine three days running. |
+| **Home** | A quick-action dashboard, not a second Jios list: today's Jio becomes the headline when there is one, otherwise a single next-Jio card; a Mon–Fri status strip; "Same as last time?" one-tap repeat of your last hosted Jio. |
+| **Recurring Jios** | A standing weekly Jio — same place every time (auto-confirmed, no vote needed) or a vote over the same option pool each week. Generates its next occurrence lazily, a few days ahead, when the host loads Home or Jios; invitees are expanded fresh from current kaki membership every time, not frozen at series creation. |
+| **Admin** | Moderation (reports, block/unblock) and office management, both reachable from "You" — no dedicated nav icon, since admins are the one group that needs it least often. |
 
 ---
 
@@ -225,7 +229,7 @@ Roughly 30 minutes end to end. Everything below stays on a free tier.
    `service_role` key. The last one is a secret; it bypasses all access
    control.
 3. **SQL Editor** — run every file in `supabase/migrations/` in numeric order,
-   001 through 026. They are idempotent, so re-running is harmless.
+   001 through 031. They are idempotent, so re-running is harmless.
 4. **Authentication → Providers → Anonymous sign-ins** — turn this on. It is
    what makes name-only sign-in work.
 5. **Authentication → URL Configuration** — set the Site URL to your deployed
@@ -390,12 +394,62 @@ any signed-in user with no reason required — that's crowd-confirmation of
 data quality, not moderation of a place the team has actually been relying
 on, so it deliberately doesn't share block/unblock's admin-or-creator gate.
 
+**Any signed-in user may edit any place — the grant is derived, not
+hand-listed.** Migration 027's column-level `GRANT UPDATE` on `places` is
+built from `information_schema` at migration time (everything except a
+fixed protected list — `status`, the trigger-maintained rating/flag
+columns, provenance) rather than naming the editable columns by hand. The
+earlier hand-written version is what caused a real "permission denied"
+error in production: it never grew when the edit form started writing
+columns it didn't cover. Deriving it means a future column needs no
+migration here at all unless it's meant to be protected.
+
+**A vote option with no place record is still just an id — not a schema
+fork.** `event_votes.place_id` has no foreign key to `places`, so a
+free-text option (§8 of the working log) gets a generated id instead of a
+real place's, and every tally/winner code path stays unchanged. Upgrading
+it to a real place later goes through `attach_place_to_option`, a
+`SECURITY DEFINER` function gated to the option's own adder or the Jio's
+host — moving votes already cast for the draft along with it, so voting
+for something before it becomes a real place doesn't discard those votes
+the moment it does.
+
+**Cancelling a Jio goes through a dedicated function, same shape as
+block/unblock.** `cancel_event` (migration 030) is host-only and only from
+`open` — not a reuse of `closed`, since a host calling a Jio off on purpose
+needs to read differently from one that simply ended without a decision.
+`lunch_events` has no column-level grant restriction the way `places` does
+(`closeEvent` still does a plain client update, gated only by the
+host-scoped RLS policy), so this is deliberately the one column write on
+that table that goes through a function rather than reworking the whole
+table's grant model for one new transition.
+
+**The invite picker is scoped to the caller's own office.** `/api/users`
+resolves the caller's `user_prefs.default_office_id` (falling back to the
+default office) and both filters and scopes server-side in `listAllUsers()`
+itself, rather than fetching everyone and narrowing in the route or the
+browser. Office is a hard boundary for discovery — see
+`docs/user-discovery.md` §6 — worth treating as a defect fixed on its own
+merits under PDPA, independent of how large the team gets.
+
+**A recurring series only ever writes on its own host's behalf.** Unlike
+`cancel_event` or `attach_place_to_option`, generating an occurrence
+(`generateDueOccurrences`, migration 031) is a plain client write rather
+than a `SECURITY DEFINER` function — deliberately, since it's triggered by
+loading Home or the Jios list, and `recurring_series`/`lunch_events` both
+already require `host_id = auth.uid()` to insert. The trade-off this
+accepts, stated plainly: only the host's own visit generates their
+series' next occurrence. A kaki member or invitee opening the app first
+does not trigger it on the host's behalf — the same one-cron-a-day
+constraint that shaped the discovery cron (see Free-tier realities) is
+what kept this lazy rather than reaching for a service-role write path.
+
 ---
 
 ## Tests
 
 ```bash
-npm test          # 261 tests across 18 files
+npm test          # 299 tests across 23 files
 npm run typecheck
 npm run lint
 ```
@@ -420,6 +474,11 @@ npm run lint
 | `flexiJio.test.ts` | Availability voting and host confirmation |
 | `suggestCommittee.test.ts` | The three-pick suggestion and re-roll rules |
 | `onboarding.test.ts` | The one-time welcome gate |
+| `placeEditing.test.ts` | Any signed-in user can edit a place; `status` cannot move through a plain edit |
+| `placelessVoteOptions.test.ts` | A free-text vote option with no place record: tallying, winning, and attaching a real place afterward without stranding existing votes |
+| `cancelEvent.test.ts` | Host-only cancellation, only from `open`, stays findable afterward |
+| `userDiscovery.test.ts` | Server-side name filtering and office scoping for the invite picker |
+| `recurringSeries.test.ts` | Recurring-series date math (lookahead window, no double-generation), fixed vs. voted occurrences, fresh kaki-membership expansion per occurrence |
 
 **`npm test` does not typecheck.** Vitest transforms TypeScript with esbuild,
 which strips annotations without checking them, and the suite is all pure
@@ -433,23 +492,15 @@ the other half of the gate.
 
 In rough priority order.
 
-1. **Office management UI.** The schema supports unlimited offices and the
-   switcher works, but adding one means a small form or a SQL insert — now
-   admin-gated (same permission as place moderation) at the API and RLS
-   level, but there's still no form, just the API. An admin view would be
-   better.
-2. **Push notifications.** Migration 025 created the tables; nothing else is
+1. **Push notifications.** Migration 025 created the tables; nothing else is
    wired. Still needs the `web-push` dependency, VAPID keys, a subscribe
    endpoint, service-worker `push`/`notificationclick` handlers, and the send
    calls. Note that iOS only delivers Web Push to a PWA installed to the home
-   screen — a normal Safari tab cannot even ask for permission.
-4. **Custom domain.** Currently `*.vercel.app`. Point DNS, add the domain in
+   screen — a normal Safari tab cannot even ask for permission. The
+   strongest single case for it: a cancelled Jio is only discoverable by
+   opening the app, since nothing tells invitees it happened.
+2. **Custom domain.** Currently `*.vercel.app`. Point DNS, add the domain in
    Vercel, then update the Supabase Site URL and redirect URLs.
-5. **Pacing multi-office discovery.** The cron now loops every office rather
-   than just the first, but it fires each office's Overpass sweep one after
-   another with no batching or backoff. Fine for a handful of offices; a
-   real rate-limiting strategy is still an open question as that number
-   grows.
 
 ---
 

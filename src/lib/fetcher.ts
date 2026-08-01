@@ -25,7 +25,7 @@ export async function fetcher<T>(url: string): Promise<T> {
 /** POST/PUT/DELETE helper with the same error handling. */
 export async function mutateJson<T>(
   url: string,
-  method: "POST" | "PUT" | "DELETE",
+  method: "POST" | "PUT" | "PATCH" | "DELETE",
   body?: unknown
 ): Promise<T> {
   const response = await fetch(url, {

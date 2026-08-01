@@ -50,11 +50,10 @@ export async function GET(request: NextRequest) {
   }
 
   // One sweep per office, run one after another rather than in parallel —
-  // simplest way to avoid hammering Overpass with N simultaneous requests
-  // now that there can be more than one office. This is a starting point,
-  // not a considered rate-limiting strategy: as the number of offices grows,
-  // pacing (batching, delays, a slower cadence per office) is a real open
-  // question, deliberately not designed yet — see the change log.
+  // avoids hammering Overpass with N simultaneous requests. Two things were
+  // still missing as the number of offices grows (CHANGES_20260801.md §3d):
+  // a gap between sweeps, and a way to stop before this function's own
+  // timeout does it mid-office. Both below.
   const results: Array<{
     office: string;
     fetched: number;
@@ -63,7 +62,35 @@ export async function GET(request: NextRequest) {
     errors: string[];
   }> = [];
 
-  for (const office of targets) {
+  // Politeness delay between offices, not a real rate limiter — Overpass has
+  // no documented per-client quota to target, so this just spaces sweeps out
+  // rather than firing them back to back.
+  const PACING_DELAY_MS = 2000;
+  // `maxDuration` above is 60s; stop starting new offices once there isn't
+  // comfortably enough of that budget left for one more sweep plus its
+  // pacing delay, rather than letting Vercel kill the function mid-office
+  // and lose whatever that sweep had already found.
+  const TIME_BUDGET_MS = 50_000;
+  const startedAt = Date.now();
+  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  for (const [index, office] of targets.entries()) {
+    if (index > 0) {
+      if (Date.now() - startedAt > TIME_BUDGET_MS) {
+        results.push(
+          ...targets.slice(index).map((o) => ({
+            office: o.name,
+            fetched: 0,
+            new: 0,
+            skipped: 0,
+            errors: ["Skipped this run — out of time budget, picked up next run"],
+          }))
+        );
+        break;
+      }
+      await sleep(PACING_DELAY_MS);
+    }
+
     try {
       const { places: existing } = await repo.listPlaces({ status: "all" });
 

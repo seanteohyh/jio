@@ -132,6 +132,25 @@ export function relativeDayLabel(input: string | Date, now = new Date()): string
   return formatDate(d);
 }
 
+/**
+ * The next date on or after `today` that falls on `weekday`
+ * (0 = Sunday .. 6 = Saturday, matching `Date#getDay()`). Returns `today`
+ * itself when `today` already matches. Used by recurring series generation —
+ * see 031_recurring_series.sql.
+ */
+export function nextOccurrence(weekday: number, today: Date): Date {
+  const d = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const diff = (weekday - d.getDay() + 7) % 7;
+  d.setDate(d.getDate() + diff);
+  return d;
+}
+
+/** "YYYY-MM-DD" in local time, for comparing against a stored date column. */
+export function dateKey(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 /** Crypto-random URL-safe token for invite links. */
 export function generateToken(): string {
   const bytes = new Uint8Array(16);

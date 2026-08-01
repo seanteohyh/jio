@@ -9,7 +9,7 @@ import {
   EmptyState,
   ErrorNote,
   Field,
-  Spinner,
+  SkeletonRows,
   inputClass,
 } from "@/components/ui";
 import { fetcher, mutateJson } from "@/lib/fetcher";
@@ -81,7 +81,7 @@ export default function KakisPage() {
       )}
 
       {error && <ErrorNote>{error.message}</ErrorNote>}
-      {isLoading && <Spinner />}
+      {isLoading && <SkeletonRows />}
 
       {!isLoading && kakis.length === 0 && !creating && (
         <EmptyState

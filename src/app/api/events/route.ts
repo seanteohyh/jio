@@ -13,6 +13,10 @@ export async function GET() {
   try {
     const user = await requireUser();
     const repo = await getRepoAsync();
+    // Lazy generation: whoever hosts a recurring series triggers its next
+    // occurrence just by loading their own Jios list. See
+    // 031_recurring_series.sql for why this isn't cron-driven.
+    await repo.generateDueOccurrences(user.id);
     const events = await repo.listEvents(user.id);
     return json({ events });
   } catch (error) {

@@ -16,6 +16,7 @@ import type {
   PlacesPage,
   PlacesPagination,
   Profile,
+  RecurringSeries,
   RsvpResponse,
   ScoredPlace,
   TeamUser,
@@ -99,7 +100,19 @@ export interface Repo {
   getProfile(userId: string): Promise<Profile | null>;
   upsertProfile(userId: string, displayName: string): Promise<Profile>;
   getDisplayNames(userIds: string[]): Promise<Map<string, string>>;
-  listAllUsers(): Promise<TeamUser[]>;
+  /**
+   * Powers the invite picker. Filtering happens here, not in the route —
+   * see docs/user-discovery.md §4.1: a client-side or route-level filter
+   * over "every user" keeps working while quietly getting heavier as the
+   * team grows, with no point at which it obviously breaks.
+   *
+   * `officeId` scopes results to that office, resolved from the caller's
+   * own `user_prefs.default_office_id` (falling back to the default office)
+   * — the only per-user office reference the schema has today. Office is a
+   * hard boundary for discovery per §6 of that doc, so this is not optional
+   * when the offices feature is on.
+   */
+  listAllUsers(query?: string, officeId?: string): Promise<TeamUser[]>;
   /**
    * Completes the one-time /welcome screen: sets the display name and stamps
    * `onboarded_at`, atomically. Distinct from `upsertProfile` (used for a
@@ -171,6 +184,33 @@ export interface Repo {
     placeId: string,
     userId: string
   ): Promise<void>;
+  /**
+   * "Vote first, prompt after" (CHANGES_20260801.md §8) — for when the
+   * add-a-place search on an open vote comes up empty. Logs a votable
+   * option with no `places` row behind it; see the `place_id` doc comment
+   * on `EventOption` for how that stays compatible with plain ranked
+   * voting. Same authorization as `addOptionToEvent`.
+   */
+  addFreeTextOptionToEvent(
+    eventId: string,
+    label: string,
+    userId: string
+  ): Promise<EventOption>;
+  /**
+   * Upgrades a free-text option to a real place, after the non-blocking
+   * "add it to the pool?" prompt is accepted. Moves any votes already cast
+   * for the draft option along with it, so ranking it before it became a
+   * real place is not silently discarded. Only whoever added the option, or
+   * the host, may do this — same shape of gate as block/unblock in
+   * 017_admin_and_moderation.sql: a structural state change goes through a
+   * dedicated path, not a raw field write.
+   */
+  attachPlaceToOption(
+    eventId: string,
+    oldPlaceId: string,
+    newPlaceId: string,
+    userId: string
+  ): Promise<void>;
   removeOptionFromEvent(
     eventId: string,
     placeId: string,
@@ -207,6 +247,33 @@ export interface Repo {
     hostId: string,
     winnerPlaceId?: string | null
   ): Promise<EventDetail>;
+  /**
+   * Calls off an open Jio — a new terminal state, not a reuse of `closed`
+   * (CHANGES_20260801.md §9). Host only, and only from `open`; see
+   * 030_cancel_event.sql for why this goes through a dedicated function
+   * rather than a plain status write.
+   */
+  cancelEvent(eventId: string, hostId: string): Promise<EventDetail>;
+
+  // ---- Recurring series ("Recurring Jios", CHANGES_20260801.md §10) ----
+  createRecurringSeries(
+    data: Omit<
+      RecurringSeries,
+      "id" | "status" | "last_generated_date" | "created_at"
+    >
+  ): Promise<RecurringSeries>;
+  /** A host's own series — this is the surface for managing them. */
+  listRecurringSeries(hostId: string): Promise<RecurringSeries[]>;
+  cancelRecurringSeries(seriesId: string, hostId: string): Promise<void>;
+  /**
+   * Generates the next occurrence of each of `hostId`'s active series, if
+   * one falls due within the lookahead window — see 031_recurring_series.sql
+   * for why this is lazy (host-triggered, on page load) rather than cron- or
+   * SECURITY-DEFINER-driven. Never backfills more than one occurrence per
+   * series per call. Returns how many were generated, for callers that want
+   * to know whether to refresh anything.
+   */
+  generateDueOccurrences(hostId: string): Promise<number>;
 
   // ---- Wishlist ----
   listWishlist(userId: string): Promise<WishlistEntry[]>;
@@ -332,11 +399,18 @@ export const REPO_METHODS = [
   "confirmEventDate",
   "addInviteesToEvent",
   "addOptionToEvent",
+  "addFreeTextOptionToEvent",
+  "attachPlaceToOption",
   "removeOptionFromEvent",
   "suggestOptionsForEvent",
   "castBallot",
   "rsvp",
   "closeEvent",
+  "cancelEvent",
+  "createRecurringSeries",
+  "listRecurringSeries",
+  "cancelRecurringSeries",
+  "generateDueOccurrences",
   "listWishlist",
   "toggleWishlist",
   "createKaki",

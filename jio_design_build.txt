@@ -10,7 +10,7 @@
 ## 0. How to use this document
 
 - Apply these tokens, components, and rules to **every** screen and component. Do not invent new colors, fonts, or icon styles outside this spec.
-- **Fixed vocabulary — do not rename or reword:** `Jio`, `Jios`, `Kakis`, `Lobang`, `Suggest`, `Places`, `Map`, `Recos`, `Metrics`, `Profile`. UI labels, nav items, and microcopy must use only these terms.
+- **Fixed vocabulary — do not rename or reword:** `Jio`, `Jios`, `Kakis`, `Lobang`, `Suggest`, `Places`, `Map`, `Metrics`, `Profile`. UI labels, nav items, and microcopy must use only these terms. (`Recos` removed from this list 1 Aug 2026 — the feature was deleted in migration 018 and its scoring weight folded into Wishlist, so the term has nothing left to name.)
 - **Guiding design idea:** *"the lunch conversation, resolved."* The product arc — **invitation → together → decided** — should drive hierarchy, motion, and the signature "decision resolved" moment.
 - **Appetite-first:** the palette is deliberately warm. Never introduce blue/cool tones as primary or background colors; they suppress appetite and break the system.
 
@@ -222,14 +222,35 @@ Use **Lucide** (`lucide-react`, MIT, tree-shakeable, 1.5px default stroke) as th
 
 ### 5.3 Bottom-nav mapping
 
+**Corrected 1 Aug 2026** — this table predated the current nav and still listed
+`Suggest` as its own tab and `Profile` as the sixth icon. The table below
+matches what shipped.
+
 | Tab | Term | Lucide icon |
 |---|---|---|
 | Home | Home | `Home` |
-| Suggest | Suggest | `Sparkles` |
-| Jios | Jios | `Users` |
-| Map | Map | `MapPin` |
+| Jios | Jios | `CalendarDays` |
+| Kaki | Kaki | `Users` |
 | Places | Places | `UtensilsCrossed` |
-| Profile | Profile | `CircleUser` |
+| Map | Map | `MapPin` |
+| You | You | `CircleUser` |
+
+`Suggest` is no longer a nav tab — it's reached from a button on `Places`
+instead. The route stays live for old links and any installed PWA shortcuts;
+it just no longer earns a slot in a six-item bar sized for a mobile thumb.
+
+**Two deliberate deviations, recorded as decisions rather than drift:**
+
+- **Icon assignment.** This spec originally mapped `Jios` → `Users`. `Kaki`
+  needs its own slot too, and two people-shaped glyphs side by side at 20px
+  in a bottom bar are hard to tell apart — so `Jios` took `CalendarDays` (a
+  Jio is a scheduled outing) and `Users` went to `Kaki` (a Kaki is a group of
+  people). Swap the two back if the letter of this spec matters more than
+  the legibility problem it was solving.
+- **Label wording.** Shipped as `Kaki` and `You` rather than `Kakis` and
+  `Profile`. `§0`'s fixed vocabulary still lists `Kakis` and `Profile` as the
+  canonical terms for the feature and the concept — this is a nav-label-only
+  shortening, not a rename of the vocabulary itself.
 
 ### 5.4 Feature icons
 
@@ -404,5 +425,5 @@ Update `public/manifest.json`:
 - Don't recolor or over-stylize the logo; keep center Espresso, pebbles Ember.
 - Don't make the mark overtly floral/symmetric.
 - Don't use spinners where skeletons fit; don't show bare "No data."
-- Don't rename the fixed vocabulary (Jio, Jios, Kakis, Lobang, Suggest, Places, Map, Recos, Metrics, Profile).
+- Don't rename the fixed vocabulary (Jio, Jios, Kakis, Lobang, Suggest, Places, Map, Metrics, Profile).
 

@@ -10,6 +10,7 @@ import {
   EmptyState,
   ErrorNote,
   SectionHeading,
+  SkeletonRows,
   Spinner,
 } from "@/components/ui";
 import FilterBar, {
@@ -138,7 +139,7 @@ function SuggestBody() {
       )}
 
       {error && <ErrorNote>{error.message}</ErrorNote>}
-      {isLoading && <Spinner label="Working out where you should eat" />}
+      {isLoading && <SkeletonRows count={5} rowClassName="h-20 w-full" />}
 
       {!isLoading && suggestions.length === 0 && !error && (
         <EmptyState

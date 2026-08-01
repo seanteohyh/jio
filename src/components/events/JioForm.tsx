@@ -49,22 +49,28 @@ type Mode = "fixed" | "flexi";
 export default function JioForm({
   variant = "page",
   onCancel,
+  initialTitle,
+  initialPlaceIds,
+  initialInvite,
 }: {
   variant?: "page" | "inline";
   onCancel?: () => void;
+  /** "Same as last time?" — one-tap repeat, prefilled from a past Jio. */
+  initialTitle?: string;
+  initialPlaceIds?: string[];
+  initialInvite?: InviteSelection;
 }) {
   const router = useRouter();
 
   const [mode, setMode] = useState<Mode>("fixed");
-  const [title, setTitle] = useState("Lunch");
+  const [title, setTitle] = useState(initialTitle ?? "Lunch");
   const [when, setWhen] = useState(defaultDateTime());
   const [candidateDates, setCandidateDates] = useState<string[]>([]);
   const [newCandidateDate, setNewCandidateDate] = useState("");
-  const [selected, setSelected] = useState<string[]>([]);
-  const [invite, setInvite] = useState<InviteSelection>({
-    userIds: [],
-    kakiIds: [],
-  });
+  const [selected, setSelected] = useState<string[]>(initialPlaceIds ?? []);
+  const [invite, setInvite] = useState<InviteSelection>(
+    initialInvite ?? { userIds: [], kakiIds: [] }
+  );
   const [placeQuery, setPlaceQuery] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);

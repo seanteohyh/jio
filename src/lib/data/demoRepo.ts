@@ -1,8 +1,14 @@
-import { DEFAULT_OFFICE, DEMO_USER_ID } from "@/lib/constants";
 import {
+  DEFAULT_OFFICE,
+  DEMO_USER_ID,
+  RECURRING_LOOKAHEAD_DAYS,
+} from "@/lib/constants";
+import {
+  dateKey,
   estimateWalkMinutes,
   generateToken,
   haversine,
+  nextOccurrence,
   sortPlacesForList,
   uuid,
 } from "@/lib/utils";
@@ -51,6 +57,7 @@ import type {
   Place,
   PlaceFlag,
   Profile,
+  RecurringSeries,
   RsvpResponse,
   TeamUser,
   UserPrefs,
@@ -92,6 +99,7 @@ interface DemoStore {
   walkCache: WalkCacheEntry[];
   moderationLog: ModerationLogEntry[];
   placeFlags: PlaceFlag[];
+  recurringSeries: RecurringSeries[];
 }
 
 const globalStore = globalThis as typeof globalThis & {
@@ -120,6 +128,7 @@ function seed(): DemoStore {
     walkCache: [],
     moderationLog: [],
     placeFlags: [],
+    recurringSeries: [],
   };
 }
 
@@ -384,9 +393,18 @@ export const demoRepo: Repo = {
     const s = store();
     const index = s.places.findIndex((p) => p.id === id);
     if (index === -1) throw new Error("Place not found");
+    // Status moves only through block/unblock/review in live mode — the
+    // column grant in 027_place_editing.sql makes it unreachable through a
+    // plain update. A guarantee that holds in production but not in demo is
+    // worse than none, since demo is the mode people develop against, so
+    // strip it here too rather than trust every caller to leave it out.
+    // (office_id isn't a field on Place at all today, so there's nothing to
+    // strip for it yet — if a place ever becomes reassignable to a different
+    // office, extend this same guard.)
+    const { status: _status, ...safeData } = data;
     s.places[index] = {
       ...s.places[index],
-      ...data,
+      ...safeData,
       id,
       updated_at: new Date().toISOString(),
     };
@@ -566,17 +584,33 @@ export const demoRepo: Repo = {
     return map;
   },
 
-  async listAllUsers() {
+  async listAllUsers(query, officeId) {
+    const s = store();
     const ids = new Set<string>([
       DEMO_USER_ID,
       DEMO_TEAMMATE_A,
       DEMO_TEAMMATE_B,
-      ...store().profiles.map((p) => p.user_id),
+      ...s.profiles.map((p) => p.user_id),
     ]);
-    const users: TeamUser[] = Array.from(ids).map((id) => ({
+
+    let users: TeamUser[] = Array.from(ids).map((id) => ({
       user_id: id,
       display_name: displayNameFor(id),
     }));
+
+    if (officeId) {
+      users = users.filter((u) => {
+        const prefsOffice = s.prefs.find((p) => p.user_id === u.user_id)
+          ?.default_office_id;
+        return (prefsOffice ?? DEFAULT_OFFICE.id) === officeId;
+      });
+    }
+
+    const q = query?.trim().toLowerCase();
+    if (q) {
+      users = users.filter((u) => u.display_name.toLowerCase().includes(q));
+    }
+
     return users.sort((a, b) => a.display_name.localeCompare(b.display_name));
   },
 
@@ -705,6 +739,13 @@ export const demoRepo: Repo = {
       winner_place_name: event.winner_place_id
         ? s.places.find((p) => p.id === event.winner_place_id)?.name ?? null
         : null,
+      winner_label:
+        event.winner_place_id &&
+        !s.places.find((p) => p.id === event.winner_place_id)
+          ? (s.options.find(
+              (o) => o.event_id === event.id && o.place_id === event.winner_place_id
+            )?.label ?? null)
+          : null,
       options,
       votes: s.votes.filter((v) => v.event_id === event.id),
       rsvps,
@@ -750,6 +791,12 @@ export const demoRepo: Repo = {
         winner_place_name: e.winner_place_id
           ? s.places.find((p) => p.id === e.winner_place_id)?.name ?? null
           : null,
+        winner_label:
+          e.winner_place_id && !s.places.find((p) => p.id === e.winner_place_id)
+            ? (s.options.find(
+                (o) => o.event_id === e.id && o.place_id === e.winner_place_id
+              )?.label ?? null)
+            : null,
         has_marked_availability: s.dateVotes.some(
           (v) => v.event_id === e.id && v.user_id === userId
         ),
@@ -797,6 +844,86 @@ export const demoRepo: Repo = {
       added_by: userId,
       is_suggested: false,
     });
+  },
+
+  async addFreeTextOptionToEvent(eventId, label, userId) {
+    const s = store();
+    const event = s.events.find((e) => e.id === eventId);
+    if (!event) throw new Error("Event not found");
+    if (event.status !== "open") throw new Error("This Jio is already closed");
+
+    if (!canAddOption(event, userId)) {
+      throw new Error("Only the host, kaki members or invitees can add places");
+    }
+
+    const trimmed = label.trim();
+    if (!trimmed) throw new Error("Give it a name");
+
+    // No `places` row exists yet, so this id is generated rather than
+    // looked up — it never matches a real place, which is exactly what
+    // makes `place` undefined when this option is rendered. See the
+    // `place_id` doc comment on EventOption for why this is safe to vote on
+    // through the same column real places use.
+    const placeId = `draft-${uuid()}`;
+    const option: EventOption = {
+      event_id: eventId,
+      place_id: placeId,
+      added_by: userId,
+      is_suggested: false,
+      label: trimmed,
+    };
+    s.options.push(option);
+    return { ...option, added_by_name: displayNameFor(userId) };
+  },
+
+  async attachPlaceToOption(eventId, oldPlaceId, newPlaceId, userId) {
+    const s = store();
+    const event = s.events.find((e) => e.id === eventId);
+    if (!event) throw new Error("Event not found");
+
+    const option = s.options.find(
+      (o) => o.event_id === eventId && o.place_id === oldPlaceId
+    );
+    if (!option) throw new Error("That option does not exist");
+    if (option.label == null) {
+      throw new Error("That option is already a real place");
+    }
+
+    if (event.host_id !== userId && option.added_by !== userId) {
+      throw new Error(
+        "Only whoever added this option, or the host, can attach a place to it"
+      );
+    }
+
+    const place = s.places.find((p) => p.id === newPlaceId);
+    if (!place) throw new Error("That place does not exist");
+
+    option.place_id = newPlaceId;
+    option.label = null;
+
+    // Votes already cast for the draft option move with it, so ranking
+    // "abc house" before it became a real place is not silently discarded
+    // the moment someone attaches one. A voter who — vanishingly rarely —
+    // had *also* separately ranked the same real place keeps that vote and
+    // loses the now-duplicate one, rather than erroring the whole attach.
+    for (const vote of s.votes) {
+      if (vote.event_id !== eventId || vote.place_id !== oldPlaceId) continue;
+      const collides = s.votes.some(
+        (v) =>
+          v.event_id === eventId &&
+          v.user_id === vote.user_id &&
+          v.place_id === newPlaceId
+      );
+      if (collides) continue;
+      vote.place_id = newPlaceId;
+    }
+    s.votes = s.votes.filter(
+      (v) => !(v.event_id === eventId && v.place_id === oldPlaceId)
+    );
+
+    if (event.winner_place_id === oldPlaceId) {
+      event.winner_place_id = newPlaceId;
+    }
   },
 
   async removeOptionFromEvent(eventId, placeId, userId) {
@@ -1055,6 +1182,124 @@ export const demoRepo: Repo = {
     const detail = await demoRepo.getEvent(eventId);
     if (!detail) throw new Error("Event vanished while closing");
     return detail;
+  },
+
+  async cancelEvent(eventId, hostId) {
+    const s = store();
+    const index = s.events.findIndex((e) => e.id === eventId);
+    if (index === -1) throw new Error("Event not found");
+    const event = s.events[index];
+
+    if (event.host_id !== hostId) {
+      throw new Error("Only the host can cancel this Jio");
+    }
+    if (event.status === "cancelled") {
+      throw new Error("This Jio is already cancelled");
+    }
+    if (event.status === "closed") {
+      throw new Error("This Jio is already closed");
+    }
+
+    s.events[index] = { ...event, status: "cancelled" };
+
+    const detail = await demoRepo.getEvent(eventId);
+    if (!detail) throw new Error("Event vanished while cancelling");
+    return detail;
+  },
+
+  // ---- Recurring series ----
+
+  async createRecurringSeries(data) {
+    const s = store();
+    const series: RecurringSeries = {
+      ...data,
+      id: `demo-series-${uuid().slice(0, 8)}`,
+      status: "active",
+      last_generated_date: null,
+      created_at: new Date().toISOString(),
+    };
+    s.recurringSeries.push(series);
+    return series;
+  },
+
+  async listRecurringSeries(hostId) {
+    const s = store();
+    return s.recurringSeries
+      .filter((series) => series.host_id === hostId)
+      .map((series) => ({
+        ...series,
+        fixed_place_name: series.fixed_place_id
+          ? (s.places.find((p) => p.id === series.fixed_place_id)?.name ?? null)
+          : null,
+      }));
+  },
+
+  async cancelRecurringSeries(seriesId, hostId) {
+    const s = store();
+    const series = s.recurringSeries.find((sr) => sr.id === seriesId);
+    if (!series) throw new Error("Series not found");
+    if (series.host_id !== hostId) {
+      throw new Error("Only the host can cancel this series");
+    }
+    series.status = "cancelled";
+  },
+
+  async generateDueOccurrences(hostId) {
+    const s = store();
+    const due = s.recurringSeries.filter(
+      (series) => series.host_id === hostId && series.status === "active"
+    );
+    if (due.length === 0) return 0;
+
+    let generated = 0;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    for (const series of due) {
+      const next = nextOccurrence(series.weekday, today);
+      const nextKey = dateKey(next);
+      const daysAway = Math.round((next.getTime() - today.getTime()) / 86400000);
+
+      if (daysAway > RECURRING_LOOKAHEAD_DAYS) continue;
+      if (series.last_generated_date && series.last_generated_date >= nextKey) {
+        continue;
+      }
+
+      // Expanded fresh each time, not snapshotted on the series — see the
+      // header comment on 031_recurring_series.sql for why.
+      const inviteeSet = new Set(series.invitee_ids);
+      if (series.kaki_id) {
+        for (const m of s.kakiMembers.filter((km) => km.kaki_id === series.kaki_id)) {
+          inviteeSet.add(m.user_id);
+        }
+      }
+      inviteeSet.delete(series.host_id);
+
+      const [hh, mm] = series.time_of_day.split(":").map(Number);
+      const scheduledAt = new Date(next);
+      scheduledAt.setHours(hh, mm, 0, 0);
+
+      const placeIds =
+        series.mode === "fixed"
+          ? [series.fixed_place_id!]
+          : series.option_place_ids;
+
+      const created = await demoRepo.createEvent(
+        series.host_id,
+        series.title,
+        scheduledAt.toISOString(),
+        series.office_id ?? DEFAULT_OFFICE.id,
+        placeIds,
+        series.kaki_id ?? null,
+        [...inviteeSet]
+      );
+      created.recurring_series_id = series.id;
+
+      series.last_generated_date = nextKey;
+      generated += 1;
+    }
+
+    return generated;
   },
 
   // ---- Wishlist ----

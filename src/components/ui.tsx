@@ -248,11 +248,59 @@ export function EmptyState({
   );
 }
 
+/**
+ * For an action in progress — a save, a submit. Reaching for this to cover
+ * content that's still loading is the thing §9 of the design brief asks not
+ * to do; use `Skeleton`/`SkeletonRows` for that instead, sized like the
+ * content that's coming so the page doesn't jump when it arrives.
+ */
 export function Spinner({ label = "Loading" }: { label?: string }) {
   return (
     <div className="flex items-center justify-center gap-2 py-10" role="status">
       <span className="border-line border-t-ember h-5 w-5 animate-spin rounded-full border-2" />
       <span className="text-stone text-sm">{label}…</span>
+    </div>
+  );
+}
+
+/** One shimmering placeholder block. Size it with className (h-4 w-32, etc). */
+export function Skeleton({ className }: { className?: string }) {
+  return <div className={cn("skeleton", className)} aria-hidden="true" />;
+}
+
+/** A stack of card-sized placeholder rows, for a list that's still loading. */
+export function SkeletonRows({
+  count = 4,
+  className,
+  rowClassName = "h-16 w-full",
+}: {
+  count?: number;
+  className?: string;
+  rowClassName?: string;
+}) {
+  return (
+    <div
+      className={cn("space-y-2", className)}
+      role="status"
+      aria-label="Loading"
+    >
+      {Array.from({ length: count }).map((_, i) => (
+        <Skeleton key={i} className={rowClassName} />
+      ))}
+    </div>
+  );
+}
+
+/** A title-plus-body placeholder, for a single record that's still loading. */
+export function SkeletonDetail() {
+  return (
+    <div className="space-y-5" role="status" aria-label="Loading">
+      <div className="space-y-2">
+        <Skeleton className="h-7 w-2/3" />
+        <Skeleton className="h-4 w-1/3" />
+      </div>
+      <Skeleton className="h-24 w-full" />
+      <Skeleton className="h-24 w-full" />
     </div>
   );
 }

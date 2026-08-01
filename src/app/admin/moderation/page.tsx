@@ -9,7 +9,8 @@ import {
   EmptyState,
   ErrorNote,
   SectionHeading,
-  Spinner,
+  SkeletonDetail,
+  SkeletonRows,
   inputClass,
 } from "@/components/ui";
 import { fetcher, mutateJson } from "@/lib/fetcher";
@@ -103,7 +104,7 @@ export default function ModerationPage() {
     return map;
   }, [logData]);
 
-  if (meLoading) return <Spinner label="Loading" />;
+  if (meLoading) return <SkeletonDetail />;
   if (!me?.user) return null;
 
   if (!isAdmin) {
@@ -288,7 +289,7 @@ export default function ModerationPage() {
       </Card>
 
       {!placesData ? (
-        <Spinner label="Loading places" />
+        <SkeletonRows count={4} rowClassName="h-16 w-full" />
       ) : filtered.length === 0 ? (
         <EmptyState
           title="Nothing here"

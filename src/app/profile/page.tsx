@@ -360,6 +360,14 @@ export default function ProfilePage() {
             Moderation
           </Link>
         )}
+        {me?.user?.is_admin && features.offices && (
+          <Link
+            href="/admin/offices"
+            className="text-ember block text-sm underline"
+          >
+            Offices
+          </Link>
+        )}
 
         {config.authAdapter === "name" && !config.isDemo && (
           <>

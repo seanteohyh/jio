@@ -14,7 +14,7 @@ import {
   Field,
   LinkButton,
   SectionHeading,
-  Spinner,
+  SkeletonDetail,
   Stars,
   inputClass,
 } from "@/components/ui";
@@ -71,7 +71,7 @@ export default function PlaceDetailPage({
   const [reportComment, setReportComment] = useState("");
   const [reportSent, setReportSent] = useState(false);
 
-  if (isLoading) return <Spinner label="Loading" />;
+  if (isLoading) return <SkeletonDetail />;
   if (error) return <ErrorNote>{error.message}</ErrorNote>;
   if (!data) return null;
 

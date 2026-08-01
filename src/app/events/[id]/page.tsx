@@ -1,15 +1,17 @@
 "use client";
 
-import { use, useEffect, useState } from "react";
+import { use, useEffect, useRef, useState } from "react";
 import useSWR from "swr";
+import { CheckCircle2 } from "lucide-react";
 import {
   Avatar,
   Button,
   Card,
   Chip,
   ErrorNote,
+  LinkButton,
   SectionHeading,
-  Spinner,
+  SkeletonDetail,
   inputClass,
 } from "@/components/ui";
 import RouletteWheel from "@/components/RouletteWheel";
@@ -18,7 +20,7 @@ import { fetcher, mutateJson } from "@/lib/fetcher";
 import { eventInviteUrl } from "@/lib/shareUrl";
 import { subscribeToEventChanges } from "@/lib/realtime";
 import { features } from "@/lib/config";
-import { formatDate, formatDateTime } from "@/lib/utils";
+import { cn, formatDate, formatDateTime } from "@/lib/utils";
 import type { EventDetail, Place, RsvpResponse } from "@/types";
 
 interface EventResponse {
@@ -54,11 +56,36 @@ export default function EventDetailPage({
   const [suggestedThisSession, setSuggestedThisSession] = useState<string[]>([]);
   const [newCandidateDate, setNewCandidateDate] = useState("");
   const [justConfirmedDate, setJustConfirmedDate] = useState<string | null>(null);
+  // "Vote first, prompt after" (CHANGES_20260801.md §8): once a free-text
+  // option is logged, this holds it so the "add it to the pool?" prompt can
+  // render — cleared on decline, on accept, or by adding another option.
+  const [pendingPoolPrompt, setPendingPoolPrompt] = useState<{
+    placeId: string;
+    label: string;
+  } | null>(null);
 
   // Live updates while people vote. Falls back silently if realtime is off.
   useEffect(() => {
     return subscribeToEventChanges(id, () => mutate());
   }, [id, mutate]);
+
+  // The resolved-vote moment: animate only on the actual open -> closed
+  // transition, not on "is closed" — otherwise it replays every time someone
+  // opens a Jio that was settled last week. Watching the flip rather than
+  // gating this inside close() means it also plays for everyone else when
+  // the host closes it and realtime pushes the change through, which is the
+  // case that matters most since they're the ones waiting to find out.
+  const [justResolved, setJustResolved] = useState(false);
+  const prevStatusRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (!data) return;
+    const prev = prevStatusRef.current;
+    const current = data.event.status;
+    if (prev === "open" && current !== "open") {
+      setJustResolved(true);
+    }
+    prevStatusRef.current = current;
+  }, [data]);
 
   // Seed the ballot from the server once, then leave it alone so a realtime
   // refresh cannot yank options out from under someone mid-drag.
@@ -76,12 +103,13 @@ export default function EventDetailPage({
     fetcher
   );
 
-  if (isLoading) return <Spinner label="Loading" />;
+  if (isLoading) return <SkeletonDetail />;
   if (error) return <ErrorNote>{error.message}</ErrorNote>;
   if (!data) return null;
 
   const { event, viewer } = data;
   const isOpen = event.status === "open";
+  const isCancelled = event.status === "cancelled";
   const isDatePolling = event.date_phase === "polling";
 
   const myAvailability = new Set(
@@ -146,6 +174,26 @@ export default function EventDetailPage({
       });
       setAddQuery("");
       setBallotTouched(false);
+      setPendingPoolPrompt(null);
+    });
+
+  // "Not here? Add it anyway" — logs a vote option with no place record yet.
+  // Skipped for the host in the pool-prompt step below: a host adding an
+  // option already leans toward intending it as a real place, per the 1 Aug
+  // candidate-refinement note, so only guests get asked afterward.
+  const addFreeTextOption = (label: string) =>
+    run(async () => {
+      const result = await mutateJson<{
+        option: { place_id: string; label: string };
+      }>(`/api/events/${id}/options`, "POST", { label });
+      setAddQuery("");
+      setBallotTouched(false);
+      if (!data?.viewer.isHost) {
+        setPendingPoolPrompt({
+          placeId: result.option.place_id,
+          label: result.option.label,
+        });
+      }
     });
 
   const removeOption = (placeId: string) =>
@@ -209,6 +257,17 @@ export default function EventDetailPage({
       })
     );
 
+  const cancelJio = () => {
+    if (
+      !window.confirm(
+        "Cancel this Jio? Everyone invited will see it marked cancelled — this can't be undone."
+      )
+    ) {
+      return;
+    }
+    run(() => mutateJson(`/api/events/${id}/cancel`, "POST"));
+  };
+
   const optionPlaces = event.options
     .map((o) => o.place)
     .filter((p): p is Place => Boolean(p));
@@ -243,8 +302,14 @@ export default function EventDetailPage({
               {event.host_name && ` · hosted by ${event.host_name}`}
             </p>
           </div>
-          <Chip className={isOpen ? "" : "bg-line"}>
-            {isDatePolling ? "Picking a date" : isOpen ? "Open" : "Closed"}
+          <Chip className={isOpen ? "" : isCancelled ? "text-stone" : "bg-line"}>
+            {isDatePolling
+              ? "Picking a date"
+              : isOpen
+                ? "Open"
+                : isCancelled
+                  ? "Cancelled"
+                  : "Closed"}
           </Chip>
         </div>
       </header>
@@ -270,13 +335,47 @@ export default function EventDetailPage({
         </Card>
       )}
 
-      {!isOpen && (
-        <Card className="border-sage/40 bg-sage-tint/70">
-          {event.winner_place_name ? (
-            <p className="text-sm">
-              <span className="font-medium">Decided:</span>{" "}
-              {event.winner_place_name}
-            </p>
+      {!isOpen && isCancelled && (
+        <Card className="border-line bg-cream/60">
+          <p className="text-sm">
+            Cancelled by {event.host_name ?? "the host"}.
+          </p>
+        </Card>
+      )}
+
+      {!isOpen && !isCancelled && (
+        <Card
+          className={cn(
+            "border-sage/40 bg-sage-tint/70",
+            justResolved &&
+              (event.winner_place_name || event.winner_label) &&
+              "animate-resolved"
+          )}
+        >
+          {event.winner_place_name || event.winner_label ? (
+            <div className="flex items-center gap-3">
+              <CheckCircle2
+                className="text-sage h-8 w-8 shrink-0"
+                strokeWidth={2}
+                aria-hidden="true"
+              />
+              <div>
+                <p className="text-sage text-xs font-semibold tracking-wide uppercase">
+                  Decided
+                </p>
+                <p className="font-display text-ink text-xl font-bold tracking-tight">
+                  {event.winner_place_name ?? event.winner_label}
+                </p>
+                {/* A free-text option won with no places row behind it —
+                    the map link and walk-time below assume a real place, so
+                    they're skipped rather than shown broken. */}
+                {!event.winner_place_name && event.winner_label && (
+                  <p className="text-stone mt-0.5 text-xs">
+                    Not in the places list yet.
+                  </p>
+                )}
+              </div>
+            </div>
           ) : (
             <p className="text-sm">
               Closed without a winner — nobody voted in time.
@@ -426,7 +525,7 @@ export default function EventDetailPage({
       {!isDatePolling && (
       <Card>
         <SectionHeading>
-          {isOpen ? "Standing" : "Final count"}
+          {isOpen ? "Standing" : isCancelled ? "Standing when cancelled" : "Final count"}
         </SectionHeading>
         <p className="text-stone mb-3 text-xs">
           {voterCount === 0
@@ -444,7 +543,7 @@ export default function EventDetailPage({
                   <span
                     className={isWinner ? "text-sage font-medium" : ""}
                   >
-                    {option.place?.name ?? "Unknown place"}
+                    {option.place?.name ?? option.label ?? "Unknown place"}
                     {isWinner && " ✓"}
                     {option.is_suggested && (
                       <span className="bg-ember/15 text-ember ml-1.5 rounded-full px-1.5 py-0.5 text-[10px] font-medium">
@@ -498,7 +597,7 @@ export default function EventDetailPage({
                     {index + 1}
                   </span>
                   <span className="min-w-0 flex-1 truncate text-sm">
-                    {option?.place?.name ?? "Unknown"}
+                    {option?.place?.name ?? option?.label ?? "Unknown"}
                   </span>
                   <span className="flex shrink-0 gap-1">
                     <button
@@ -584,6 +683,49 @@ export default function EventDetailPage({
             </ul>
           )}
 
+          {/* Nothing matched — "vote first, prompt after" (§8). Logs the
+              option immediately so the person doesn't have to become a
+              data-entry clerk mid-vote just to register "I want McDonald's." */}
+          {addCandidates.length === 0 && addQuery.trim().length > 0 && (
+            <div className="border-line mt-2 flex items-center justify-between gap-2 rounded-lg border border-dashed px-3 py-2">
+              <p className="text-stone min-w-0 truncate text-sm">
+                Not here? Add &ldquo;{addQuery.trim()}&rdquo; anyway
+              </p>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => addFreeTextOption(addQuery.trim())}
+                disabled={busy}
+              >
+                Add
+              </Button>
+            </div>
+          )}
+
+          {pendingPoolPrompt && (
+            <div className="border-line bg-paper mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2">
+              <p className="text-stone text-xs">
+                &ldquo;{pendingPoolPrompt.label}&rdquo; is on the ballot. Add
+                it to the pool so it&apos;s findable next time?
+              </p>
+              <span className="flex shrink-0 gap-1.5">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => setPendingPoolPrompt(null)}
+                >
+                  Not now
+                </Button>
+                <LinkButton
+                  className="min-h-0 px-3 py-1.5 text-xs"
+                  href={`/places/new?name=${encodeURIComponent(pendingPoolPrompt.label)}&fromEvent=${id}&draftPlaceId=${encodeURIComponent(pendingPoolPrompt.placeId)}`}
+                >
+                  Add to pool
+                </LinkButton>
+              </span>
+            </div>
+          )}
+
           {/* Removing your own suggestion. The host can remove any. */}
           {event.options.some(
             (o) => o.added_by === viewer.id || viewer.isHost
@@ -601,7 +743,7 @@ export default function EventDetailPage({
                       disabled={busy}
                       className="border-line text-stone rounded-full border px-2.5 py-1 text-xs hover:border-ember hover:text-ember"
                     >
-                      {option.place?.name} ×
+                      {option.place?.name ?? option.label} ×
                     </button>
                   ))}
               </div>
@@ -646,6 +788,22 @@ export default function EventDetailPage({
               />
             </div>
           )}
+        </Card>
+      )}
+
+      {/* Separate from "Close it" — calling a Jio off is a different,
+          larger action than locking in a winner, and reads that way rather
+          than sharing a card with it. */}
+      {viewer.isHost && isOpen && (
+        <Card className="space-y-2">
+          <SectionHeading>Cancel this Jio</SectionHeading>
+          <p className="text-stone text-xs">
+            Stays visible to everyone invited, marked cancelled. This
+            can&apos;t be undone.
+          </p>
+          <Button variant="danger" onClick={cancelJio} disabled={busy}>
+            Cancel this Jio
+          </Button>
         </Card>
       )}
 

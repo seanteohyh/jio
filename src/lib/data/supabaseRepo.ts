@@ -1,9 +1,12 @@
-import { DEFAULT_OFFICE } from "@/lib/constants";
+import { DEFAULT_OFFICE, RECURRING_LOOKAHEAD_DAYS } from "@/lib/constants";
 import {
+  dateKey,
   estimateWalkMinutes,
   generateToken,
   haversine,
+  nextOccurrence,
   sortPlacesForList,
+  uuid,
 } from "@/lib/utils";
 import { computeWinner } from "@/lib/voting";
 import { rankPlaces } from "@/lib/recommend";
@@ -32,6 +35,7 @@ import type {
   PlaceFlag,
   PlacesPagination,
   Profile,
+  RecurringSeries,
   TeamUser,
   UserPrefs,
   Visit,
@@ -722,15 +726,42 @@ export const supabaseRepo: Repo = {
     return displayNameMap(client, userIds);
   },
 
-  async listAllUsers() {
+  async listAllUsers(query, officeId) {
     const client = await db();
-    const { data, error } = await client
+    let builder = client
       .from("profiles")
       .select("user_id, display_name")
       .order("display_name");
 
+    const q = query?.trim();
+    if (q) builder = builder.ilike("display_name", `%${q}%`);
+
+    const { data, error } = await builder;
     if (error) fail("Could not load the team list", error);
-    return (data ?? []) as TeamUser[];
+    let users = (data ?? []) as TeamUser[];
+
+    if (officeId && users.length > 0) {
+      const { data: prefsRows } = await client
+        .from("user_prefs")
+        .select("user_id, default_office_id")
+        .in(
+          "user_id",
+          users.map((u) => u.user_id)
+        );
+      const officeByUser = new Map(
+        (
+          (prefsRows ?? []) as {
+            user_id: string;
+            default_office_id: string | null;
+          }[]
+        ).map((p) => [p.user_id, p.default_office_id])
+      );
+      users = users.filter(
+        (u) => (officeByUser.get(u.user_id) ?? DEFAULT_OFFICE.id) === officeId
+      );
+    }
+
+    return users;
   },
 
   // ---- Lunch events ----
@@ -969,6 +1000,10 @@ export const supabaseRepo: Repo = {
       winner_place_name: winnerId
         ? placeById.get(winnerId)?.name ?? null
         : null,
+      winner_label:
+        winnerId && !placeById.get(winnerId)
+          ? (optionRows.find((o) => o.place_id === winnerId)?.label ?? null)
+          : null,
       options,
       votes,
       rsvps,
@@ -1087,6 +1122,24 @@ export const supabaseRepo: Repo = {
       }
     }
 
+    // Winners with no places row are a free-text option that won outright
+    // ("vote first, prompt after" — CHANGES_20260801.md §8). Their label
+    // lives on event_options, keyed by the same id.
+    const winnerIdsWithoutPlace = winnerIds.filter((id) => !winnerNames.has(id));
+    const winnerLabels = new Map<string, string>();
+    if (winnerIdsWithoutPlace.length > 0) {
+      const { data } = await client
+        .from("event_options")
+        .select("place_id, label")
+        .in("place_id", winnerIdsWithoutPlace);
+      for (const row of (data ?? []) as {
+        place_id: string;
+        label: string | null;
+      }[]) {
+        if (row.label) winnerLabels.set(row.place_id, row.label);
+      }
+    }
+
     return events
       .map((e) => ({
         ...e,
@@ -1095,6 +1148,9 @@ export const supabaseRepo: Repo = {
         going_count: goingCounts.get(e.id) ?? 0,
         winner_place_name: e.winner_place_id
           ? winnerNames.get(e.winner_place_id) ?? null
+          : null,
+        winner_label: e.winner_place_id
+          ? winnerLabels.get(e.winner_place_id) ?? null
           : null,
         has_marked_availability: markedAvailability.has(e.id),
       }))
@@ -1191,6 +1247,88 @@ export const supabaseRepo: Repo = {
       .insert({ event_id: eventId, place_id: placeId, added_by: userId });
 
     if (error) fail("Could not add that place", error);
+  },
+
+  async addFreeTextOptionToEvent(eventId, label, userId) {
+    const client = await db();
+
+    const { data: eventRow } = await client
+      .from("lunch_events")
+      .select("id, host_id, status, kaki_id")
+      .eq("id", eventId)
+      .maybeSingle();
+
+    if (!eventRow) throw new Error("Event not found");
+    const event = eventRow as Pick<
+      LunchEvent,
+      "id" | "host_id" | "status" | "kaki_id"
+    >;
+    if (event.status !== "open") throw new Error("This Jio is already closed");
+
+    // Same authorization as addOptionToEvent, mirrored on purpose.
+    let allowed = event.host_id === userId;
+
+    if (!allowed && event.kaki_id) {
+      const { data } = await client
+        .from("kaki_members")
+        .select("user_id")
+        .eq("kaki_id", event.kaki_id)
+        .eq("user_id", userId)
+        .maybeSingle();
+      allowed = Boolean(data);
+    }
+
+    if (!allowed) {
+      const { data } = await client
+        .from("event_invitees")
+        .select("user_id")
+        .eq("event_id", eventId)
+        .eq("user_id", userId)
+        .maybeSingle();
+      allowed = Boolean(data);
+    }
+
+    if (!allowed) {
+      throw new Error("Only the host, kaki members or invitees can add places");
+    }
+
+    const trimmed = label.trim();
+    if (!trimmed) throw new Error("Give it a name");
+
+    // See the `place_id` doc comment on EventOption: this id is generated,
+    // not looked up, and never matches a real place — that's what makes it
+    // votable through the same event_votes.place_id column real places use.
+    const placeId = `draft-${uuid()}`;
+
+    const { error } = await client.from("event_options").insert({
+      event_id: eventId,
+      place_id: placeId,
+      added_by: userId,
+      label: trimmed,
+    });
+    if (error) fail("Could not add that option", error);
+
+    return {
+      event_id: eventId,
+      place_id: placeId,
+      added_by: userId,
+      is_suggested: false,
+      label: trimmed,
+    };
+  },
+
+  // `userId` isn't needed here — attach_place_to_option checks auth.uid()
+  // against the option's added_by / the event's host_id itself, same as
+  // block_place does for `status`. Passing it through would just be a
+  // second, redundant claim the RPC would have to trust or ignore.
+  async attachPlaceToOption(eventId, oldPlaceId, newPlaceId, _userId) {
+    const client = await db();
+    const { error } = await client.rpc("attach_place_to_option", {
+      p_event_id: eventId,
+      p_old_place_id: oldPlaceId,
+      p_new_place_id: newPlaceId,
+    });
+    if (error) fail("Could not attach that place", error);
   },
 
   async removeOptionFromEvent(eventId, placeId, userId) {
@@ -1571,6 +1709,171 @@ export const supabaseRepo: Repo = {
     const detail = await supabaseRepo.getEvent(eventId);
     if (!detail) throw new Error("Event vanished while closing");
     return detail;
+  },
+
+  // `hostId` isn't passed to the RPC — cancel_event checks auth.uid()
+  // against host_id itself, same reasoning as attach_place_to_option.
+  async cancelEvent(eventId, _hostId) {
+    const client = await db();
+    const { error } = await client.rpc("cancel_event", {
+      p_event_id: eventId,
+    });
+    if (error) fail("Could not cancel that Jio", error);
+
+    const detail = await supabaseRepo.getEvent(eventId);
+    if (!detail) throw new Error("Event vanished while cancelling");
+    return detail;
+  },
+
+  // ---- Recurring series ----
+
+  async createRecurringSeries(data) {
+    const client = await db();
+    const { data: row, error } = await client
+      .from("recurring_series")
+      .insert({
+        host_id: data.host_id,
+        title: data.title,
+        office_id: data.office_id ?? null,
+        kaki_id: data.kaki_id ?? null,
+        invitee_ids: data.invitee_ids,
+        weekday: data.weekday,
+        time_of_day: data.time_of_day,
+        mode: data.mode,
+        fixed_place_id: data.fixed_place_id ?? null,
+        option_place_ids: data.option_place_ids,
+      })
+      .select()
+      .single();
+
+    if (error) fail("Could not create that series", error);
+    return row as RecurringSeries;
+  },
+
+  async listRecurringSeries(hostId) {
+    const client = await db();
+    const { data, error } = await client
+      .from("recurring_series")
+      .select("*")
+      .eq("host_id", hostId)
+      .order("created_at", { ascending: false });
+
+    if (error) fail("Could not load your recurring Jios", error);
+    const series = (data ?? []) as RecurringSeries[];
+    if (series.length === 0) return [];
+
+    const placeIds = series
+      .map((s) => s.fixed_place_id)
+      .filter((id): id is string => Boolean(id));
+    const placeNames = new Map<string, string>();
+    if (placeIds.length > 0) {
+      const { data: places } = await client
+        .from("places")
+        .select("id, name")
+        .in("id", placeIds);
+      for (const p of (places ?? []) as { id: string; name: string }[]) {
+        placeNames.set(p.id, p.name);
+      }
+    }
+
+    return series.map((s) => ({
+      ...s,
+      fixed_place_name: s.fixed_place_id
+        ? (placeNames.get(s.fixed_place_id) ?? null)
+        : null,
+    }));
+  },
+
+  async cancelRecurringSeries(seriesId, hostId) {
+    const client = await db();
+    const { error, count } = await client
+      .from("recurring_series")
+      .update({ status: "cancelled" })
+      .eq("id", seriesId)
+      .eq("host_id", hostId);
+
+    if (error) fail("Could not cancel that series", error);
+    // RLS silently returns zero rows for a mismatched host rather than
+    // erroring, same shape as everywhere else that relies on `using` — this
+    // turns that into the readable error the client actually needs.
+    if (count === 0) {
+      throw new Error("Only the host can cancel this series");
+    }
+  },
+
+  async generateDueOccurrences(hostId) {
+    const client = await db();
+    const { data: seriesRows, error } = await client
+      .from("recurring_series")
+      .select("*")
+      .eq("host_id", hostId)
+      .eq("status", "active");
+
+    if (error) fail("Could not check recurring Jios", error);
+    const due = (seriesRows ?? []) as RecurringSeries[];
+    if (due.length === 0) return 0;
+
+    let generated = 0;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    for (const series of due) {
+      const next = nextOccurrence(series.weekday, today);
+      const nextKey = dateKey(next);
+      const daysAway = Math.round(
+        (next.getTime() - today.getTime()) / 86400000
+      );
+
+      if (daysAway > RECURRING_LOOKAHEAD_DAYS) continue;
+      if (series.last_generated_date && series.last_generated_date >= nextKey) {
+        continue;
+      }
+
+      const inviteeSet = new Set(series.invitee_ids);
+      if (series.kaki_id) {
+        const { data: members } = await client
+          .from("kaki_members")
+          .select("user_id")
+          .eq("kaki_id", series.kaki_id);
+        for (const m of (members ?? []) as { user_id: string }[]) {
+          inviteeSet.add(m.user_id);
+        }
+      }
+      inviteeSet.delete(series.host_id);
+
+      const [hh, mm] = series.time_of_day.split(":").map(Number);
+      const scheduledAt = new Date(next);
+      scheduledAt.setHours(hh, mm, 0, 0);
+
+      const placeIds =
+        series.mode === "fixed"
+          ? [series.fixed_place_id!]
+          : series.option_place_ids;
+
+      const created = await supabaseRepo.createEvent(
+        series.host_id,
+        series.title,
+        scheduledAt.toISOString(),
+        series.office_id ?? DEFAULT_OFFICE.id,
+        placeIds,
+        series.kaki_id ?? null,
+        [...inviteeSet]
+      );
+
+      await client
+        .from("lunch_events")
+        .update({ recurring_series_id: series.id })
+        .eq("id", created.id);
+
+      await client
+        .from("recurring_series")
+        .update({ last_generated_date: nextKey })
+        .eq("id", series.id);
+
+      generated += 1;
+    }
+
+    return generated;
   },
 
   // ---- Wishlist ----

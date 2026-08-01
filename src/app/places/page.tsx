@@ -16,7 +16,7 @@ import {
   ErrorNote,
   LinkButton,
   SectionHeading,
-  Spinner,
+  SkeletonRows,
 } from "@/components/ui";
 import { fetcher } from "@/lib/fetcher";
 import { features } from "@/lib/config";
@@ -113,7 +113,7 @@ function SavedList({
   loading: boolean;
   onBrowse: () => void;
 }) {
-  if (loading) return <Spinner label="Loading saved places" />;
+  if (loading) return <SkeletonRows count={3} />;
 
   if (places.length === 0) {
     return (
@@ -247,7 +247,9 @@ function BrowseList() {
       )}
 
       {error && <ErrorNote>{error.message}</ErrorNote>}
-      {isLoading && page === 1 && <Spinner label="Loading places" />}
+      {isLoading && page === 1 && (
+        <SkeletonRows count={6} rowClassName="h-20 w-full" />
+      )}
 
       {!isLoading && places.length === 0 && !error && (
         <EmptyState
@@ -277,7 +279,7 @@ function BrowseList() {
           {hasMore && (
             <div className="flex justify-center pt-1">
               {isLoading && page > 1 ? (
-                <Spinner label="Loading more" />
+                <SkeletonRows count={2} rowClassName="h-20 w-full" className="w-full" />
               ) : (
                 <Button
                   variant="secondary"

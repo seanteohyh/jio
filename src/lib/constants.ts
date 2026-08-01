@@ -52,6 +52,13 @@ export const WALK_SPEED_M_PER_MIN = 80;
 /** Two candidates closer than this with the same name are the same place. */
 export const DEDUPE_PROXIMITY_M = 25;
 
+/**
+ * How many days ahead a recurring series generates its next occurrence.
+ * Long enough to leave a few days for voting, short enough that opening the
+ * app doesn't spawn a Jio for a lunch three weeks out.
+ */
+export const RECURRING_LOOKAHEAD_DAYS = 3;
+
 /** Fixed identity used when the app runs without real auth. */
 export const DEMO_USER_ID = "00000000-0000-0000-0000-00000000demo";
 

@@ -4,7 +4,7 @@ import { use } from "react";
 import { useRouter } from "next/navigation";
 import useSWR from "swr";
 import PlaceForm from "@/components/places/PlaceForm";
-import { ErrorNote, Spinner } from "@/components/ui";
+import { ErrorNote, SkeletonDetail } from "@/components/ui";
 import { fetcher } from "@/lib/fetcher";
 import type { Place } from "@/types";
 
@@ -29,7 +29,7 @@ export default function EditPlacePage({
     fetcher
   );
 
-  if (isLoading) return <Spinner label="Loading place" />;
+  if (isLoading) return <SkeletonDetail />;
   if (error) return <ErrorNote>{error.message}</ErrorNote>;
   if (!data?.place) return <ErrorNote>That place does not exist.</ErrorNote>;
 

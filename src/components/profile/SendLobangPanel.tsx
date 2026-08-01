@@ -9,7 +9,7 @@ import {
   Chip,
   ErrorNote,
   Field,
-  Spinner,
+  SkeletonRows,
   inputClass,
 } from "../ui";
 import { fetcher, mutateJson } from "@/lib/fetcher";
@@ -292,7 +292,7 @@ export default function SendLobangPanel({
             </Chip>
           )}
 
-          {loadingSuggestions && <Spinner label="Finding places" />}
+          {loadingSuggestions && <SkeletonRows count={2} rowClassName="h-14 w-full" />}
 
           {!loadingSuggestions && suggestions.length > 0 && (
             <div>
@@ -339,7 +339,7 @@ export default function SendLobangPanel({
               placeholder="Search every registered place…"
             />
 
-            {searching && <Spinner label="Searching" />}
+            {searching && <SkeletonRows count={2} rowClassName="h-14 w-full" />}
 
             {!searching && search.trim().length >= 2 && (
               <ul className="mt-1.5 space-y-1.5">

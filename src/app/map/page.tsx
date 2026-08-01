@@ -8,7 +8,7 @@ import FilterBar, {
   type FilterState,
 } from "@/components/FilterBar";
 import PlaceCard from "@/components/PlaceCard";
-import { Button, ErrorNote, Spinner } from "@/components/ui";
+import { Button, ErrorNote, Skeleton } from "@/components/ui";
 import { fetcher } from "@/lib/fetcher";
 import { DEFAULT_OFFICE } from "@/lib/constants";
 import type { Office, Place, WalkingRoute } from "@/types";
@@ -83,7 +83,7 @@ export default function MapPage() {
         />
       </div>
 
-      {isLoading && <Spinner label="Loading places" />}
+      {isLoading && <Skeleton className="h-5 w-40" />}
 
       {selected && (
         <div className="animate-fade-in space-y-2">

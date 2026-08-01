@@ -9,7 +9,7 @@ import {
   Card,
   ErrorNote,
   SectionHeading,
-  Spinner,
+  SkeletonDetail,
 } from "@/components/ui";
 import { KakiMetricsCharts } from "@/components/MetricsCharts";
 import { fetcher, mutateJson } from "@/lib/fetcher";
@@ -39,7 +39,7 @@ export default function KakiDetailPage({
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  if (isLoading) return <Spinner />;
+  if (isLoading) return <SkeletonDetail />;
   if (error) return <ErrorNote>{error.message}</ErrorNote>;
   if (!data) return null;
 
