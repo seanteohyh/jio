@@ -50,6 +50,11 @@ export default function PlaceForm({
   );
   const [locatedVia, setLocatedVia] = useState<"geocoded" | "gps" | null>(null);
   const [cuisine, setCuisine] = useState<string[]>(place?.cuisine ?? []);
+  const [customCuisineTags, setCustomCuisineTags] = useState<string[]>(
+    place?.custom_cuisine_tags ?? []
+  );
+  const [otherInputOpen, setOtherInputOpen] = useState(false);
+  const [otherInput, setOtherInput] = useState("");
   const [budget, setBudget] = useState<BudgetTier>(place?.budget_tier ?? 2);
   const [dishes, setDishes] = useState((place?.best_dishes ?? []).join(", "));
   const [notes, setNotes] = useState(place?.notes ?? "");
@@ -61,6 +66,18 @@ export default function PlaceForm({
     setCuisine((prev) =>
       prev.includes(value) ? prev.filter((c) => c !== value) : [...prev, value]
     );
+
+  const addCustomCuisineTag = () => {
+    const trimmed = otherInput.trim();
+    if (!trimmed) return;
+    setCustomCuisineTags((prev) =>
+      prev.includes(trimmed) ? prev : [...prev, trimmed]
+    );
+    setOtherInput("");
+  };
+
+  const removeCustomCuisineTag = (value: string) =>
+    setCustomCuisineTags((prev) => prev.filter((c) => c !== value));
 
   const useMyLocation = () => {
     if (!navigator.geolocation) {
@@ -128,6 +145,7 @@ export default function PlaceForm({
       lat: resolved.lat,
       lng: resolved.lng,
       cuisine,
+      custom_cuisine_tags: customCuisineTags,
       budget_tier: budget,
       best_dishes: dishes
         .split(",")
@@ -229,7 +247,46 @@ export default function PlaceForm({
                 {formatCuisine(c)}
               </Chip>
             ))}
+            <Chip
+              active={otherInputOpen}
+              onClick={() => setOtherInputOpen((prev) => !prev)}
+            >
+              Other
+            </Chip>
           </div>
+
+          {otherInputOpen && (
+            <div className="mt-2 flex gap-1.5">
+              <input
+                value={otherInput}
+                onChange={(e) => setOtherInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    addCustomCuisineTag();
+                  }
+                }}
+                className={inputClass}
+                placeholder="e.g. Peranakan"
+              />
+              <Button type="button" variant="secondary" size="sm" onClick={addCustomCuisineTag}>
+                Add
+              </Button>
+            </div>
+          )}
+
+          {customCuisineTags.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {customCuisineTags.map((tag) => (
+                <Chip key={tag} active onClick={() => removeCustomCuisineTag(tag)}>
+                  {tag} ×
+                </Chip>
+              ))}
+            </div>
+          )}
+          <p className="text-stone mt-1 text-xs">
+            Custom tags show on the place but don&apos;t affect recommendations.
+          </p>
         </div>
 
         <div>

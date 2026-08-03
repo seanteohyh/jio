@@ -226,10 +226,14 @@ export default function PlaceDetailPage({
           )}
         </div>
 
-        {place.cuisine.length > 0 && (
+        {(place.cuisine.length > 0 ||
+          place.custom_cuisine_tags.length > 0) && (
           <div className="mt-3 flex flex-wrap gap-1.5">
             {place.cuisine.map((c) => (
               <Chip key={c}>{formatCuisine(c)}</Chip>
+            ))}
+            {place.custom_cuisine_tags.map((c) => (
+              <Chip key={c}>{c}</Chip>
             ))}
           </div>
         )}

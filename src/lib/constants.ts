@@ -29,7 +29,8 @@ export const CUISINES: Cuisine[] = [
   "fast_food",
   "food_court",
   "dessert",
-  "other",
+  "modern",
+  "traditional",
 ];
 
 export const BUDGET_TIERS: {

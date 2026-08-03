@@ -52,6 +52,7 @@ interface CreatePlaceBody {
   lat?: number;
   lng?: number;
   cuisine?: string[];
+  custom_cuisine_tags?: string[];
   budget_tier?: number;
   best_dishes?: string[];
   notes?: string;
@@ -81,6 +82,7 @@ export async function POST(request: NextRequest) {
       lat: body.lat,
       lng: body.lng,
       cuisine: body.cuisine ?? [],
+      custom_cuisine_tags: body.custom_cuisine_tags ?? [],
       budget_tier: tier as BudgetTier,
       osm_id: null,
       source: "manual",

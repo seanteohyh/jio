@@ -14,6 +14,7 @@ function place(id: string, cuisine: string[], budget: BudgetTier = 2): Place {
     lat: 1.3,
     lng: 103.85,
     cuisine,
+    custom_cuisine_tags: [],
     budget_tier: budget,
     osm_id: null,
     source: "manual",

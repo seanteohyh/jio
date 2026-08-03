@@ -12,6 +12,7 @@ function place(id: string, walkMinutes: number): Place {
     lat: 1.3,
     lng: 103.85,
     cuisine: ["local"],
+    custom_cuisine_tags: [],
     budget_tier: 2 as BudgetTier,
     osm_id: null,
     source: "manual",

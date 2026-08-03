@@ -55,11 +55,16 @@ export default function PlaceCard({
               leads with. Rating and visit count stay plain text so the row
               does not turn into a wall of colour. */}
           <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-            {place.cuisine.slice(0, compact ? 2 : 3).map((cuisine) => (
-              <TintPill key={cuisine} tone="cuisine">
-                {formatCuisine(cuisine)}
-              </TintPill>
-            ))}
+            {[
+              ...place.cuisine.map((c) => ({ key: c, label: formatCuisine(c) })),
+              ...place.custom_cuisine_tags.map((c) => ({ key: c, label: c })),
+            ]
+              .slice(0, compact ? 2 : 3)
+              .map((tag) => (
+                <TintPill key={tag.key} tone="cuisine">
+                  {tag.label}
+                </TintPill>
+              ))}
             <BudgetBadge tier={place.budget_tier} />
             {typeof place.walk_minutes === "number" && (
               <TintPill tone="walk">

@@ -110,6 +110,7 @@ export async function GET(request: NextRequest) {
         lat: candidate.lat,
         lng: candidate.lng,
         cuisine: candidate.cuisine,
+        custom_cuisine_tags: [] as string[],
         budget_tier: candidate.budget_tier,
         osm_id: candidate.osm_id,
         source: "discovery" as const,

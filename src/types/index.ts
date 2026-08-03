@@ -27,7 +27,8 @@ export type Cuisine =
   | "fast_food"
   | "food_court"
   | "dessert"
-  | "other";
+  | "modern"
+  | "traditional";
 
 /** 1 = under $8, 2 = $8-15, 3 = $15-30, 4 = over $30. */
 export type BudgetTier = 1 | 2 | 3 | 4;
@@ -57,6 +58,12 @@ export interface Place {
   lat: number;
   lng: number;
   cuisine: string[];
+  /**
+   * Free-text tags typed through the "Other" chip. Display-only — shown
+   * alongside `cuisine` on the card, but never read by recommendConfig.ts /
+   * recommend.ts, so a junk tag can't quietly nudge rankings.
+   */
+  custom_cuisine_tags: string[];
   budget_tier: BudgetTier;
   osm_id?: number | null;
   source: PlaceSource;

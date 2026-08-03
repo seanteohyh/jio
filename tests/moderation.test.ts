@@ -59,6 +59,7 @@ describe("blockPlace", () => {
       lat: 1.3,
       lng: 103.85,
       cuisine: [],
+      custom_cuisine_tags: [],
       budget_tier: 2,
       osm_id: null,
       source: "manual",
