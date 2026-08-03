@@ -16,6 +16,7 @@ import {
 } from "@/components/ui";
 import RouletteWheel from "@/components/RouletteWheel";
 import ShareLink from "@/components/ShareLink";
+import ShareResultCard from "@/components/ShareResultCard";
 import { fetcher, mutateJson } from "@/lib/fetcher";
 import { eventInviteUrl } from "@/lib/shareUrl";
 import { subscribeToEventChanges } from "@/lib/realtime";
@@ -383,6 +384,21 @@ export default function EventDetailPage({
           )}
         </Card>
       )}
+
+      {!isOpen &&
+        !isCancelled &&
+        (event.winner_place_name || event.winner_label) && (
+          <ShareResultCard
+            title={event.title}
+            placeName={event.winner_place_name ?? event.winner_label ?? ""}
+            whenLabel={formatDateTime(event.scheduled_at)}
+            points={
+              event.winner_place_id
+                ? event.tally?.[event.winner_place_id]
+                : undefined
+            }
+          />
+        )}
 
       {actionError && <ErrorNote>{actionError}</ErrorNote>}
 
