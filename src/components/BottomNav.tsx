@@ -121,13 +121,8 @@ export default function BottomNav() {
           aria-label={`${config.appName} — home`}
         >
           <JioMark className="h-9 w-9 shrink-0" />
-          <span className="leading-none">
-            <span className="font-display text-ember block text-2xl font-bold tracking-tight lowercase">
-              {config.appName}
-            </span>
-            <span className="text-stone mt-1 block text-xs">
-              where are we eating?
-            </span>
+          <span className="font-display text-ember text-2xl font-bold tracking-tight lowercase">
+            {config.appName}
           </span>
         </Link>
 

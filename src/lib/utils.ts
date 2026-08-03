@@ -31,15 +31,26 @@ export function estimateWalkMinutes(distanceM: number): number {
 }
 
 /**
- * The default sort for the plain `/places` browse list: nearest first.
+ * The sort for the plain `/places` browse list: nearest first by default,
+ * or highest rated first (CHANGES_20260803.md §12e).
  *
- * `walk_minutes` is already a stored/cached column, so this is a cheap
- * `ORDER BY` — unlike a rating-based sort, which would need a visits fetch.
- * Rating is deliberately excluded from the tiebreak for the same reason.
- * A place with no cached walk time yet sorts last, not as "closest".
+ * Both `walk_minutes` and `avg_rating` are stored/cached columns
+ * (021/022_*.sql maintain avg_rating via trigger), so either order is a
+ * cheap `ORDER BY` — no visits fetch needed for a rating sort. A place with
+ * no cached walk time, or no ratings yet, sorts last on that axis rather
+ * than being treated as "closest" or "worst".
  */
-export function sortPlacesForList(places: Place[]): Place[] {
+export function sortPlacesForList(
+  places: Place[],
+  sortBy: "walk" | "rating" = "walk"
+): Place[] {
   return [...places].sort((a, b) => {
+    if (sortBy === "rating") {
+      const aRating = typeof a.avg_rating === "number" ? a.avg_rating : -Infinity;
+      const bRating = typeof b.avg_rating === "number" ? b.avg_rating : -Infinity;
+      if (aRating !== bRating) return bRating - aRating;
+    }
+
     const aWalk = typeof a.walk_minutes === "number" ? a.walk_minutes : Infinity;
     const bWalk = typeof b.walk_minutes === "number" ? b.walk_minutes : Infinity;
     if (aWalk !== bWalk) return aWalk - bWalk;

@@ -415,7 +415,7 @@ export const supabaseRepo: Repo = {
       );
     }
 
-    const sorted = sortPlacesForList(enriched);
+    const sorted = sortPlacesForList(enriched, filters?.sortBy);
     if (!pagination) return { places: sorted, total: sorted.length };
 
     const { limit, offset } = pagination;

@@ -486,6 +486,8 @@ export interface Filters {
   status: PlaceStatus | "all";
   search: string;
   officeId: string;
+  /** Defaults to "walk" (nearest first) when omitted. */
+  sortBy?: "walk" | "rating";
 }
 
 export interface PlacesPagination {

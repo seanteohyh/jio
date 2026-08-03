@@ -156,6 +156,7 @@ function BrowseList() {
     maxWalk: String(filters.maxWalk),
     budgetMax: String(filters.budgetMax),
     status: "active",
+    sortBy: filters.sortBy,
   });
   if (filters.cuisines.length > 0) {
     baseQuery.set("cuisines", filters.cuisines.join(","));
@@ -204,7 +205,7 @@ function BrowseList() {
 
   return (
     <div className="space-y-5">
-      <FilterBar value={filters} onChange={setFilters} />
+      <FilterBar value={filters} onChange={setFilters} showSort />
 
       {pending.length > 0 && (
         <Card className="border-amber/40 bg-amber-tint/60">
@@ -262,8 +263,8 @@ function BrowseList() {
       {places.length > 0 && (
         <>
           <p className="text-stone text-xs">
-            {places.length} of {total} place{total === 1 ? "" : "s"}, nearest
-            first
+            {places.length} of {total} place{total === 1 ? "" : "s"},{" "}
+            {filters.sortBy === "rating" ? "highest rated first" : "nearest first"}
           </p>
           <ul className="space-y-2">
             {places.map((place) => (

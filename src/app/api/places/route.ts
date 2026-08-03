@@ -36,6 +36,7 @@ export async function GET(request: NextRequest) {
         status: (params.get("status") as PlaceStatus | "all") ?? "active",
         search: params.get("q") ?? "",
         officeId: params.get("officeId") ?? DEFAULT_OFFICE.id,
+        sortBy: params.get("sortBy") === "rating" ? "rating" : "walk",
       },
       page ? { limit, offset: (page - 1) * limit } : undefined
     );

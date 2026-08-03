@@ -10,6 +10,7 @@ export interface FilterState {
   cuisines: string[];
   budgetMax: BudgetTier;
   maxWalk: number;
+  sortBy: "walk" | "rating";
 }
 
 export const DEFAULT_FILTERS: FilterState = {
@@ -17,6 +18,7 @@ export const DEFAULT_FILTERS: FilterState = {
   cuisines: [],
   budgetMax: 4,
   maxWalk: 30,
+  sortBy: "walk",
 };
 
 /**
@@ -29,10 +31,15 @@ export default function FilterBar({
   value,
   onChange,
   showSearch = true,
+  showSort = false,
 }: {
   value: FilterState;
   onChange: (next: FilterState) => void;
   showSearch?: boolean;
+  /** /places is the only list actually ordered by this — /suggest sorts by
+   *  recommendation score and /map has no list order, so the control would
+   *  be there but do nothing. */
+  showSort?: boolean;
 }) {
   const toggleCuisine = (cuisine: string) => {
     const next = value.cuisines.includes(cuisine)
@@ -67,6 +74,26 @@ export default function FilterBar({
       </div>
 
       <div className="flex flex-wrap items-center gap-4">
+        {showSort && (
+          <label className="flex items-center gap-2 text-xs">
+            <span className="text-stone">Sort</span>
+            <select
+              value={value.sortBy}
+              onChange={(e) =>
+                onChange({
+                  ...value,
+                  sortBy: e.target.value as FilterState["sortBy"],
+                })
+              }
+              className="border-line bg-paper rounded-lg border px-2 py-1 text-xs"
+              aria-label="Sort places"
+            >
+              <option value="walk">Nearest</option>
+              <option value="rating">Highest rated</option>
+            </select>
+          </label>
+        )}
+
         <label className="flex items-center gap-2 text-xs">
           <span className="text-stone">Up to</span>
           <select
@@ -109,6 +136,7 @@ export default function FilterBar({
         {(value.cuisines.length > 0 ||
           value.budgetMax !== 4 ||
           value.maxWalk !== 30 ||
+          value.sortBy !== "walk" ||
           value.search) && (
           <button
             type="button"

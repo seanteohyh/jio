@@ -361,7 +361,7 @@ export const demoRepo: Repo = {
     const officeId = filters?.officeId ?? DEFAULT_OFFICE.id;
     const enriched = store().places.map((p) => enrich(p, officeId));
     const filtered = applyFilters(enriched, filters);
-    const sorted = sortPlacesForList(filtered);
+    const sorted = sortPlacesForList(filtered, filters?.sortBy);
 
     if (!pagination) return { places: sorted, total: sorted.length };
 
