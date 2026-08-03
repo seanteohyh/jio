@@ -6,9 +6,10 @@ import { config, features } from "@/lib/config";
 import StartJioWizard from "@/components/home/StartJioWizard";
 import NeedsAvailability from "@/components/home/NeedsAvailability";
 import StreakBanner from "@/components/home/StreakBanner";
-import { LinkButton } from "@/components/ui";
+import EventRow from "@/components/events/EventRow";
+import { LinkButton, SectionHeading } from "@/components/ui";
 import JioLockup from "@/components/brand/JioLockup";
-import { formatTime, relativeDayLabel } from "@/lib/utils";
+import { formatTime } from "@/lib/utils";
 import type { LunchEvent } from "@/types";
 
 function greeting(now = new Date()): string {
@@ -17,24 +18,6 @@ function greeting(now = new Date()): string {
   if (hour < 15) return "Lunchtime";
   if (hour < 18) return "Afternoon";
   return "Evening";
-}
-
-const DOT_COLOR: Record<LunchEvent["status"], string> = {
-  open: "bg-ember",
-  closed: "bg-sage",
-  cancelled: "bg-stone",
-};
-
-/** Mon–Sun of the week containing `now`, as local midnight Dates. */
-function currentWeek(now: Date): Date[] {
-  const day = now.getDay(); // 0 = Sunday
-  const mondayOffset = day === 0 ? -6 : 1 - day;
-  const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() + mondayOffset);
-  return Array.from({ length: 5 }, (_, i) => {
-    const d = new Date(monday);
-    d.setDate(monday.getDate() + i);
-    return d;
-  });
 }
 
 function isSameDay(a: Date, b: Date): boolean {
@@ -78,28 +61,23 @@ export default async function HomePage() {
 
   // Home = quick action dashboard, not a second copy of the Jios tab (that
   // duplication was the actual source of "Home and Jios feel too similar" —
-  // decided 1 Aug, CHANGES_20260801.md §10). It keeps at most one forward-
-  // looking Jio: today's, as the headline itself, or otherwise the single
-  // next one — never a list.
+  // decided 1 Aug, CHANGES_20260801.md §10). Today's Jio, if any, is the
+  // headline itself; below it sits a short, capped list of what's coming
+  // next — the Mon-Fri dot strip this replaces (3 Aug) read as a miniature
+  // calendar competing with the Jios tab's actual one, and screenshotted
+  // back poorly. Capped at 2 so this stays a glance, not a second full
+  // browsable list — that stays on Jios.
   const relevantOpen = events.filter(
     (e) => e.status === "open" && e.date_phase !== "polling"
   );
   const todaysJio = relevantOpen.find((e) =>
     isSameDay(new Date(e.scheduled_at), now)
   );
-  const nextJio = todaysJio
-    ? undefined
-    : relevantOpen
-        .filter((e) => new Date(e.scheduled_at).getTime() > now.getTime())
-        .sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at))[0];
-
-  const week = currentWeek(now);
-  const weekDots = week.map((day) => ({
-    day,
-    event: events.find(
-      (e) => e.date_phase !== "polling" && isSameDay(new Date(e.scheduled_at), day)
-    ),
-  }));
+  const upcomingList = relevantOpen
+    .filter((e) => e.id !== todaysJio?.id)
+    .filter((e) => new Date(e.scheduled_at).getTime() > now.getTime())
+    .sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at))
+    .slice(0, 2);
 
   // "Same as last time?" — one-tap repeat. Scoped to Jios *you* hosted: only
   // a host can meaningfully repeat "who / where / when."
@@ -171,60 +149,19 @@ export default async function HomePage() {
         </Link>
       )}
 
-      {features.events && (
-        <div className="flex items-center justify-between gap-1">
-          {weekDots.map(({ day, event }) => (
-            <Link
-              key={day.toISOString()}
-              href={event ? `/events/${event.id}` : "/events"}
-              className="flex flex-1 flex-col items-center gap-1 py-1"
-            >
-              <span className="text-stone text-[10px] font-medium uppercase">
-                {day.toLocaleDateString("en-SG", { weekday: "narrow" })}
-              </span>
-              <span
-                className={
-                  isSameDay(day, now)
-                    ? "border-ember flex h-6 w-6 items-center justify-center rounded-full border text-[11px] font-semibold"
-                    : "flex h-6 w-6 items-center justify-center text-[11px]"
-                }
-              >
-                {day.getDate()}
-              </span>
-              <span
-                aria-hidden="true"
-                className={
-                  event
-                    ? `h-1.5 w-1.5 rounded-full ${DOT_COLOR[event.status]}`
-                    : "h-1.5 w-1.5"
-                }
-              />
-            </Link>
-          ))}
+      {features.events && upcomingList.length > 0 && (
+        <div className="space-y-2">
+          <SectionHeading action={<Link href="/events" className="text-ember text-xs underline">See all</Link>}>
+            Upcoming
+          </SectionHeading>
+          <ul className="space-y-2">
+            {upcomingList.map((event) => (
+              <li key={event.id}>
+                <EventRow event={event} />
+              </li>
+            ))}
+          </ul>
         </div>
-      )}
-
-      {features.events && nextJio && (
-        <Link
-          href={`/events/${nextJio.id}`}
-          className="border-line bg-cream/60 hover:border-ember/40 block rounded-xl border p-3 transition-colors"
-        >
-          <div className="flex items-baseline justify-between gap-2">
-            <span className="truncate font-medium">{nextJio.title}</span>
-            <span className="text-stone shrink-0 text-xs">
-              {relativeDayLabel(nextJio.scheduled_at)} ·{" "}
-              {formatTime(nextJio.scheduled_at)}
-            </span>
-          </div>
-          <p className="text-stone mt-1 text-xs">
-            {nextJio.option_count ?? 0} option
-            {nextJio.option_count === 1 ? "" : "s"}
-            {typeof nextJio.going_count === "number" &&
-              nextJio.going_count > 0 &&
-              ` · ${nextJio.going_count} going`}
-            {nextJio.host_name && ` · hosted by ${nextJio.host_name}`}
-          </p>
-        </Link>
       )}
 
       {features.events && <NeedsAvailability />}

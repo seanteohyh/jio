@@ -11,8 +11,9 @@ import {
   SkeletonRows,
 } from "@/components/ui";
 import { fetcher, mutateJson } from "@/lib/fetcher";
-import { cn, formatTime, relativeDayLabel } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { features } from "@/lib/config";
+import EventRow from "@/components/events/EventRow";
 import type { AuthUser, Kaki, LunchEvent, RecurringSeries } from "@/types";
 
 const WEEKDAY_NAMES = [
@@ -51,44 +52,6 @@ function monthGrid(cursor: Date): Date[] {
     d.setDate(start.getDate() + i);
     return d;
   });
-}
-
-function EventRow({ event }: { event: LunchEvent }) {
-  return (
-    <Link
-      href={`/events/${event.id}`}
-      className="border-line bg-cream/60 hover:border-ember/40 block rounded-xl border p-3 transition-colors"
-    >
-      <div className="flex items-baseline justify-between gap-2">
-        <span className="truncate font-medium">{event.title}</span>
-        <span className="text-stone shrink-0 text-xs">
-          {relativeDayLabel(event.scheduled_at)} ·{" "}
-          {formatTime(event.scheduled_at)}
-        </span>
-      </div>
-      <p className="text-stone mt-1 text-xs">
-        {event.status === "cancelled" ? (
-          `Cancelled${event.host_name ? ` by ${event.host_name}` : ""}`
-        ) : event.status === "closed" ? (
-          event.winner_place_name || event.winner_label ? (
-            <span className="text-sage">
-              Went to {event.winner_place_name ?? event.winner_label}
-            </span>
-          ) : (
-            "Closed without a winner"
-          )
-        ) : (
-          <>
-            {event.option_count ?? 0} option
-            {event.option_count === 1 ? "" : "s"}
-            {typeof event.going_count === "number" &&
-              ` · ${event.going_count} going`}
-            {event.host_name && ` · ${event.host_name}`}
-          </>
-        )}
-      </p>
-    </Link>
-  );
 }
 
 function MonthCalendar({
