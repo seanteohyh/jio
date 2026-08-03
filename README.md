@@ -37,10 +37,10 @@ When you are ready to make it real, see [Going live](#going-live).
 | | |
 |---|---|
 | **Suggest** | Ranks places on what you rate highly, what fits your budget, how far it is, and how recently you were there. Every suggestion says *why* it is there. |
-| **Jios** | Create a lunch outing, everyone ranks the options, a Borda count decides. RSVP, live vote updates, a roulette wheel for when the group genuinely cannot choose, and a month calendar with Hosting / Invited / Past filters for browsing. Anyone can edit a place, any signed-in user may edit any place's details, and the host can cancel a Jio outright — it stays visible, marked cancelled, rather than vanishing. |
+| **Jios** | Create a lunch outing, everyone ranks the options, a Borda count decides. RSVP, live vote updates, a roulette wheel for when the group genuinely cannot choose, and a month calendar with Hosting / Invited / Past filters for browsing. Anyone can edit a place, any signed-in user may edit any place's details, and the host can cancel a Jio outright — it stays visible, marked cancelled, rather than vanishing. Once a Jio is decided, its result — place, time, final points — can be copied or shared as a PNG, generated client-side, for pasting straight into a chat instead of a link. |
 | **Vote on a place that isn't listed yet** | Typing a name the search doesn't find logs it as a vote option immediately, no place record required. A non-blocking prompt afterward offers to add it to the pool; declining leaves it exactly as a text-only choice, permanently. |
 | **Kakis** | Lunch groups with a shareable invite link and shared stats — group favourites, who eats out most, who is most adventurous. |
-| **Places** | Searchable list with cuisine, budget and walk-time filters. Add places by hand, import candidate names from a food blog, or let the daily cron find them on OpenStreetMap. |
+| **Places** | Searchable list with cuisine, budget, walk-time and rating filters, sortable by nearest or highest-rated. Add places by hand, import candidate names from a food blog, or let the daily cron find them on OpenStreetMap. Cuisine tagging covers a fixed, scored list (now including Modern and Traditional) plus free-text "Other" tags that show on the place but never affect recommendations. |
 | **Map** | Leaflet map of everything in walking distance, with real walking routes when OneMap is configured. |
 | **Reviews** | Log a visit privately, or share it as a review. Each visit is its own entry, editable and deletable later — including un-sharing a review back to private. |
 | **Saved places** | Bookmark anywhere from any list. `/places` has an All / Saved split, and saving nudges a place up your own suggestions. |
@@ -229,7 +229,7 @@ Roughly 30 minutes end to end. Everything below stays on a free tier.
    `service_role` key. The last one is a secret; it bypasses all access
    control.
 3. **SQL Editor** — run every file in `supabase/migrations/` in numeric order,
-   001 through 031. They are idempotent, so re-running is harmless.
+   001 through 033. They are idempotent, so re-running is harmless.
 4. **Authentication → Providers → Anonymous sign-ins** — turn this on. It is
    what makes name-only sign-in work.
 5. **Authentication → URL Configuration** — set the Site URL to your deployed
@@ -401,8 +401,12 @@ fixed protected list — `status`, the trigger-maintained rating/flag
 columns, provenance) rather than naming the editable columns by hand. The
 earlier hand-written version is what caused a real "permission denied"
 error in production: it never grew when the edit form started writing
-columns it didn't cover. Deriving it means a future column needs no
-migration here at all unless it's meant to be protected.
+columns it didn't cover. Deriving *which* columns are editable means a
+future column needs no code change here — but the `GRANT` itself is still
+a snapshot taken when the migration runs, not a standing rule, so adding a
+column still needs a migration that re-issues the grant (033 does this for
+`custom_cuisine_tags`). Skipping that step reproduces the exact bug this
+migration exists to prevent, just for the new column instead.
 
 **A vote option with no place record is still just an id — not a schema
 fork.** `event_votes.place_id` has no foreign key to `places`, so a
@@ -413,6 +417,16 @@ it to a real place later goes through `attach_place_to_option`, a
 host — moving votes already cast for the draft along with it, so voting
 for something before it becomes a real place doesn't discard those votes
 the moment it does.
+
+`event_options.place_id`, unlike `event_votes.place_id`, *did* carry a
+foreign key to `places` — migration 029's own comment claimed otherwise,
+conflating the two columns, and that gap is what produced a real
+`invalid input syntax for type uuid: "draft-<uuid>"` error in production
+(CHANGES_20260803.md §12a) the first time someone added a free-text
+option outside the demo repo, which has no such constraint to catch it.
+Migration 032 drops that foreign key and the app-level `draft-` string
+prefix goes with it — `place_id` is a bare generated uuid now, same as
+before 029 intended, and `label` alone marks a draft option.
 
 **Cancelling a Jio goes through a dedicated function, same shape as
 block/unblock.** `cancel_event` (migration 030) is host-only and only from
@@ -449,7 +463,7 @@ what kept this lazy rather than reaching for a service-role write path.
 ## Tests
 
 ```bash
-npm test          # 299 tests across 23 files
+npm test          # 303 tests across 24 files
 npm run typecheck
 npm run lint
 ```
@@ -479,6 +493,7 @@ npm run lint
 | `cancelEvent.test.ts` | Host-only cancellation, only from `open`, stays findable afterward |
 | `userDiscovery.test.ts` | Server-side name filtering and office scoping for the invite picker |
 | `recurringSeries.test.ts` | Recurring-series date math (lookahead window, no double-generation), fixed vs. voted occurrences, fresh kaki-membership expansion per occurrence |
+| `sortPlacesForList.test.ts` | `/places`'s nearest-first default vs. the highest-rated sort, unrated places sinking rather than sorting first, tie-breaking |
 
 **`npm test` does not typecheck.** Vitest transforms TypeScript with esbuild,
 which strips annotations without checking them, and the suite is all pure
