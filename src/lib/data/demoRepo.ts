@@ -863,8 +863,9 @@ export const demoRepo: Repo = {
     // looked up — it never matches a real place, which is exactly what
     // makes `place` undefined when this option is rendered. See the
     // `place_id` doc comment on EventOption for why this is safe to vote on
-    // through the same column real places use.
-    const placeId = `draft-${uuid()}`;
+    // through the same column real places use. No string prefix — mirrors
+    // supabaseRepo.ts / migration 032, place_id is a bare generated uuid.
+    const placeId = uuid();
     const option: EventOption = {
       event_id: eventId,
       place_id: placeId,

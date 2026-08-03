@@ -40,8 +40,8 @@ function NewEventBody() {
 
   const source = data?.event;
   const initialPlaceIds = source?.options
-    .map((o) => o.place_id)
-    .filter((id) => !id.startsWith("draft-"));
+    .filter((o) => !o.label)
+    .map((o) => o.place_id);
   const initialInvite = source
     ? {
         userIds: source.invitees.map((i) => i.user_id),

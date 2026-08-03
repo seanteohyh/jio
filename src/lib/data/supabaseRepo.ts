@@ -1298,7 +1298,9 @@ export const supabaseRepo: Repo = {
     // See the `place_id` doc comment on EventOption: this id is generated,
     // not looked up, and never matches a real place — that's what makes it
     // votable through the same event_votes.place_id column real places use.
-    const placeId = `draft-${uuid()}`;
+    // No string prefix: event_options.place_id is still a uuid column (see
+    // migration 032), just no longer FK'd to `places`.
+    const placeId = uuid();
 
     const { error } = await client.from("event_options").insert({
       event_id: eventId,

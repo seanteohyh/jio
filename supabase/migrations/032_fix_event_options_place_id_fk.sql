@@ -1,0 +1,27 @@
+-- 032_fix_event_options_place_id_fk.sql
+--
+-- Fixes the uuid-syntax crash reported 3 Aug (CHANGES_20260803.md §12a):
+-- adding a free-text vote option threw
+--   invalid input syntax for type uuid: "draft-<uuid>"
+--
+-- 029_placeless_vote_options.sql's own comment claimed
+-- `event_options.place_id` "already has no foreign key to `places`" — that
+-- claim is only true of `event_votes.place_id`. `event_options.place_id`
+-- (006_events.sql) really does carry `references places(id)`, so even a
+-- syntactically valid, non-matching uuid would have failed the FK check;
+-- the `draft-` string prefix additionally isn't valid uuid syntax at all,
+-- which is what actually surfaced as the error.
+--
+-- Dropped here for the same reason 029 dropped
+-- lunch_events_winner_place_id_fkey: a free-text option's place_id is a
+-- generated id with no matching `places` row by design, not a bug to
+-- constrain away. `label` (added in 029) remains the marker that
+-- distinguishes a draft option from a real one — see the EventOption
+-- doc comment in src/types/index.ts.
+--
+-- The application code's `draft-` prefix is dropped in the same change
+-- that ships this migration (supabaseRepo.ts / demoRepo.ts) — place_id
+-- goes back to being a bare generated uuid, valid for the column's uuid
+-- type now that nothing requires it to resolve to a real place.
+
+alter table event_options drop constraint if exists event_options_place_id_fkey;
