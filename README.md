@@ -37,10 +37,10 @@ When you are ready to make it real, see [Going live](#going-live).
 | | |
 |---|---|
 | **Suggest** | Ranks places on what you rate highly, what fits your budget, how far it is, and how recently you were there. Every suggestion says *why* it is there. |
-| **Jios** | Create a lunch outing, everyone ranks the options, a Borda count decides. RSVP, live vote updates, a roulette wheel for when the group genuinely cannot choose, and a month calendar with Hosting / Invited / Past filters for browsing. Anyone can edit a place, any signed-in user may edit any place's details, and the host can cancel a Jio outright — it stays visible, marked cancelled, rather than vanishing. Once a Jio is decided, its result — place, time, final points — can be copied or shared as a PNG, generated client-side, for pasting straight into a chat instead of a link. |
+| **Jios** | Create a lunch outing, everyone ranks the options, a Borda count decides. RSVP, live vote updates, a roulette wheel for when the group genuinely cannot choose, and a month calendar with Hosting / Invited / Past filters for browsing. Anyone can edit a place, any signed-in user may edit any place's details, and the host can cancel a Jio outright — it stays visible, marked cancelled, rather than vanishing. Once a Jio is decided, its result — place, time, final points — can be copied or shared as a PNG, generated client-side, for pasting straight into a chat instead of a link. A host can also start a Jio with votes hidden: nobody, host included, sees the running standing until it closes — only the ballot count shows. |
 | **Vote on a place that isn't listed yet** | Typing a name the search doesn't find logs it as a vote option immediately, no place record required. A non-blocking prompt afterward offers to add it to the pool; declining leaves it exactly as a text-only choice, permanently. |
 | **Kakis** | Lunch groups with a shareable invite link and shared stats — group favourites, who eats out most, who is most adventurous. |
-| **Places** | Searchable list with cuisine, budget, walk-time and rating filters, sortable by nearest or highest-rated. Add places by hand, import candidate names from a food blog, or let the daily cron find them on OpenStreetMap. Cuisine tagging covers a fixed, scored list (now including Modern and Traditional) plus free-text "Other" tags that show on the place but never affect recommendations. |
+| **Places** | Searchable list with cuisine, budget, walk-time and rating filters, sortable by nearest, highest-rated, or rated by your Kaki group. Add places by hand, import candidate names from a food blog, or let the daily cron find them on OpenStreetMap. Cuisine tagging covers a fixed, scored list (now including Modern and Traditional) plus free-text "Other" tags that show on the place but never affect recommendations. |
 | **Map** | Leaflet map of everything in walking distance, with real walking routes when OneMap is configured. |
 | **Reviews** | Log a visit privately, or share it as a review. Each visit is its own entry, editable and deletable later — including un-sharing a review back to private. |
 | **Saved places** | Bookmark anywhere from any list. `/places` has an All / Saved split, and saving nudges a place up your own suggestions. |
@@ -229,7 +229,7 @@ Roughly 30 minutes end to end. Everything below stays on a free tier.
    `service_role` key. The last one is a secret; it bypasses all access
    control.
 3. **SQL Editor** — run every file in `supabase/migrations/` in numeric order,
-   001 through 033. They are idempotent, so re-running is harmless.
+   001 through 034. They are idempotent, so re-running is harmless.
 4. **Authentication → Providers → Anonymous sign-ins** — turn this on. It is
    what makes name-only sign-in work.
 5. **Authentication → URL Configuration** — set the Site URL to your deployed
@@ -472,12 +472,33 @@ does not trigger it on the host's behalf — the same one-cron-a-day
 constraint that shaped the discovery cron (see Free-tier realities) is
 what kept this lazy rather than reaching for a service-role write path.
 
+**A hidden-vote Jio's blindness is enforced at the API response layer, not
+the database.** `hide_votes` (migration 034) is a plain host-write-only
+column — RLS on `event_votes` still lets a participant read their own
+ballot rows directly, same as always, since blocking that would also break
+a voter seeing their own submitted ranking confirmed. What actually hides
+the aggregate from everyone else is `redactHiddenVotes()` in
+`src/lib/voting.ts`, which every route returning an `EventDetail` — the
+vote route above all, but also options, RSVP, invitees, availability,
+candidate-dates and suggest-options — runs its response through before
+`json()`. That number of call sites is exactly the shape of bug this
+codebase has already shipped twice (§1's grant, §12a's uuid): one function,
+applied everywhere, rather than trusting N handlers to each remember.
+
+**"Rated by your Kaki group" inherits the same visibility limit
+`computeKakiMetrics` already has.** Both aggregate ratings across a Kaki's
+members by calling `listVisits` once per member — subject to the same RLS
+as any other query (`user_id = auth.uid() or is_public = true`), so a
+private, unshared rating from a groupmate is invisible to this computation
+in live mode, same as it already was for the Kaki page's group favourites.
+Not a new gap this feature introduces, just one it inherits.
+
 ---
 
 ## Tests
 
 ```bash
-npm test          # 303 tests across 24 files
+npm test          # 313 tests across 26 files
 npm run typecheck
 npm run lint
 ```
@@ -508,6 +529,8 @@ npm run lint
 | `userDiscovery.test.ts` | Server-side name filtering and office scoping for the invite picker |
 | `recurringSeries.test.ts` | Recurring-series date math (lookahead window, no double-generation), fixed vs. voted occurrences, fresh kaki-membership expansion per occurrence |
 | `sortPlacesForList.test.ts` | `/places`'s nearest-first default vs. the highest-rated sort, unrated places sinking rather than sorting first, tie-breaking |
+| `hiddenVotes.test.ts` | A hidden-vote Jio's standing is blind only while open, reveals on close, and voter count is distinct voters not ballot rows |
+| `kakiRating.test.ts` | "Rated by your Kaki group" averages only the member set's ratings, scoped independently per place |
 
 **`npm test` does not typecheck.** Vitest transforms TypeScript with esbuild,
 which strips annotations without checking them, and the suite is all pure
