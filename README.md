@@ -46,7 +46,7 @@ When you are ready to make it real, see [Going live](#going-live).
 | **Saved places** | Bookmark anywhere from any list. `/places` has an All / Saved split, and saving nudges a place up your own suggestions. |
 | **Weather** | Checks the NEA two-hour forecast. When rain is likely, the walk penalty doubles and closer places quietly rise. |
 | **Metrics** | What you actually eat versus what you think you eat, plus a nudge when you have had the same cuisine three days running. |
-| **Home** | A quick-action dashboard, not a second Jios list: today's Jio becomes the headline when there is one, otherwise a single next-Jio card; a Mon–Fri status strip; "Same as last time?" one-tap repeat of your last hosted Jio. |
+| **Home** | A quick-action dashboard, not a second Jios list: today's Jio becomes the headline when there is one; a capped list (next one or two) of what's coming up otherwise; "Same as last time?" one-tap repeat of your last hosted Jio. |
 | **Recurring Jios** | A standing weekly Jio — same place every time (auto-confirmed, no vote needed) or a vote over the same option pool each week. Generates its next occurrence lazily, a few days ahead, when the host loads Home or Jios; invitees are expanded fresh from current kaki membership every time, not frozen at series creation. |
 | **Admin** | Moderation (reports, block/unblock) and office management, both reachable from "You" — no dedicated nav icon, since admins are the one group that needs it least often. |
 
@@ -315,6 +315,20 @@ disable discovery, add some other daily ping.
 UTC accordingly. For anything more frequent, point an external scheduler such
 as [cron-job.org](https://cron-job.org) at `/api/cron/discover` with the same
 bearer token.
+
+**Multi-office discovery is paced, not parallel.** With more than one office,
+the cron sweeps them one after another with a 2s gap between each — not to
+respect an Overpass rate limit (none is documented), just to avoid firing N
+simultaneous requests. A time-budget check stops starting new offices once
+there isn't comfortably enough of the function's 60s ceiling left, so a slow
+run skips the remainder rather than getting killed mid-sweep and losing
+whatever that office had already found — the skipped offices pick up on the
+next day's run.
+
+**Vercel Web Analytics and Speed Insights are on**, both free on the Hobby
+plan — page views, unique visitors and Core Web Vitals in the Vercel
+dashboard, no extra configuration beyond the `<Analytics />` /
+`<SpeedInsights />` components already in the root layout.
 
 **Rating aggregates are trigger-maintained columns**, not computed on read.
 A row-level trigger on `visits` (migration `021_place_ratings_trigger.sql`)
