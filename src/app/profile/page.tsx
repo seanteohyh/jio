@@ -360,6 +360,14 @@ export default function ProfilePage() {
             Moderation
           </Link>
         )}
+        {me?.user?.is_admin && (
+          <Link
+            href="/admin/analytics"
+            className="text-ember block text-sm underline"
+          >
+            Analytics
+          </Link>
+        )}
         {me?.user?.is_admin && features.offices && (
           <Link
             href="/admin/offices"

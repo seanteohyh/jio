@@ -48,7 +48,7 @@ When you are ready to make it real, see [Going live](#going-live).
 | **Metrics** | What you actually eat versus what you think you eat, plus a nudge when you have had the same cuisine three days running. |
 | **Home** | A quick-action dashboard, not a second Jios list: today's Jio becomes the headline when there is one; a capped list (next one or two) of what's coming up otherwise; "Same as last time?" one-tap repeat of your last hosted Jio. |
 | **Recurring Jios** | A standing weekly Jio — same place every time (auto-confirmed, no vote needed) or a vote over the same option pool each week. Generates its next occurrence lazily, a few days ahead, when the host loads Home or Jios; invitees are expanded fresh from current kaki membership every time, not frozen at series creation. |
-| **Admin** | Moderation (reports, block/unblock) and office management, both reachable from "You" — no dedicated nav icon, since admins are the one group that needs it least often. |
+| **Admin** | Moderation (reports, block/unblock), an analytics dashboard (growth, Jio outcomes, top places, Kaki activity, moderation and wishlist trends, a same-day participation funnel), and office management — all reachable from "You", no dedicated nav icon, since admins are the one group that needs it least often. |
 
 ---
 
@@ -229,7 +229,7 @@ Roughly 30 minutes end to end. Everything below stays on a free tier.
    `service_role` key. The last one is a secret; it bypasses all access
    control.
 3. **SQL Editor** — run every file in `supabase/migrations/` in numeric order,
-   001 through 034. They are idempotent, so re-running is harmless.
+   001 through 035. They are idempotent, so re-running is harmless.
 4. **Authentication → Providers → Anonymous sign-ins** — turn this on. It is
    what makes name-only sign-in work.
 5. **Authentication → URL Configuration** — set the Site URL to your deployed
@@ -493,12 +493,22 @@ private, unshared rating from a groupmate is invisible to this computation
 in live mode, same as it already was for the Kaki page's group favourites.
 Not a new gap this feature introduces, just one it inherits.
 
+**The admin analytics dashboard reads across every user's data on purpose,
+through a `SECURITY DEFINER` function, not the plain anon-key client.**
+`get_admin_analytics` (migration 035) checks `admins` itself before
+returning anything — same shape as `resolve_place_flags`/`block_place`:
+privilege is earned by the check inside the function, not by which key
+signed the request. This is deliberately different from "rated by your
+Kaki group" above, which stays on the plain client and inherits RLS's
+private-data limit — an admin dashboard's whole job is seeing the true
+aggregate, a per-user feature's isn't.
+
 ---
 
 ## Tests
 
 ```bash
-npm test          # 313 tests across 26 files
+npm test          # 326 tests across 27 files
 npm run typecheck
 npm run lint
 ```
@@ -531,6 +541,7 @@ npm run lint
 | `sortPlacesForList.test.ts` | `/places`'s nearest-first default vs. the highest-rated sort, unrated places sinking rather than sorting first, tie-breaking |
 | `hiddenVotes.test.ts` | A hidden-vote Jio's standing is blind only while open, reveals on close, and voter count is distinct voters not ballot rows |
 | `kakiRating.test.ts` | "Rated by your Kaki group" averages only the member set's ratings, scoped independently per place |
+| `adminAnalytics.test.ts` | Asia/Singapore day/week bucketing across the UTC boundary, median with no-data returning `null` not `0`, walk-time bucket edges |
 
 **`npm test` does not typecheck.** Vitest transforms TypeScript with esbuild,
 which strips annotations without checking them, and the suite is all pure

@@ -174,6 +174,9 @@ export interface LunchEvent {
    * like any other Jio.
    */
   hide_votes?: boolean;
+  /** Set once, when `closeEvent` runs — powers §13b's time-to-decision
+   *  metric. `null`/absent for anything still open or cancelled. */
+  closed_at?: string | null;
   created_at?: string;
 
   /** Derived. */
@@ -565,6 +568,101 @@ export interface KakiMetrics {
 export interface CuisineStreak {
   cuisine: string;
   days: number;
+}
+
+/** One point in a day- or week-bucketed count series, Asia/Singapore day
+ *  boundary per CHANGES_20260803_1.md §13c. `date` is the bucket start,
+ *  ISO "YYYY-MM-DD". */
+export interface DateCount {
+  date: string;
+  count: number;
+}
+
+export interface NamedCount {
+  id: string;
+  name: string;
+  count: number;
+}
+
+/**
+ * §13 admin analytics dashboard, Phase 1 (in-app). Covers a fixed 90-day
+ * trailing window, no date-range picker in v1 (§13c). Two fields the spec
+ * asked for aren't here because the schema doesn't carry the timestamp
+ * they'd need yet — see the doc comments on those two entries below rather
+ * than treating the gap as an oversight.
+ */
+export interface AdminAnalytics {
+  windowDays: number;
+  generatedAt: string;
+
+  funnel: {
+    /** Today only (Asia/Singapore), not a window total — a funnel is a
+     *  snapshot of "who did what today," not a 90-day sum. */
+    participatingDau: number;
+    /**
+     * Lifetime total, not a daily figure — `event_rsvps` has no timestamp
+     * column, so "responded today" isn't something the current schema can
+     * answer. Worth adding `responded_at` if this funnel stays a priority.
+     */
+    respondedToInviteTotal: number;
+    votedInJioToday: number;
+    hostedJioToday: number;
+  };
+
+  growth: {
+    newUsersPerDay: DateCount[];
+    jiosCreatedPerDay: DateCount[];
+    /**
+     * All places created, any path. The Growth table asked for a split
+     * between "added via a Jio" and "added via /places/new" — both paths
+     * insert through the same `places` row with no field distinguishing
+     * how it got there, so that split isn't derivable from the current
+     * schema without adding one.
+     */
+    placesAddedPerDay: DateCount[];
+    kakiGroupsCreatedPerDay: DateCount[];
+    kakiGroupsCumulative: number;
+  };
+
+  jioOutcomes: {
+    decided: number;
+    closedNoWinner: number;
+    cancelled: number;
+    stillOpen: number;
+    avgBallotsPerJio: number;
+    /** `null` when no Jio in the window has both `created_at` and
+     *  `closed_at` to measure between. */
+    medianTimeToDecisionHours: number | null;
+  };
+
+  content: {
+    /** Floored to places with at least 3 visits, so one glowing review
+     *  can't sit at the top of the list. */
+    topRatedPlaces: (NamedCount & { avgRating: number })[];
+    mostVisitedPlaces: NamedCount[];
+    /** Named-category counts only — a custom "Other" tag is free text, not
+     *  a category to break out individually. */
+    cuisineDistribution: Record<string, number>;
+    customCuisineTagUsageCount: number;
+    walkTimeBuckets: { bucket: string; count: number }[];
+  };
+
+  social: {
+    mostActiveKakis: NamedCount[];
+    groupSizeDistribution: { size: number; count: number }[];
+  };
+
+  moderation: {
+    reportsFiledPerWeek: DateCount[];
+    reportsResolvedPerWeek: DateCount[];
+    avgResolutionHours: number | null;
+    pendingCount: number;
+  };
+
+  wishlist: {
+    savesPerWeek: DateCount[];
+    mostSavedPlaces: NamedCount[];
+  };
 }
 
 // ---------------------------------------------------------------------------

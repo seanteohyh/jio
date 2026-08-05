@@ -1,4 +1,5 @@
 import type {
+  AdminAnalytics,
   EventDetail,
   EventOption,
   Filters,
@@ -336,6 +337,13 @@ export interface Repo {
   /** Full block/unblock history, newest first, hydrated for the moderation view. */
   listModerationLog(limit?: number): Promise<ModerationLogEntry[]>;
   /**
+   * §13 admin analytics dashboard, Phase 1. Admin only — the caller must
+   * check `isAdmin` first (same pattern as every other admin surface); this
+   * method itself trusts the caller, matching `listModerationLog`/
+   * `listPendingFlags`. Fixed 90-day trailing window unless `days` is given.
+   */
+  getAdminAnalytics(days?: number): Promise<AdminAnalytics>;
+  /**
    * Confirms or dismisses a freshly-discovered (`needs_review`) place. Any
    * signed-in user may call this — it's crowd-confirmation of OSM data
    * quality, not moderation of an established place, so unlike `blockPlace`
@@ -427,6 +435,7 @@ export const REPO_METHODS = [
   "dismissLobang",
   "suggestPlacesForFriend",
   "isAdmin",
+  "getAdminAnalytics",
   "blockPlace",
   "unblockPlace",
   "listModerationLog",

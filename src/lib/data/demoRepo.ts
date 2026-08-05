@@ -16,6 +16,13 @@ import { pickCommitteeSuggestions } from "@/lib/suggestCommittee";
 import { computeWinner } from "@/lib/voting";
 import { rankPlaces } from "@/lib/recommend";
 import {
+  bucketByDay,
+  bucketByWeek,
+  bucketWalkMinutes,
+  isSameSgtDay,
+  median,
+} from "@/lib/adminAnalytics";
+import {
   DEMO_TEAMMATE_A,
   DEMO_TEAMMATE_B,
   buildDemoPlaces,
@@ -1189,6 +1196,7 @@ export const demoRepo: Repo = {
       ...event,
       status: "closed",
       winner_place_id: winner,
+      closed_at: new Date().toISOString(),
     };
 
     const detail = await demoRepo.getEvent(eventId);
@@ -1626,6 +1634,257 @@ export const demoRepo: Repo = {
         place_name: s.places.find((p) => p.id === entry.place_id)?.name,
         actor_display_name: displayNameFor(entry.actor_id),
       }));
+  },
+
+  async getAdminAnalytics(days = 90) {
+    const s = store();
+    const now = new Date();
+    const cutoff = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+    const inWindow = (iso?: string | null) => Boolean(iso) && iso! >= cutoff.toISOString();
+
+    // ---- funnel (today, Asia/Singapore) ----
+    const today = (iso?: string | null) => Boolean(iso) && isSameSgtDay(iso!, now);
+    const votedToday = new Set(
+      s.votes.filter((v) => today(v.created_at)).map((v) => v.user_id)
+    );
+    const hostedToday = new Set(
+      s.events.filter((e) => today(e.created_at)).map((e) => e.host_id)
+    );
+    const visitedToday = new Set(
+      s.visits.filter((v) => today(v.created_at)).map((v) => v.user_id)
+    );
+    const wishlistedToday = new Set(
+      s.wishlist.filter((w) => today(w.created_at)).map((w) => w.user_id)
+    );
+    const placesCreatedToday = new Set(
+      s.places.filter((p) => today(p.created_at) && p.created_by).map((p) => p.created_by!)
+    );
+    const flaggedToday = new Set(
+      s.placeFlags.filter((f) => today(f.created_at)).map((f) => f.flagged_by)
+    );
+    const participatingToday = new Set([
+      ...votedToday,
+      ...hostedToday,
+      ...visitedToday,
+      ...wishlistedToday,
+      ...placesCreatedToday,
+      ...flaggedToday,
+    ]);
+
+    // ---- growth ----
+    const newUsersPerDay = bucketByDay(
+      s.profiles.filter((p) => inWindow(p.created_at)).map((p) => p.created_at!)
+    );
+    const jiosCreatedPerDay = bucketByDay(
+      s.events.filter((e) => inWindow(e.created_at)).map((e) => e.created_at!)
+    );
+    const placesAddedPerDay = bucketByDay(
+      s.places.filter((p) => inWindow(p.created_at)).map((p) => p.created_at!)
+    );
+    const kakiGroupsCreatedPerDay = bucketByDay(
+      s.kakis.filter((k) => inWindow(k.created_at)).map((k) => k.created_at!)
+    );
+
+    // ---- Jio outcomes ----
+    const eventsInWindow = s.events.filter((e) => inWindow(e.created_at));
+    const decided = eventsInWindow.filter(
+      (e) => e.status === "closed" && e.winner_place_id
+    ).length;
+    const closedNoWinner = eventsInWindow.filter(
+      (e) => e.status === "closed" && !e.winner_place_id
+    ).length;
+    const cancelled = eventsInWindow.filter((e) => e.status === "cancelled").length;
+    const stillOpen = eventsInWindow.filter((e) => e.status === "open").length;
+
+    const ballotsPerEvent = eventsInWindow.map(
+      (e) => new Set(s.votes.filter((v) => v.event_id === e.id).map((v) => v.user_id)).size
+    );
+    const avgBallotsPerJio =
+      ballotsPerEvent.length > 0
+        ? ballotsPerEvent.reduce((a, b) => a + b, 0) / ballotsPerEvent.length
+        : 0;
+
+    const decisionHours = eventsInWindow
+      .filter((e) => e.created_at && e.closed_at)
+      .map(
+        (e) =>
+          (new Date(e.closed_at!).getTime() - new Date(e.created_at!).getTime()) /
+          3_600_000
+      );
+    const medianTimeToDecisionHours = median(decisionHours);
+
+    // ---- content / places ----
+    // Raw store places carry none of avg_rating/visit_count/walk_minutes —
+    // those are computed on demand by enrich() at read time, not stored.
+    // Mirrors that same computation here rather than reading fields that
+    // don't exist on the unenriched rows.
+    const placeStats = new Map(
+      s.places.map((place) => {
+        const visits = s.visits.filter((v) => v.place_id === place.id);
+        const rated = visits.filter((v) => typeof v.rating === "number");
+        const avgRating =
+          rated.length > 0
+            ? rated.reduce((sum, v) => sum + v.rating, 0) / rated.length
+            : null;
+        const cached = s.walkCache.find((w) => w.place_id === place.id);
+        const walkMinutes =
+          cached?.walk_minutes ??
+          estimateWalkMinutes(
+            haversine(
+              DEFAULT_OFFICE.lat,
+              DEFAULT_OFFICE.lng,
+              place.lat,
+              place.lng
+            )
+          );
+        return [
+          place.id,
+          { visitCount: visits.length, avgRating, walkMinutes },
+        ] as const;
+      })
+    );
+
+    const RATING_FLOOR_VISITS = 3;
+    const topRatedPlaces = s.places
+      .map((p) => ({ place: p, stats: placeStats.get(p.id)! }))
+      .filter(
+        (x) => x.stats.visitCount >= RATING_FLOOR_VISITS && x.stats.avgRating !== null
+      )
+      .sort((a, b) => (b.stats.avgRating ?? 0) - (a.stats.avgRating ?? 0))
+      .slice(0, 10)
+      .map((x) => ({
+        id: x.place.id,
+        name: x.place.name,
+        count: x.stats.visitCount,
+        avgRating: x.stats.avgRating ?? 0,
+      }));
+
+    const mostVisitedPlaces = s.places
+      .map((p) => ({ place: p, stats: placeStats.get(p.id)! }))
+      .sort((a, b) => b.stats.visitCount - a.stats.visitCount)
+      .slice(0, 10)
+      .map((x) => ({ id: x.place.id, name: x.place.name, count: x.stats.visitCount }));
+
+    const cuisineDistribution: Record<string, number> = {};
+    let customCuisineTagUsageCount = 0;
+    for (const place of s.places) {
+      for (const cuisine of place.cuisine) {
+        cuisineDistribution[cuisine] = (cuisineDistribution[cuisine] ?? 0) + 1;
+      }
+      customCuisineTagUsageCount += place.custom_cuisine_tags.length;
+    }
+
+    const walkTimeBuckets = bucketWalkMinutes(
+      s.places.map((p) => placeStats.get(p.id)!.walkMinutes)
+    );
+
+    // ---- social / Kaki ----
+    const mostActiveKakis = [...s.kakis]
+      .map((k) => ({
+        id: k.id,
+        name: k.name,
+        count: s.events.filter((e) => e.kaki_id === k.id).length,
+      }))
+      .filter((k) => k.count > 0)
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+
+    const sizeByKaki = new Map<string, number>();
+    for (const member of s.kakiMembers) {
+      sizeByKaki.set(member.kaki_id, (sizeByKaki.get(member.kaki_id) ?? 0) + 1);
+    }
+    const groupSizeCounts = new Map<number, number>();
+    for (const size of sizeByKaki.values()) {
+      groupSizeCounts.set(size, (groupSizeCounts.get(size) ?? 0) + 1);
+    }
+    const groupSizeDistribution = Array.from(groupSizeCounts.entries())
+      .map(([size, count]) => ({ size, count }))
+      .sort((a, b) => a.size - b.size);
+
+    // ---- moderation ----
+    const flagsInWindow = s.placeFlags.filter((f) => inWindow(f.created_at));
+    const reportsFiledPerWeek = bucketByWeek(
+      flagsInWindow.map((f) => f.created_at!)
+    );
+    const resolvedInWindow = flagsInWindow.filter((f) => f.resolved_at);
+    const reportsResolvedPerWeek = bucketByWeek(
+      resolvedInWindow.map((f) => f.resolved_at!)
+    );
+    const resolutionHours = resolvedInWindow.map(
+      (f) =>
+        (new Date(f.resolved_at!).getTime() - new Date(f.created_at!).getTime()) /
+        3_600_000
+    );
+    const avgResolutionHours =
+      resolutionHours.length > 0
+        ? resolutionHours.reduce((a, b) => a + b, 0) / resolutionHours.length
+        : null;
+    const pendingCount = s.placeFlags.filter((f) => f.status === "pending").length;
+
+    // ---- wishlist ----
+    const wishlistInWindow = s.wishlist.filter((w) => inWindow(w.created_at));
+    const savesPerWeek = bucketByWeek(
+      wishlistInWindow.map((w) => w.created_at!)
+    );
+    const savesByPlace = new Map<string, number>();
+    for (const entry of s.wishlist) {
+      savesByPlace.set(entry.place_id, (savesByPlace.get(entry.place_id) ?? 0) + 1);
+    }
+    const mostSavedPlaces = Array.from(savesByPlace.entries())
+      .map(([placeId, count]) => ({
+        id: placeId,
+        name: s.places.find((p) => p.id === placeId)?.name ?? "Unknown place",
+        count,
+      }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+
+    return {
+      windowDays: days,
+      generatedAt: now.toISOString(),
+      funnel: {
+        participatingDau: participatingToday.size,
+        respondedToInviteTotal: s.rsvps.length,
+        votedInJioToday: votedToday.size,
+        hostedJioToday: hostedToday.size,
+      },
+      growth: {
+        newUsersPerDay,
+        jiosCreatedPerDay,
+        placesAddedPerDay,
+        kakiGroupsCreatedPerDay,
+        kakiGroupsCumulative: s.kakis.length,
+      },
+      jioOutcomes: {
+        decided,
+        closedNoWinner,
+        cancelled,
+        stillOpen,
+        avgBallotsPerJio,
+        medianTimeToDecisionHours,
+      },
+      content: {
+        topRatedPlaces,
+        mostVisitedPlaces,
+        cuisineDistribution,
+        customCuisineTagUsageCount,
+        walkTimeBuckets,
+      },
+      social: {
+        mostActiveKakis,
+        groupSizeDistribution,
+      },
+      moderation: {
+        reportsFiledPerWeek,
+        reportsResolvedPerWeek,
+        avgResolutionHours,
+        pendingCount,
+      },
+      wishlist: {
+        savesPerWeek,
+        mostSavedPlaces,
+      },
+    };
   },
 
   async reviewPlace(_userId, placeId, approve) {

@@ -14,6 +14,7 @@ import { pickCommitteeSuggestions } from "@/lib/suggestCommittee";
 import { createAuthServerClient } from "@/lib/supabase/serverAuth";
 import type { Repo } from "./index";
 import type {
+  AdminAnalytics,
   EventCandidateDate,
   EventDateVote,
   EventDetail,
@@ -1714,7 +1715,11 @@ export const supabaseRepo: Repo = {
 
     const { error } = await client
       .from("lunch_events")
-      .update({ status: "closed", winner_place_id: winner })
+      .update({
+        status: "closed",
+        winner_place_id: winner,
+        closed_at: new Date().toISOString(),
+      })
       .eq("id", eventId);
 
     if (error) fail("Could not close that Jio", error);
@@ -2372,6 +2377,15 @@ export const supabaseRepo: Repo = {
       place_name: placeNameById.get(entry.place_id),
       actor_display_name: names.get(entry.actor_id),
     }));
+  },
+
+  async getAdminAnalytics(days = 90) {
+    const client = await db();
+    const { data, error } = await client.rpc("get_admin_analytics", {
+      p_days: days,
+    });
+    if (error) fail("Could not load analytics", error);
+    return data as AdminAnalytics;
   },
 
   async reviewPlace(userId, placeId, approve) {
