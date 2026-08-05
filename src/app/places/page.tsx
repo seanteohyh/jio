@@ -264,7 +264,11 @@ function BrowseList() {
         <>
           <p className="text-stone text-xs">
             {places.length} of {total} place{total === 1 ? "" : "s"},{" "}
-            {filters.sortBy === "rating" ? "highest rated first" : "nearest first"}
+            {filters.sortBy === "rating"
+              ? "highest rated first"
+              : filters.sortBy === "kaki_rating"
+                ? "rated highly by your Kaki group first"
+                : "nearest first"}
           </p>
           <ul className="space-y-2">
             {places.map((place) => (

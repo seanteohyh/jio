@@ -10,13 +10,15 @@ import {
   readJson,
 } from "@/lib/api";
 import { DEFAULT_OFFICE } from "@/lib/constants";
-import type { BudgetTier, Place, PlaceStatus } from "@/types";
+import { isEnabled } from "@/lib/config";
+import { computeKakiRatingByPlace } from "@/lib/metrics";
+import type { BudgetTier, Filters, Place, PlaceStatus } from "@/types";
 
 const PAGE_SIZE = 15;
 
 export async function GET(request: NextRequest) {
   try {
-    await requireUser();
+    const user = await requireUser();
     const repo = await getRepoAsync();
     const params = request.nextUrl.searchParams;
 
@@ -27,15 +29,67 @@ export async function GET(request: NextRequest) {
     const page = pageParam ? Math.max(1, numberParam(params, "page", 1)) : null;
     const limit = numberParam(params, "limit", PAGE_SIZE);
 
+    const baseFilters: Omit<Filters, "sortBy"> = {
+      cuisines: listParam(params, "cuisines"),
+      budgetMin: numberParam(params, "budgetMin", 1) as BudgetTier,
+      budgetMax: numberParam(params, "budgetMax", 4) as BudgetTier,
+      maxWalkMinutes: numberParam(params, "maxWalk", 60),
+      status: (params.get("status") as PlaceStatus | "all") ?? "active",
+      search: params.get("q") ?? "",
+      officeId: params.get("officeId") ?? DEFAULT_OFFICE.id,
+    };
+
+    // §12f — "rated by your Kaki group" needs the requesting user's Kaki
+    // membership, which the repo's listPlaces has no notion of, so this
+    // mode is computed here rather than pushed down like "walk"/"rating"
+    // are. That also means it can't use the repo's own pagination — the
+    // full filtered set has to be scored and sorted first.
+    if (params.get("sortBy") === "kaki_rating" && isEnabled("kakis")) {
+      const { places: allPlaces } = await repo.listPlaces(baseFilters);
+
+      const kakis = await repo.listKakis(user.id);
+      const memberIds = new Set<string>([user.id]);
+      for (const kaki of kakis) {
+        const detail = await repo.getKaki(kaki.id);
+        for (const member of detail?.members ?? []) {
+          memberIds.add(member.user_id);
+        }
+      }
+
+      const visitLists = await Promise.all(
+        Array.from(memberIds).map((id) => repo.listVisits(undefined, id))
+      );
+      const kakiRatingByPlace = computeKakiRatingByPlace(
+        visitLists.flat(),
+        memberIds
+      );
+
+      const rated = allPlaces
+        .map((place) => ({
+          ...place,
+          kaki_rating: kakiRatingByPlace[place.id] ?? null,
+        }))
+        .sort((a, b) => {
+          const aR = typeof a.kaki_rating === "number" ? a.kaki_rating : -Infinity;
+          const bR = typeof b.kaki_rating === "number" ? b.kaki_rating : -Infinity;
+          if (aR !== bR) return bR - aR;
+          const aW = typeof a.walk_minutes === "number" ? a.walk_minutes : Infinity;
+          const bW = typeof b.walk_minutes === "number" ? b.walk_minutes : Infinity;
+          if (aW !== bW) return aW - bW;
+          return a.name.localeCompare(b.name);
+        });
+
+      const total = rated.length;
+      const places = page
+        ? rated.slice((page - 1) * limit, (page - 1) * limit + limit)
+        : rated;
+
+      return json({ places, total });
+    }
+
     const { places, total } = await repo.listPlaces(
       {
-        cuisines: listParam(params, "cuisines"),
-        budgetMin: numberParam(params, "budgetMin", 1) as BudgetTier,
-        budgetMax: numberParam(params, "budgetMax", 4) as BudgetTier,
-        maxWalkMinutes: numberParam(params, "maxWalk", 60),
-        status: (params.get("status") as PlaceStatus | "all") ?? "active",
-        search: params.get("q") ?? "",
-        officeId: params.get("officeId") ?? DEFAULT_OFFICE.id,
+        ...baseFilters,
         sortBy: params.get("sortBy") === "rating" ? "rating" : "walk",
       },
       page ? { limit, offset: (page - 1) * limit } : undefined

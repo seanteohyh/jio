@@ -318,3 +318,34 @@ export function computeCuisineStreak(
   const cuisine = Array.from(running).sort()[0];
   return { cuisine, days: length };
 }
+
+/**
+ * Average rating per place among a set of visits, restricted to a given
+ * member set — CHANGES_20260803_1.md §12f ("what do my Kaki think of this
+ * place," not "what does everyone think"). Distinct from a place's overall
+ * `avg_rating`: same shape of computation, scoped set of visits.
+ *
+ * `null`/absent for a place means nobody in the set has rated it — never
+ * coerced to 0, which would read as "rated terribly" rather than "no data."
+ */
+export function computeKakiRatingByPlace(
+  visits: Visit[],
+  memberIds: Set<string>
+): Record<string, number> {
+  const sums = new Map<string, { sum: number; count: number }>();
+
+  for (const visit of visits) {
+    if (!memberIds.has(visit.user_id)) continue;
+    if (typeof visit.rating !== "number") continue;
+    const entry = sums.get(visit.place_id) ?? { sum: 0, count: 0 };
+    entry.sum += visit.rating;
+    entry.count += 1;
+    sums.set(visit.place_id, entry);
+  }
+
+  const result: Record<string, number> = {};
+  for (const [placeId, { sum, count }] of sums) {
+    result[placeId] = sum / count;
+  }
+  return result;
+}

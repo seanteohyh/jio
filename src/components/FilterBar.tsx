@@ -3,6 +3,7 @@
 import { Chip, inputClass } from "./ui";
 import { CUISINES, BUDGET_TIERS } from "@/lib/constants";
 import { formatCuisine } from "@/lib/utils";
+import { features } from "@/lib/config";
 import type { BudgetTier } from "@/types";
 
 export interface FilterState {
@@ -10,7 +11,9 @@ export interface FilterState {
   cuisines: string[];
   budgetMax: BudgetTier;
   maxWalk: number;
-  sortBy: "walk" | "rating";
+  /** "kaki_rating" — §12f — is computed at the API layer, not by the repo;
+   *  see the sort branch in src/app/api/places/route.ts. */
+  sortBy: "walk" | "rating" | "kaki_rating";
 }
 
 export const DEFAULT_FILTERS: FilterState = {
@@ -90,6 +93,9 @@ export default function FilterBar({
             >
               <option value="walk">Nearest</option>
               <option value="rating">Highest rated</option>
+              {features.kakis && (
+                <option value="kaki_rating">Rated by your Kaki group</option>
+              )}
             </select>
           </label>
         )}
