@@ -275,7 +275,11 @@ export default function EventDetailPage({
 
   const tally = event.tally ?? {};
   const maxPoints = Math.max(1, ...Object.values(tally));
-  const voterCount = new Set(event.votes.map((v) => v.user_id)).size;
+  const voterCount =
+    event.voter_count ?? new Set(event.votes.map((v) => v.user_id)).size;
+  // §14 — hidden only while open; once closed this is the first time
+  // anyone sees the result, same "DECIDED" moment as any other Jio.
+  const hideStanding = isOpen && Boolean(event.hide_votes);
 
   const orderedBallot = ballot.filter((placeId) =>
     event.options.some((o) => o.place_id === placeId)
@@ -546,8 +550,16 @@ export default function EventDetailPage({
         <p className="text-stone mb-3 text-xs">
           {voterCount === 0
             ? "Nobody has voted yet."
-            : `${voterCount} ballot${voterCount === 1 ? "" : "s"} in. Points come from everyone's rankings, not just first choices.`}
+            : hideStanding
+              ? `${voterCount} ballot${voterCount === 1 ? "" : "s"} in. Standing stays hidden until this Jio closes.`
+              : `${voterCount} ballot${voterCount === 1 ? "" : "s"} in. Points come from everyone's rankings, not just first choices.`}
         </p>
+
+        {hideStanding && (
+          <p className="bg-paper text-stone mb-3 rounded-lg px-3 py-2 text-xs">
+            🔒 Votes hidden until this Jio closes
+          </p>
+        )}
 
         <ul className="space-y-2">
           {event.options.map((option) => {
@@ -567,18 +579,22 @@ export default function EventDetailPage({
                       </span>
                     )}
                   </span>
-                  <span className="text-stone shrink-0 text-xs tabular-nums">
-                    {points} pt{points === 1 ? "" : "s"}
-                  </span>
+                  {!hideStanding && (
+                    <span className="text-stone shrink-0 text-xs tabular-nums">
+                      {points} pt{points === 1 ? "" : "s"}
+                    </span>
+                  )}
                 </div>
-                <div className="bg-paper mt-1 h-2 overflow-hidden rounded-full">
-                  <div
-                    className={
-                      isWinner ? "bg-sage h-full" : "bg-ember h-full"
-                    }
-                    style={{ width: `${(points / maxPoints) * 100}%` }}
-                  />
-                </div>
+                {!hideStanding && (
+                  <div className="bg-paper mt-1 h-2 overflow-hidden rounded-full">
+                    <div
+                      className={
+                        isWinner ? "bg-sage h-full" : "bg-ember h-full"
+                      }
+                      style={{ width: `${(points / maxPoints) * 100}%` }}
+                    />
+                  </div>
+                )}
                 {option.added_by_name && (
                   <p className="text-stone mt-0.5 text-[11px]">
                     added by {option.added_by_name}

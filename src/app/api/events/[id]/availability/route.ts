@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/auth";
 import { getRepoAsync } from "@/lib/data/repo";
 import { errorResponse, json, readJson } from "@/lib/api";
 import { featureGate } from "@/lib/config";
+import { redactHiddenVotes } from "@/lib/voting";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -23,7 +24,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     await repo.markDateAvailability(id, user.id, body?.dates ?? []);
 
     const event = await repo.getEvent(id);
-    return json({ ok: true, event });
+    return json({ ok: true, event: event && redactHiddenVotes(event) });
   } catch (error) {
     return errorResponse(error);
   }

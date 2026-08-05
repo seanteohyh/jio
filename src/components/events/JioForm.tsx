@@ -72,6 +72,7 @@ export default function JioForm({
     initialInvite ?? { userIds: [], kakiIds: [] }
   );
   const [placeQuery, setPlaceQuery] = useState("");
+  const [hideVotes, setHideVotes] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -131,6 +132,7 @@ export default function JioForm({
 
     const shared = {
       title: title.trim() || "Lunch",
+      hide_votes: hideVotes,
       invitee_ids: invite.userIds,
       // Both, deliberately: the server snapshots every group's members into
       // individual invitees, and keeps the first group as display provenance
@@ -319,6 +321,25 @@ export default function JioForm({
       <Wrapper {...wrapperProps}>
         <SectionHeading>Who is coming</SectionHeading>
         <InvitePicker value={invite} onChange={setInvite} />
+      </Wrapper>
+
+      <Wrapper {...wrapperProps}>
+        <label className="flex items-start gap-2.5 text-sm">
+          <input
+            type="checkbox"
+            checked={hideVotes}
+            onChange={(e) => setHideVotes(e.target.checked)}
+            className="accent-ember mt-0.5"
+          />
+          <span>
+            <span className="text-ink font-medium">Hide votes until this Jio closes</span>
+            <span className="text-stone block text-xs">
+              Nobody sees the running standing while voting is open — not
+              even you. Only the ballot count shows until it closes. Can’t
+              be changed once the Jio is started.
+            </span>
+          </span>
+        </label>
       </Wrapper>
 
       {error && <ErrorNote>{error}</ErrorNote>}

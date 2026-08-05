@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/auth";
 import { getRepoAsync } from "@/lib/data/repo";
 import { badRequest, errorResponse, json, readJson } from "@/lib/api";
 import { featureGate } from "@/lib/config";
+import { redactHiddenVotes } from "@/lib/voting";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -33,7 +34,7 @@ export async function POST(request: NextRequest, { params }: Params) {
         user.id
       );
       const event = await repo.getEvent(id);
-      return json({ ok: true, event, option });
+      return json({ ok: true, event: event && redactHiddenVotes(event), option });
     }
 
     if (!body?.place_id) return badRequest("Which place?");
@@ -41,7 +42,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     await repo.addOptionToEvent(id, body.place_id, user.id);
 
     const event = await repo.getEvent(id);
-    return json({ ok: true, event });
+    return json({ ok: true, event: event && redactHiddenVotes(event) });
   } catch (error) {
     return errorResponse(error);
   }
@@ -78,7 +79,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     );
 
     const event = await repo.getEvent(id);
-    return json({ ok: true, event });
+    return json({ ok: true, event: event && redactHiddenVotes(event) });
   } catch (error) {
     return errorResponse(error);
   }
@@ -99,7 +100,7 @@ export async function DELETE(request: NextRequest, { params }: Params) {
     await repo.removeOptionFromEvent(id, placeId, user.id);
 
     const event = await repo.getEvent(id);
-    return json({ ok: true, event });
+    return json({ ok: true, event: event && redactHiddenVotes(event) });
   } catch (error) {
     return errorResponse(error);
   }

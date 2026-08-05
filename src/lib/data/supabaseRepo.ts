@@ -773,7 +773,8 @@ export const supabaseRepo: Repo = {
     officeId,
     placeIds,
     kakiId,
-    inviteeIds
+    inviteeIds,
+    hideVotes
   ) {
     const client = await db();
 
@@ -787,6 +788,7 @@ export const supabaseRepo: Repo = {
         kaki_id: kakiId ?? null,
         invite_token: generateToken(),
         status: "open",
+        hide_votes: hideVotes ?? false,
       })
       .select()
       .single();
@@ -818,7 +820,15 @@ export const supabaseRepo: Repo = {
     return event;
   },
 
-  async createFlexiEvent(hostId, title, officeId, candidateDates, kakiId, inviteeIds) {
+  async createFlexiEvent(
+    hostId,
+    title,
+    officeId,
+    candidateDates,
+    kakiId,
+    inviteeIds,
+    hideVotes
+  ) {
     const uniqueDates = Array.from(new Set(candidateDates));
     if (uniqueDates.length < 2) {
       throw new Error("A Flexi Jio needs at least 2 candidate dates");
@@ -838,6 +848,7 @@ export const supabaseRepo: Repo = {
         invite_token: generateToken(),
         status: "open",
         date_phase: "polling",
+        hide_votes: hideVotes ?? false,
       })
       .select()
       .single();

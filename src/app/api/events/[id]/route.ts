@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/auth";
 import { getRepoAsync } from "@/lib/data/repo";
 import { errorResponse, json, notFound } from "@/lib/api";
 import { featureGate } from "@/lib/config";
+import { redactHiddenVotes } from "@/lib/voting";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -31,16 +32,21 @@ export async function GET(_request: NextRequest, { params }: Params) {
       canAddOptions = event.invitees.some((i) => i.user_id === user.id);
     }
 
+    // Computed from the true event before redaction — a voter still sees
+    // their own submitted ranking confirmed even while the aggregate is
+    // hidden from everyone, themselves included (see redactHiddenVotes).
+    const myVote = event.votes
+      .filter((v) => v.user_id === user.id)
+      .sort((a, b) => a.rank - b.rank)
+      .map((v) => v.place_id);
+
     return json({
-      event,
+      event: redactHiddenVotes(event),
       viewer: {
         id: user.id,
         isHost: event.host_id === user.id,
         canAddOptions: canAddOptions && event.status === "open",
-        myVote: event.votes
-          .filter((v) => v.user_id === user.id)
-          .sort((a, b) => a.rank - b.rank)
-          .map((v) => v.place_id),
+        myVote,
         myRsvp:
           event.rsvps.find((r) => r.user_id === user.id)?.response ?? null,
       },

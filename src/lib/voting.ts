@@ -1,4 +1,4 @@
-import type { EventVote } from "@/types";
+import type { EventDetail, EventVote } from "@/types";
 
 /**
  * Borda count for ranked-choice lunch votes.
@@ -128,4 +128,35 @@ export function computeWinner(
     firstPlace: firsts[id],
     tieBroken: true,
   };
+}
+
+/** True while a hidden-vote Jio's standing is still supposed to be blind —
+ *  §14. `hide_votes` only applies while open; once closed, the whole point
+ *  was to blind the in-progress standing, not the result, so it reveals
+ *  normally through the same resolved-vote moment every other Jio uses. */
+export function tallyIsHidden(event: {
+  hide_votes?: boolean;
+  status: string;
+}): boolean {
+  return Boolean(event.hide_votes) && event.status === "open";
+}
+
+/**
+ * Every route that returns an `EventDetail` after a mutation (casting a
+ * ballot, adding an option, RSVPing, …) has to run its response through this
+ * — not just the GET detail route — since the client refreshes its local
+ * copy from whatever a POST/PATCH echoes back. Missing even one call site
+ * would leak the hidden standing through that endpoint alone.
+ *
+ * `voter_count` is populated either way so the client never has to fall back
+ * to counting `votes` itself, which is empty exactly when it would need to.
+ */
+export function redactHiddenVotes(event: EventDetail): EventDetail {
+  const voterCount = new Set(event.votes.map((v) => v.user_id)).size;
+
+  if (!tallyIsHidden(event)) {
+    return { ...event, voter_count: voterCount };
+  }
+
+  return { ...event, votes: [], tally: {}, voter_count: voterCount };
 }

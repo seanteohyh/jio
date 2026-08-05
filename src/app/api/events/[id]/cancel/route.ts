@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/auth";
 import { getRepoAsync } from "@/lib/data/repo";
 import { errorResponse, json } from "@/lib/api";
 import { featureGate } from "@/lib/config";
+import { redactHiddenVotes } from "@/lib/voting";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -20,7 +21,7 @@ export async function POST(_request: NextRequest, { params }: Params) {
     const repo = await getRepoAsync();
 
     const event = await repo.cancelEvent(id, user.id);
-    return json({ ok: true, event });
+    return json({ ok: true, event: redactHiddenVotes(event) });
   } catch (error) {
     return errorResponse(error);
   }

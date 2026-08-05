@@ -36,6 +36,9 @@ interface CreateEventBody {
   invitee_ids?: string[];
   /** Presence of this field (2+ entries) is what makes this a Flexi Jio. */
   candidate_dates?: string[];
+  /** §14 — set only here, at creation. No edit path exists once a Jio has
+   *  votes to hide. */
+  hide_votes?: boolean;
 }
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -110,7 +113,8 @@ export async function POST(request: NextRequest) {
         body.office_id ?? DEFAULT_OFFICE.id,
         dates,
         kakiId,
-        invitees
+        invitees,
+        body.hide_votes ?? false
       );
       return json({ event }, 201);
     }
@@ -130,7 +134,8 @@ export async function POST(request: NextRequest) {
       body.office_id ?? DEFAULT_OFFICE.id,
       body.place_ids ?? [],
       kakiId,
-      invitees
+      invitees,
+      body.hide_votes ?? false
     );
 
     return json({ event }, 201);

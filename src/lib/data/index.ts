@@ -128,7 +128,8 @@ export interface Repo {
     officeId: string,
     placeIds: string[],
     kakiId?: string | null,
-    inviteeIds?: string[]
+    inviteeIds?: string[],
+    hideVotes?: boolean
   ): Promise<LunchEvent>;
   /**
    * A Flexi Jio: date_phase starts 'polling' rather than skipping straight
@@ -142,7 +143,8 @@ export interface Repo {
     officeId: string,
     candidateDates: string[],
     kakiId?: string | null,
-    inviteeIds?: string[]
+    inviteeIds?: string[],
+    hideVotes?: boolean
   ): Promise<LunchEvent>;
   getEvent(idOrToken: string): Promise<EventDetail | null>;
   listEvents(userId: string): Promise<LunchEvent[]>;

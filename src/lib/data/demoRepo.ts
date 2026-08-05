@@ -623,7 +623,8 @@ export const demoRepo: Repo = {
     officeId,
     placeIds,
     kakiId,
-    inviteeIds
+    inviteeIds,
+    hideVotes
   ) {
     const s = store();
     const event: LunchEvent = {
@@ -636,6 +637,7 @@ export const demoRepo: Repo = {
       invite_token: generateToken(),
       winner_place_id: null,
       kaki_id: kakiId ?? null,
+      hide_votes: hideVotes ?? false,
       created_at: new Date().toISOString(),
     };
     s.events.push(event);
@@ -657,7 +659,15 @@ export const demoRepo: Repo = {
     return event;
   },
 
-  async createFlexiEvent(hostId, title, officeId, candidateDates, kakiId, inviteeIds) {
+  async createFlexiEvent(
+    hostId,
+    title,
+    officeId,
+    candidateDates,
+    kakiId,
+    inviteeIds,
+    hideVotes
+  ) {
     const uniqueDates = Array.from(new Set(candidateDates));
     if (uniqueDates.length < 2) {
       throw new Error("A Flexi Jio needs at least 2 candidate dates");
@@ -675,6 +685,7 @@ export const demoRepo: Repo = {
       invite_token: generateToken(),
       winner_place_id: null,
       kaki_id: kakiId ?? null,
+      hide_votes: hideVotes ?? false,
       date_phase: "polling",
       created_at: new Date().toISOString(),
     };
