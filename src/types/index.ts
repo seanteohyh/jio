@@ -195,6 +195,12 @@ export interface LunchEvent {
   /** Set once, when `closeEvent` runs — powers §13b's time-to-decision
    *  metric. `null`/absent for anything still open or cancelled. */
   closed_at?: string | null;
+  /** Throttle state for the "someone voted" push — see 038_vote_push_throttle.sql.
+   *  Not meaningful to read outside `claimVotePushWindow`. */
+  last_vote_push_at?: string | null;
+  /** Set once the "starting soon" reminder has fired — see
+   *  039_close_reminder.sql. Not meaningful to read outside `remindDueEvents`. */
+  reminder_sent_at?: string | null;
   created_at?: string;
 
   /** Derived. */

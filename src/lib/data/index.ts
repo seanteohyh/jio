@@ -283,6 +283,28 @@ export interface Repo {
     winnerPlaceId?: string | null
   ): Promise<EventDetail>;
   /**
+   * Throttle claim for the "someone voted" push (038_vote_push_throttle.sql)
+   * — returns `true` at most once per `windowSeconds` (default 10 min) for a
+   * given event. The vote route calls this right after `castBallot`; only a
+   * `true` result should actually send a push. Not a debounce — see the
+   * migration's comment for why a real quiet-period wait isn't feasible here.
+   */
+  claimVotePushWindow(
+    eventId: string,
+    windowSeconds?: number
+  ): Promise<boolean>;
+  /**
+   * Lazy, page-load-triggered "starting soon" reminder — same shape as
+   * `generateDueOccurrences` (039_close_reminder.sql explains why this isn't
+   * cron-driven). Scans `userId`'s own events for any within the reminder
+   * window that haven't fired yet, atomically claims each one so it only
+   * ever fires once, and returns who still needs nudging — the caller (an
+   * API route) is responsible for actually sending the push.
+   */
+  remindDueEvents(
+    userId: string
+  ): Promise<Array<{ eventId: string; title: string; recipientIds: string[] }>>;
+  /**
    * Calls off an open Jio — a new terminal state, not a reuse of `closed`
    * (CHANGES_20260801.md §9). Host only, and only from `open`; see
    * 030_cancel_event.sql for why this goes through a dedicated function
@@ -453,6 +475,8 @@ export const REPO_METHODS = [
   "castBallot",
   "rsvp",
   "closeEvent",
+  "claimVotePushWindow",
+  "remindDueEvents",
   "cancelEvent",
   "createRecurringSeries",
   "listRecurringSeries",

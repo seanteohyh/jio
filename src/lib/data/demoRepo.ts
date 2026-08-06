@@ -1271,6 +1271,57 @@ export const demoRepo: Repo = {
     return detail;
   },
 
+  async claimVotePushWindow(eventId, windowSeconds = 600) {
+    const s = store();
+    const event = s.events.find((e) => e.id === eventId);
+    if (!event) return false;
+
+    const now = Date.now();
+    if (
+      event.last_vote_push_at &&
+      now - new Date(event.last_vote_push_at).getTime() < windowSeconds * 1000
+    ) {
+      return false;
+    }
+
+    event.last_vote_push_at = new Date(now).toISOString();
+    return true;
+  },
+
+  async remindDueEvents(userId) {
+    const REMINDER_WINDOW_MS = 30 * 60 * 1000;
+    const s = store();
+    const now = Date.now();
+
+    const events = await demoRepo.listEvents(userId);
+    const due = events.filter((e) => {
+      if (e.status !== "open" || e.date_phase === "polling") return false;
+      if (e.reminder_sent_at) return false;
+      const msAway = new Date(e.scheduled_at).getTime() - now;
+      return msAway > 0 && msAway <= REMINDER_WINDOW_MS;
+    });
+
+    const results: Array<{ eventId: string; title: string; recipientIds: string[] }> = [];
+
+    for (const summary of due) {
+      const event = s.events.find((e) => e.id === summary.id);
+      if (!event || event.reminder_sent_at) continue;
+      event.reminder_sent_at = new Date(now).toISOString();
+
+      const participants = resolveEventParticipants(event);
+      const responded = new Set<string>([
+        ...s.votes.filter((v) => v.event_id === event.id).map((v) => v.user_id),
+        ...s.rsvps.filter((r) => r.event_id === event.id).map((r) => r.user_id),
+      ]);
+      const recipientIds = participants.filter((id) => !responded.has(id));
+      if (recipientIds.length > 0) {
+        results.push({ eventId: event.id, title: event.title, recipientIds });
+      }
+    }
+
+    return results;
+  },
+
   async cancelEvent(eventId, hostId) {
     const s = store();
     const index = s.events.findIndex((e) => e.id === eventId);

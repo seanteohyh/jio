@@ -1804,6 +1804,60 @@ export const supabaseRepo: Repo = {
     return detail;
   },
 
+  async claimVotePushWindow(eventId, windowSeconds = 600) {
+    const client = await db();
+    const { data, error } = await client.rpc("claim_vote_push_window", {
+      p_event_id: eventId,
+      p_window_seconds: windowSeconds,
+    });
+    if (error) fail("Could not check the vote push window", error);
+    return Boolean(data);
+  },
+
+  async remindDueEvents(userId) {
+    const REMINDER_WINDOW_MS = 30 * 60 * 1000;
+    const now = Date.now();
+
+    const events = await supabaseRepo.listEvents(userId);
+    const due = events.filter((e) => {
+      if (e.status !== "open" || e.date_phase === "polling") return false;
+      if (e.reminder_sent_at) return false;
+      const msAway = new Date(e.scheduled_at).getTime() - now;
+      return msAway > 0 && msAway <= REMINDER_WINDOW_MS;
+    });
+    if (due.length === 0) return [];
+
+    const client = await db();
+    const results: Array<{ eventId: string; title: string; recipientIds: string[] }> = [];
+
+    for (const event of due) {
+      const { data: claimed, error } = await client.rpc("claim_event_reminder", {
+        p_event_id: event.id,
+      });
+      if (error) fail("Could not check the reminder window", error);
+      if (!claimed) continue;
+
+      const [participantIds, { data: voteRows }, { data: rsvpRows }] =
+        await Promise.all([
+          resolveEventParticipants(client, event),
+          client.from("event_votes").select("user_id").eq("event_id", event.id),
+          client.from("event_rsvps").select("user_id").eq("event_id", event.id),
+        ]);
+
+      const responded = new Set<string>([
+        ...((voteRows ?? []) as { user_id: string }[]).map((r) => r.user_id),
+        ...((rsvpRows ?? []) as { user_id: string }[]).map((r) => r.user_id),
+      ]);
+
+      const recipientIds = participantIds.filter((id) => !responded.has(id));
+      if (recipientIds.length > 0) {
+        results.push({ eventId: event.id, title: event.title, recipientIds });
+      }
+    }
+
+    return results;
+  },
+
   // `hostId` isn't passed to the RPC — cancel_event checks auth.uid()
   // against host_id itself, same reasoning as attach_place_to_option.
   async cancelEvent(eventId, _hostId) {

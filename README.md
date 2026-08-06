@@ -48,7 +48,7 @@ When you are ready to make it real, see [Going live](#going-live).
 | **Metrics** | What you actually eat versus what you think you eat, plus a nudge when you have had the same cuisine three days running. |
 | **Home** | A quick-action dashboard, not a second Jios list: today's Jio becomes the headline when there is one; a capped list (next one or two) of what's coming up otherwise; "Same as last time?" one-tap repeat of your last hosted Jio. |
 | **Recurring Jios** | A standing weekly Jio — same place every time (auto-confirmed, no vote needed) or a vote over the same option pool each week. Generates its next occurrence lazily, a few days ahead, when the host loads Home or Jios; invitees are expanded fresh from current kaki membership every time, not frozen at series creation. |
-| **Push notifications** | Opt in from "You": get notified when you're invited to a Jio, and when one you're in gets decided. iOS only ever delivers push to an installed PWA, never a browser tab, so the app also nudges toward "Add to Home Screen" after a few visits — dismissible with "remind me later," not a one-shot ask. |
+| **Push notifications** | Opt in from "You": get notified when you're invited to a Jio, when someone votes on one you're hosting (throttled to at most one push per event per ~10 minutes), when a Jio you're in is starting in 30 minutes and you haven't voted or RSVP'd, and when one you're in gets decided. iOS only ever delivers push to an installed PWA, never a browser tab, so the app also nudges toward "Add to Home Screen" after a few visits — dismissible with "remind me later," not a one-shot ask. |
 | **Admin** | Moderation (reports, block/unblock), an analytics dashboard (growth, Jio outcomes, top places, Kaki activity, moderation and wishlist trends, a same-day participation funnel), and office management — all reachable from "You", no dedicated nav icon, since admins are the one group that needs it least often. |
 
 ---
@@ -230,7 +230,7 @@ Roughly 30 minutes end to end. Everything below stays on a free tier.
    `service_role` key. The last one is a secret; it bypasses all access
    control.
 3. **SQL Editor** — run every file in `supabase/migrations/` in numeric order,
-   001 through 037. They are idempotent, so re-running is harmless.
+   001 through 039. They are idempotent, so re-running is harmless.
 4. **Authentication → Providers → Anonymous sign-ins** — turn this on. It is
    what makes name-only sign-in work.
 5. **Authentication → URL Configuration** — set the Site URL to your deployed
@@ -541,12 +541,31 @@ purpose-built read (exactly the columns the send path needs) rather than
 a broadened table-wide SELECT policy — a push endpoint and keys are more
 sensitive than a display name or a rating.
 
+**The two remaining push triggers — "someone voted" and the pre-start
+reminder — are `SECURITY DEFINER` for the same shape of reason, and
+deliberately not cron.** `claim_vote_push_window` (migration 038) and
+`claim_event_reminder` (migration 039) each need to write a timestamp onto
+`lunch_events`, but `lunch_events_update`'s RLS policy is host-only — and
+the caller claiming the window is whoever just voted, or whoever's page
+load happened to trigger the reminder check, not necessarily the host.
+Both are one-purpose atomic claims (`UPDATE … WHERE … RETURNING`, nothing
+else), the same narrow shape as `claim_vote_push_window`'s neighbour. And
+both fire inline from a normal request rather than a cron job: Vercel
+Hobby's cron already runs once a day for discovery (see the recurring-series
+note below), nowhere near frequent enough for either "wait for voting to go
+quiet" or "fire 30 minutes before an arbitrary time of day" — so the vote
+route claims its window the instant a vote lands, and the reminder rides
+the same lazy, page-load-triggered pattern `generateDueOccurrences` already
+uses for recurring series. The trade-off is the same one stated there: the
+reminder only actually fires when *someone* with a stake in the Jio has the
+app open somewhere near that 30-minute mark, not on a guaranteed clock.
+
 ---
 
 ## Tests
 
 ```bash
-npm test          # 330 tests across 27 files
+npm test          # 340 tests across 27 files
 npm run typecheck
 npm run lint
 ```
@@ -555,7 +574,7 @@ npm run lint
 |---|---|
 | `recommend.test.ts` | Every scoring component, exclusions, ranking, boosts, group mode |
 | `blogImport.test.ts` | HTML extraction and the full SSRF matrix |
-| `eventAdditions.test.ts` | Who can add, remove, invite, vote and close; joining via an invite link makes a stranger a real invitee, not just visible |
+| `eventAdditions.test.ts` | Who can add, remove, invite, vote and close; joining via an invite link makes a stranger a real invitee, not just visible; the vote-push throttle window; the starting-soon reminder's timing, one-shot firing, and non-responder targeting |
 | `metrics.test.ts` | User and group statistics, cuisine streaks |
 | `discovery.test.ts` | OSM normalisation and deduplication |
 | `voting.test.ts` | Borda count, partial ballots, tie-breaking |
@@ -591,15 +610,7 @@ the other half of the gate.
 
 ## Not built yet
 
-In rough priority order.
-
-1. **Push for "someone voted" / a reminder before voting closes.** The
-   pipeline itself is built (see Push notifications below) — these are two
-   more triggers on top of it, deferred because "non-host votes → notify
-   host" needs a batching/throttling decision first (per-vote would spam a
-   popular Jio's host) and a pre-close reminder was always the lowest
-   priority of the trigger set.
-2. **Custom domain.** Currently `*.vercel.app`. Point DNS, add the domain in
+1. **Custom domain.** Currently `*.vercel.app`. Point DNS, add the domain in
    Vercel, then update the Supabase Site URL and redirect URLs.
 
 ---

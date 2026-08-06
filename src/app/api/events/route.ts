@@ -26,6 +26,31 @@ async function notifyInvitees(
   }
 }
 
+/**
+ * "Starting soon" reminder to anyone with a stake in `userId`'s own Jios who
+ * hasn't voted or RSVP'd yet — lazy, page-load-triggered, same shape as
+ * `generateDueOccurrences` just above. See 039_close_reminder.sql for why.
+ */
+async function remindUpcoming(repo: Repo, userId: string): Promise<void> {
+  try {
+    const due = await repo.remindDueEvents(userId);
+    for (const item of due) {
+      try {
+        await sendPushToUsers(repo, item.recipientIds, {
+          title: "Starting soon",
+          body: `${item.title} is in 30 minutes — you haven't voted or RSVP'd yet`,
+          url: `/events/${item.eventId}`,
+        });
+      } catch {
+        // Logged inside sendPushToUsers already; one event's failure
+        // shouldn't stop the rest.
+      }
+    }
+  } catch {
+    // remindDueEvents itself failing must never break loading the list.
+  }
+}
+
 export async function GET() {
   const blocked = featureGate("events");
   if (blocked) return blocked as NextResponse;
@@ -37,6 +62,9 @@ export async function GET() {
     // occurrence just by loading their own Jios list. See
     // 031_recurring_series.sql for why this isn't cron-driven.
     await repo.generateDueOccurrences(user.id);
+    // Same lazy trigger, for the "starting soon" reminder — see
+    // 039_close_reminder.sql.
+    await remindUpcoming(repo, user.id);
     const events = await repo.listEvents(user.id);
     return json({ events });
   } catch (error) {

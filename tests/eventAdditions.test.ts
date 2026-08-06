@@ -382,6 +382,117 @@ describe("closing", () => {
   });
 });
 
+describe("vote push throttle (claimVotePushWindow)", () => {
+  // 038_vote_push_throttle.sql — one push per event per window, not a true
+  // debounce. See the migration's comment for why (Vercel Hobby's cron is
+  // nowhere near frequent enough to wait out a quiet period).
+  it("claims the window on the first call", async () => {
+    const event = await makeEvent();
+    expect(await demoRepo.claimVotePushWindow(event.id)).toBe(true);
+  });
+
+  it("refuses a second claim within the same window", async () => {
+    const event = await makeEvent();
+    await demoRepo.claimVotePushWindow(event.id);
+    expect(await demoRepo.claimVotePushWindow(event.id)).toBe(false);
+  });
+
+  it("respects a custom window length", async () => {
+    const event = await makeEvent();
+    await demoRepo.claimVotePushWindow(event.id, 600);
+    // A 0-second window is already expired by the time this second call
+    // runs, however little time has actually passed.
+    expect(await demoRepo.claimVotePushWindow(event.id, 0)).toBe(true);
+  });
+
+  it("returns false for an event that does not exist", async () => {
+    expect(await demoRepo.claimVotePushWindow("no-such-event")).toBe(false);
+  });
+});
+
+describe("starting-soon reminder (remindDueEvents)", () => {
+  // 039_close_reminder.sql — lazy, page-load-triggered, same shape as
+  // generateDueOccurrences. "Close" was redefined as "the Jio's own
+  // scheduled_at" since there is no separate poll deadline anywhere.
+  function inMinutes(minutes: number): string {
+    return new Date(Date.now() + minutes * 60_000).toISOString();
+  }
+
+  async function makeSoonEvent(options?: {
+    minutesAway?: number;
+    inviteeIds?: string[];
+  }) {
+    return demoRepo.createEvent(
+      DEMO_USER_ID,
+      "Starting soon lunch",
+      inMinutes(options?.minutesAway ?? 20),
+      DEFAULT_OFFICE.id,
+      ["demo-place-01"],
+      null,
+      options?.inviteeIds ?? []
+    );
+  }
+
+  it("nudges an invitee who has not voted or RSVP'd, inside the window", async () => {
+    const event = await makeSoonEvent({ inviteeIds: [DEMO_TEAMMATE_A] });
+
+    const due = await demoRepo.remindDueEvents(DEMO_USER_ID);
+
+    expect(due).toHaveLength(1);
+    expect(due[0].eventId).toBe(event.id);
+    expect(due[0].recipientIds).toContain(DEMO_TEAMMATE_A);
+    expect(due[0].recipientIds).toContain(DEMO_USER_ID); // host hasn't voted either
+  });
+
+  it("excludes anyone who already voted or RSVP'd", async () => {
+    const event = await makeSoonEvent({
+      inviteeIds: [DEMO_TEAMMATE_A, DEMO_TEAMMATE_B],
+    });
+    await demoRepo.castBallot(event.id, DEMO_TEAMMATE_A, ["demo-place-01"]);
+    await demoRepo.rsvp(event.id, DEMO_TEAMMATE_B, "yes");
+
+    const [due] = await demoRepo.remindDueEvents(DEMO_USER_ID);
+
+    expect(due.recipientIds).not.toContain(DEMO_TEAMMATE_A);
+    expect(due.recipientIds).not.toContain(DEMO_TEAMMATE_B);
+    expect(due.recipientIds).toContain(DEMO_USER_ID);
+  });
+
+  it("ignores an event more than 30 minutes away", async () => {
+    await makeSoonEvent({ minutesAway: 90 });
+    expect(await demoRepo.remindDueEvents(DEMO_USER_ID)).toHaveLength(0);
+  });
+
+  it("ignores an event that already happened", async () => {
+    await makeSoonEvent({ minutesAway: -10 });
+    expect(await demoRepo.remindDueEvents(DEMO_USER_ID)).toHaveLength(0);
+  });
+
+  it("only ever fires once per event", async () => {
+    await makeSoonEvent({ inviteeIds: [DEMO_TEAMMATE_A] });
+
+    const first = await demoRepo.remindDueEvents(DEMO_USER_ID);
+    const second = await demoRepo.remindDueEvents(DEMO_USER_ID);
+
+    expect(first).toHaveLength(1);
+    expect(second).toHaveLength(0);
+  });
+
+  it("skips a Flexi Jio still polling for a date", async () => {
+    const event = await demoRepo.createFlexiEvent(
+      DEMO_USER_ID,
+      "Flexi lunch",
+      DEFAULT_OFFICE.id,
+      [inMinutes(20).slice(0, 10), inMinutes(60 * 24).slice(0, 10)],
+      null,
+      [DEMO_TEAMMATE_A]
+    );
+    expect(event.date_phase).toBe("polling");
+
+    expect(await demoRepo.remindDueEvents(DEMO_USER_ID)).toHaveLength(0);
+  });
+});
+
 describe("ballots", () => {
   it("replaces a previous ballot rather than appending to it", async () => {
     const event = await makeEvent({
