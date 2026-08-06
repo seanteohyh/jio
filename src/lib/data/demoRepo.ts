@@ -64,6 +64,7 @@ import type {
   Place,
   PlaceFlag,
   Profile,
+  PushTarget,
   RecurringSeries,
   RsvpResponse,
   TeamUser,
@@ -107,6 +108,12 @@ interface DemoStore {
   moderationLog: ModerationLogEntry[];
   placeFlags: PlaceFlag[];
   recurringSeries: RecurringSeries[];
+  pushSubscriptions: {
+    user_id: string;
+    endpoint: string;
+    p256dh: string;
+    auth_key: string;
+  }[];
 }
 
 const globalStore = globalThis as typeof globalThis & {
@@ -136,6 +143,7 @@ function seed(): DemoStore {
     moderationLog: [],
     placeFlags: [],
     recurringSeries: [],
+    pushSubscriptions: [],
   };
 }
 
@@ -591,6 +599,53 @@ export const demoRepo: Repo = {
     return map;
   },
 
+  async savePushSubscription(userId, sub) {
+    const s = store();
+    const index = s.pushSubscriptions.findIndex(
+      (p) => p.endpoint === sub.endpoint
+    );
+    const row = {
+      user_id: userId,
+      endpoint: sub.endpoint,
+      p256dh: sub.p256dh,
+      auth_key: sub.authKey,
+    };
+    if (index === -1) s.pushSubscriptions.push(row);
+    else s.pushSubscriptions[index] = row;
+  },
+
+  async deletePushSubscription(endpoint) {
+    const s = store();
+    s.pushSubscriptions = s.pushSubscriptions.filter(
+      (p) => p.endpoint !== endpoint
+    );
+  },
+
+  async setNotifyEvents(userId, enabled) {
+    const s = store();
+    const profile = s.profiles.find((p) => p.user_id === userId);
+    if (profile) profile.notify_events = enabled;
+  },
+
+  async getPushTargets(userIds): Promise<PushTarget[]> {
+    const s = store();
+    const ids = new Set(userIds);
+    return s.pushSubscriptions
+      .filter((p) => ids.has(p.user_id))
+      .filter((p) => {
+        const profile = s.profiles.find((pr) => pr.user_id === p.user_id);
+        // Undefined means the demo profile predates this preference —
+        // default on, matching the column's own DB default.
+        return profile?.notify_events !== false;
+      })
+      .map((p) => ({
+        userId: p.user_id,
+        endpoint: p.endpoint,
+        p256dh: p.p256dh,
+        authKey: p.auth_key,
+      }));
+  },
+
   async listAllUsers(query, officeId) {
     const s = store();
     const ids = new Set<string>([
@@ -836,6 +891,18 @@ export const demoRepo: Repo = {
       );
       if (!exists) s.invitees.push({ event_id: eventId, user_id: userId });
     }
+  },
+
+  async joinEventViaInvite(eventId, userId) {
+    const s = store();
+    const event = s.events.find((e) => e.id === eventId);
+    if (!event) throw new Error("Event not found");
+    if (event.host_id === userId) return;
+
+    const exists = s.invitees.some(
+      (i) => i.event_id === eventId && i.user_id === userId
+    );
+    if (!exists) s.invitees.push({ event_id: eventId, user_id: userId });
   },
 
   async addOptionToEvent(eventId, placeId, userId) {

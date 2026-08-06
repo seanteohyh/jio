@@ -137,6 +137,24 @@ export interface Profile {
   created_at?: string;
   /** Null until the one-time /welcome screen has been completed. */
   onboarded_at?: string | null;
+  /** One toggle covering every Jio-lifecycle push (§6) — invited, decided,
+   *  and anything added later. `notify_lobangs` exists in the schema
+   *  (migration 025) but has no UI or trigger yet; out of scope for §6. */
+  notify_events?: boolean;
+}
+
+/** What a browser hands back from `PushManager.subscribe()`, trimmed to
+ *  what the server needs to send to it later. */
+export interface PushSubscriptionInput {
+  endpoint: string;
+  p256dh: string;
+  authKey: string;
+}
+
+/** A stored subscription, resolved back to whichever user it belongs to —
+ *  what `getPushTargets` returns for the send path. */
+export interface PushTarget extends PushSubscriptionInput {
+  userId: string;
 }
 
 export interface TeamUser {

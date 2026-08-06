@@ -25,6 +25,14 @@ export default async function EventInvitePage({
   const repo = await getRepoAsync();
   const event = await repo.getEvent(token);
 
+  if (event) {
+    // The comment above says following the link is the acceptance — this is
+    // what actually makes that true. Without it, a visitor who never RSVPs
+    // or votes has no footprint anywhere listEvents() is used, so their own
+    // Jios tab can't find something they were genuinely invited to (§4).
+    await repo.joinEventViaInvite(event.id, user.id);
+  }
+
   if (!event) {
     return (
       <div className="space-y-4 py-10 text-center">

@@ -4,7 +4,27 @@ import { getRepoAsync } from "@/lib/data/repo";
 import { badRequest, errorResponse, json, readJson } from "@/lib/api";
 import { featureGate } from "@/lib/config";
 import { DEFAULT_OFFICE } from "@/lib/constants";
+import { sendPushToUsers } from "@/lib/push";
 import type { Repo } from "@/lib/data";
+
+/** Best-effort — a push failure must never fail the Jio it's announcing. */
+async function notifyInvitees(
+  repo: Repo,
+  invitees: string[],
+  eventId: string,
+  title: string
+): Promise<void> {
+  if (invitees.length === 0) return;
+  try {
+    await sendPushToUsers(repo, invitees, {
+      title: "You're invited to a Jio",
+      body: title,
+      url: `/events/${eventId}`,
+    });
+  } catch {
+    // Logged inside sendPushToUsers already; nothing more to do here.
+  }
+}
 
 export async function GET() {
   const blocked = featureGate("events");
@@ -116,6 +136,7 @@ export async function POST(request: NextRequest) {
         invitees,
         body.hide_votes ?? false
       );
+      await notifyInvitees(repo, invitees, event.id, title);
       return json({ event }, 201);
     }
 
@@ -137,6 +158,7 @@ export async function POST(request: NextRequest) {
       invitees,
       body.hide_votes ?? false
     );
+    await notifyInvitees(repo, invitees, event.id, title);
 
     return json({ event }, 201);
   } catch (error) {

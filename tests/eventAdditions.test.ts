@@ -254,6 +254,54 @@ describe("invitees", () => {
   });
 });
 
+describe("joining via an invite link", () => {
+  // CHANGES_20260804.md §4 — following a share link never used to leave any
+  // footprint, so a visitor who never RSVP'd or voted was invisible to
+  // listEvents() everywhere it's used, Jios tab included, even though
+  // reading the event itself was always allowed.
+  it("makes a stranger visible in listEvents after they join", async () => {
+    const event = await makeEvent();
+    expect(
+      (await demoRepo.listEvents(STRANGER)).map((e) => e.id)
+    ).not.toContain(event.id);
+
+    await demoRepo.joinEventViaInvite(event.id, STRANGER);
+
+    expect(
+      (await demoRepo.listEvents(STRANGER)).map((e) => e.id)
+    ).toContain(event.id);
+  });
+
+  it("records the joiner as a real invitee, not just a visibility flag", async () => {
+    const event = await makeEvent();
+    await demoRepo.joinEventViaInvite(event.id, STRANGER);
+
+    const detail = await demoRepo.getEvent(event.id);
+    expect(detail?.invitees.map((i) => i.user_id)).toContain(STRANGER);
+  });
+
+  it("is a no-op for the host joining their own event", async () => {
+    const event = await makeEvent();
+    await demoRepo.joinEventViaInvite(event.id, DEMO_USER_ID);
+
+    const detail = await demoRepo.getEvent(event.id);
+    expect(detail?.invitees.map((i) => i.user_id)).not.toContain(
+      DEMO_USER_ID
+    );
+  });
+
+  it("does not duplicate an invitee who joins twice", async () => {
+    const event = await makeEvent();
+    await demoRepo.joinEventViaInvite(event.id, STRANGER);
+    await demoRepo.joinEventViaInvite(event.id, STRANGER);
+
+    const detail = await demoRepo.getEvent(event.id);
+    expect(
+      detail?.invitees.filter((i) => i.user_id === STRANGER)
+    ).toHaveLength(1);
+  });
+});
+
 describe("event visibility", () => {
   it("shows an event to its host", async () => {
     const event = await makeEvent();

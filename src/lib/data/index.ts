@@ -17,6 +17,8 @@ import type {
   PlacesPage,
   PlacesPagination,
   Profile,
+  PushSubscriptionInput,
+  PushTarget,
   RecurringSeries,
   RsvpResponse,
   ScoredPlace,
@@ -101,6 +103,27 @@ export interface Repo {
   getProfile(userId: string): Promise<Profile | null>;
   upsertProfile(userId: string, displayName: string): Promise<Profile>;
   getDisplayNames(userIds: string[]): Promise<Map<string, string>>;
+
+  // ---- Push notifications (§6) ----
+  /** Upserts on `endpoint` — resubscribing the same browser replaces its
+   *  old keys rather than accumulating duplicates. */
+  savePushSubscription(
+    userId: string,
+    sub: PushSubscriptionInput
+  ): Promise<void>;
+  /** Removes one subscription by endpoint — unsubscribing, or the send path
+   *  cleaning up after the push service reports it gone (410/404). */
+  deletePushSubscription(endpoint: string): Promise<void>;
+  /** The one on/off preference covering every Jio-lifecycle push. */
+  setNotifyEvents(userId: string, enabled: boolean): Promise<void>;
+  /**
+   * Every push-capable subscription for the given users, already filtered
+   * to those with `notify_events` on. The one place this feature reads
+   * across users — see migration 037's comment for why that's a
+   * `SECURITY DEFINER` function in live mode rather than a plain query RLS
+   * would just refuse.
+   */
+  getPushTargets(userIds: string[]): Promise<PushTarget[]>;
   /**
    * Powers the invite picker. Filtering happens here, not in the route —
    * see docs/user-discovery.md §4.1: a client-side or route-level filter
@@ -182,6 +205,15 @@ export interface Repo {
     userIds: string[],
     hostId: string
   ): Promise<void>;
+  /**
+   * Self-service — "following the link is the acceptance" (§4). Adds the
+   * *caller* as an invitee, never anyone else; a no-op if they're already
+   * the host or already invited. Called when a signed-in user lands on an
+   * event's own invite link, so a visitor who never RSVPs or votes still
+   * has a real footprint and isn't invisible to listEvents() everywhere
+   * it's used — Jios tab included.
+   */
+  joinEventViaInvite(eventId: string, userId: string): Promise<void>;
   addOptionToEvent(
     eventId: string,
     placeId: string,
@@ -398,6 +430,10 @@ export const REPO_METHODS = [
   "getProfile",
   "upsertProfile",
   "getDisplayNames",
+  "savePushSubscription",
+  "deletePushSubscription",
+  "setNotifyEvents",
+  "getPushTargets",
   "listAllUsers",
   "completeOnboarding",
   "createEvent",
@@ -408,6 +444,7 @@ export const REPO_METHODS = [
   "markDateAvailability",
   "confirmEventDate",
   "addInviteesToEvent",
+  "joinEventViaInvite",
   "addOptionToEvent",
   "addFreeTextOptionToEvent",
   "attachPlaceToOption",

@@ -727,6 +727,65 @@ export const supabaseRepo: Repo = {
     return displayNameMap(client, userIds);
   },
 
+  async savePushSubscription(userId, sub) {
+    const client = await db();
+    const { error } = await client.from("push_subscriptions").upsert(
+      {
+        user_id: userId,
+        endpoint: sub.endpoint,
+        p256dh: sub.p256dh,
+        auth_key: sub.authKey,
+      },
+      { onConflict: "endpoint" }
+    );
+    if (error) fail("Could not save that subscription", error);
+  },
+
+  async deletePushSubscription(endpoint) {
+    const client = await db();
+    // RLS (push_subscriptions_delete) already scopes this to the caller's
+    // own rows — no user_id filter needed here, and none would help anyway
+    // since RLS is the actual gate regardless of what the query says.
+    const { error } = await client
+      .from("push_subscriptions")
+      .delete()
+      .eq("endpoint", endpoint);
+    if (error) fail("Could not remove that subscription", error);
+  },
+
+  async setNotifyEvents(userId, enabled) {
+    const client = await db();
+    const { error } = await client
+      .from("profiles")
+      .update({ notify_events: enabled })
+      .eq("user_id", userId);
+    if (error) fail("Could not update that preference", error);
+  },
+
+  async getPushTargets(userIds) {
+    if (userIds.length === 0) return [];
+    const client = await db();
+    // SECURITY DEFINER (migration 037) — see its comment for why this has
+    // to be a function rather than a plain query: both push_subscriptions
+    // and profiles are owner-scoped by RLS, and this is the one legitimate
+    // place the app reads someone else's.
+    const { data, error } = await client.rpc("get_push_targets", {
+      p_user_ids: userIds,
+    });
+    if (error) fail("Could not load push targets", error);
+    return ((data ?? []) as {
+      user_id: string;
+      endpoint: string;
+      p256dh: string;
+      auth_key: string;
+    }[]).map((row) => ({
+      userId: row.user_id,
+      endpoint: row.endpoint,
+      p256dh: row.p256dh,
+      authKey: row.auth_key,
+    }));
+  },
+
   async listAllUsers(query, officeId) {
     const client = await db();
     let builder = client
@@ -1193,6 +1252,22 @@ export const supabaseRepo: Repo = {
       .upsert(rows, { onConflict: "event_id,user_id" });
 
     if (error) fail("Could not add invitees", error);
+  },
+
+  // `userId` isn't passed to the RPC — same shape as cancelEvent's
+  // `_hostId`. join_event_via_invite trusts auth.uid(), not an argument the
+  // caller could otherwise forge; kept in the signature only so this
+  // matches demoRepo's arity (see tests/repoConformance.test.ts).
+  async joinEventViaInvite(eventId, _userId) {
+    const client = await db();
+    // SECURITY DEFINER (migration 036) — event_invitees_insert's RLS policy
+    // is host-only by design, so a visitor registering themselves has to go
+    // through a function scoped to auth.uid(), same shape as
+    // attach_place_to_option or cancel_event.
+    const { error } = await client.rpc("join_event_via_invite", {
+      p_event_id: eventId,
+    });
+    if (error) fail("Could not join that Jio", error);
   },
 
   async addOptionToEvent(eventId, placeId, userId) {

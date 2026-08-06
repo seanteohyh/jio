@@ -95,3 +95,49 @@ self.addEventListener("fetch", (event) => {
     );
   }
 });
+
+// ------------------------------------------------------------------ push --
+// CHANGES_20260804.md §6. The payload is whatever sendPushToUsers() in
+// src/lib/push.ts sent — { title, body, url } — kept intentionally small
+// rather than trying to carry enough state to skip a real page load.
+self.addEventListener("push", (event) => {
+  if (!event.data) return;
+
+  let payload;
+  try {
+    payload = event.data.json();
+  } catch {
+    return;
+  }
+
+  event.waitUntil(
+    self.registration.showNotification(payload.title || "Jio", {
+      body: payload.body,
+      icon: "/icon-192.png",
+      badge: "/icon-192.png",
+      data: { url: payload.url || "/" },
+    })
+  );
+});
+
+// Focuses an already-open tab on that URL rather than always spawning a new
+// one — someone with the app open in a background tab should land there,
+// not end up with two.
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const url = event.notification.data?.url || "/";
+
+  event.waitUntil(
+    self.clients
+      .matchAll({ type: "window", includeUncontrolled: true })
+      .then((windowClients) => {
+        for (const client of windowClients) {
+          const clientUrl = new URL(client.url);
+          if (clientUrl.pathname === url && "focus" in client) {
+            return client.focus();
+          }
+        }
+        if (self.clients.openWindow) return self.clients.openWindow(url);
+      })
+  );
+});

@@ -19,6 +19,7 @@ import PastJios from "@/components/profile/PastJios";
 import LobangInbox from "@/components/profile/LobangInbox";
 import AttachEmailPanel from "@/components/profile/AttachEmailPanel";
 import MyFlagsList from "@/components/profile/MyFlagsList";
+import PushNotificationToggle from "@/components/profile/PushNotificationToggle";
 import { fetcher, mutateJson } from "@/lib/fetcher";
 import { config, features } from "@/lib/config";
 import { BUDGET_TIERS, CUISINES } from "@/lib/constants";
@@ -345,6 +346,10 @@ export default function ProfilePage() {
 
       {me?.user?.id && <MyFlagsList />}
 
+      <Card>
+        <PushNotificationToggle />
+      </Card>
+
       <Card className="space-y-3">
         <SectionHeading>Account</SectionHeading>
         {features.kakis && (
@@ -393,10 +398,6 @@ export default function ProfilePage() {
             ) : null}
           </>
         )}
-        <p className="text-stone text-xs">
-          Push notifications are not built yet — see the README for what would
-          be involved.
-        </p>
 
         {/* In name-only mode there is no way back in: the identity lives in
             this browser's session and nothing else. Signing out is closer to
