@@ -6,6 +6,7 @@ import "./globals.css";
 import BottomNav from "@/components/BottomNav";
 import ServiceWorkerRegister from "@/components/ServiceWorkerRegister";
 import AddToHomeScreenPrompt from "@/components/AddToHomeScreenPrompt";
+import { InstallPromptProvider } from "@/components/InstallPromptProvider";
 import { config } from "@/lib/config";
 
 /**
@@ -62,16 +63,18 @@ export default function RootLayout({
       <body
         className={`${bricolage.variable} ${geistSans.variable} ${geistMono.variable} bg-paper text-ink min-h-screen`}
       >
-        {/* Bottom nav on mobile, side rail on desktop — the main region is
-            padded to clear whichever is showing. */}
-        <div className="md:pl-60">
-          <main className="mx-auto w-full max-w-3xl px-4 pt-4 pb-28 md:pb-10 md:pt-8">
-            {children}
-          </main>
-        </div>
-        <BottomNav />
-        <ServiceWorkerRegister />
-        <AddToHomeScreenPrompt />
+        <InstallPromptProvider>
+          {/* Bottom nav on mobile, side rail on desktop — the main region is
+              padded to clear whichever is showing. */}
+          <div className="md:pl-60">
+            <main className="mx-auto w-full max-w-3xl px-4 pt-4 pb-28 md:pb-10 md:pt-8">
+              {children}
+            </main>
+          </div>
+          <BottomNav />
+          <ServiceWorkerRegister />
+          <AddToHomeScreenPrompt />
+        </InstallPromptProvider>
         <Analytics />
         <SpeedInsights />
       </body>

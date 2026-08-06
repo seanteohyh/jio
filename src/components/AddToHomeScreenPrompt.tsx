@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { X, Share, PlusSquare, Smartphone } from "lucide-react";
 import { Button } from "./ui";
+import { useInstallPrompt } from "./InstallPromptProvider";
 
 const VISIT_KEY = "jio-a2hs-visits";
 const SNOOZE_KEY = "jio-a2hs-snoozed-until";
@@ -12,26 +13,6 @@ const MIN_VISITS = 3;
 // enough that "remind me later" still means something before this stops
 // mattering. Easy to retune later; nothing else depends on this exact number.
 const SNOOZE_DAYS = 7;
-
-interface BeforeInstallPromptEvent extends Event {
-  prompt(): Promise<void>;
-  userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
-}
-
-function isStandalone(): boolean {
-  if (typeof window === "undefined") return false;
-  return (
-    window.matchMedia("(display-mode: standalone)").matches ||
-    // iOS Safari's own flag — display-mode media query support there is
-    // spotty enough not to rely on alone.
-    (window.navigator as { standalone?: boolean }).standalone === true
-  );
-}
-
-function isIos(): boolean {
-  if (typeof window === "undefined") return false;
-  return /iphone|ipad|ipod/i.test(window.navigator.userAgent);
-}
 
 /**
  * Nudges toward installing to the home screen — CHANGES_20260804.md §2.
@@ -52,22 +33,11 @@ function isIos(): boolean {
  * explain, so nothing renders there.
  */
 export default function AddToHomeScreenPrompt() {
+  const { platform, standalone, install: installViaPrompt } = useInstallPrompt();
   const [visible, setVisible] = useState(false);
-  const [platform, setPlatform] = useState<"ios" | "chrome" | null>(null);
-  const [installEvent, setInstallEvent] =
-    useState<BeforeInstallPromptEvent | null>(null);
 
   useEffect(() => {
-    if (isStandalone()) return;
-
-    const onBeforeInstallPrompt = (e: Event) => {
-      e.preventDefault();
-      setInstallEvent(e as BeforeInstallPromptEvent);
-      setPlatform("chrome");
-    };
-    window.addEventListener("beforeinstallprompt", onBeforeInstallPrompt);
-
-    if (isIos()) setPlatform("ios");
+    if (standalone) return;
 
     // "A visit" is an app open, not a page navigation — this component lives
     // in the root layout and only mounts once per load, so counting on
@@ -81,10 +51,7 @@ export default function AddToHomeScreenPrompt() {
     const snoozed = Date.now() < snoozedUntil;
 
     if (visits >= MIN_VISITS && !snoozed) setVisible(true);
-
-    return () =>
-      window.removeEventListener("beforeinstallprompt", onBeforeInstallPrompt);
-  }, []);
+  }, [standalone]);
 
   const remindLater = () => {
     window.localStorage.setItem(
@@ -95,13 +62,11 @@ export default function AddToHomeScreenPrompt() {
   };
 
   const install = async () => {
-    if (!installEvent) return;
-    await installEvent.prompt();
-    const { outcome } = await installEvent.userChoice;
     // Accepted or not, don't ask again this session — a "no" just now
     // shouldn't reappear the moment they click somewhere else.
+    const outcome = await installViaPrompt();
     if (outcome === "dismissed") remindLater();
-    else setVisible(false);
+    else if (outcome === "accepted") setVisible(false);
   };
 
   if (!visible || !platform) return null;
