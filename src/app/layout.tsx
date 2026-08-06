@@ -5,6 +5,7 @@ import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
 import BottomNav from "@/components/BottomNav";
 import ServiceWorkerRegister from "@/components/ServiceWorkerRegister";
+import AddToHomeScreenPrompt from "@/components/AddToHomeScreenPrompt";
 import { config } from "@/lib/config";
 
 /**
@@ -70,6 +71,7 @@ export default function RootLayout({
         </div>
         <BottomNav />
         <ServiceWorkerRegister />
+        <AddToHomeScreenPrompt />
         <Analytics />
         <SpeedInsights />
       </body>
