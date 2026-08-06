@@ -48,6 +48,7 @@ When you are ready to make it real, see [Going live](#going-live).
 | **Metrics** | What you actually eat versus what you think you eat, plus a nudge when you have had the same cuisine three days running. |
 | **Home** | A quick-action dashboard, not a second Jios list: today's Jio becomes the headline when there is one; a capped list (next one or two) of what's coming up otherwise; "Same as last time?" one-tap repeat of your last hosted Jio. |
 | **Recurring Jios** | A standing weekly Jio — same place every time (auto-confirmed, no vote needed) or a vote over the same option pool each week. Generates its next occurrence lazily, a few days ahead, when the host loads Home or Jios; invitees are expanded fresh from current kaki membership every time, not frozen at series creation. |
+| **Push notifications** | Opt in from "You": get notified when you're invited to a Jio, and when one you're in gets decided. iOS only ever delivers push to an installed PWA, never a browser tab, so the app also nudges toward "Add to Home Screen" after a few visits — dismissible with "remind me later," not a one-shot ask. |
 | **Admin** | Moderation (reports, block/unblock), an analytics dashboard (growth, Jio outcomes, top places, Kaki activity, moderation and wishlist trends, a same-day participation funnel), and office management — all reachable from "You", no dedicated nav icon, since admins are the one group that needs it least often. |
 
 ---
@@ -229,7 +230,7 @@ Roughly 30 minutes end to end. Everything below stays on a free tier.
    `service_role` key. The last one is a secret; it bypasses all access
    control.
 3. **SQL Editor** — run every file in `supabase/migrations/` in numeric order,
-   001 through 035. They are idempotent, so re-running is harmless.
+   001 through 037. They are idempotent, so re-running is harmless.
 4. **Authentication → Providers → Anonymous sign-ins** — turn this on. It is
    what makes name-only sign-in work.
 5. **Authentication → URL Configuration** — set the Site URL to your deployed
@@ -273,6 +274,7 @@ the environment variables. Vercel detects Next.js with no configuration.
 | `CRON_SECRET` | `openssl rand -hex 32` |
 | `NEXT_PUBLIC_SITE_URL` | Your live URL. Used to build shareable invite links — without it the app falls back to the browser's origin, which leaves the first server render showing a bare path. Do **not** use `VERCEL_URL`: it resolves to the per-deployment hostname, not the production alias. |
 | `ONEMAP_EMAIL` / `ONEMAP_PASSWORD` | Optional, from step 3 |
+| `VAPID_PUBLIC_KEY` / `NEXT_PUBLIC_VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` | Optional — push notifications. Generate with `npx web-push generate-vapid-keys`; the public key goes in **both** variables (server and client need it under different names), same value. Without these, push silently no-ops rather than breaking anything. |
 
 Then go back to Supabase and set the Site URL to your live URL.
 
@@ -503,12 +505,48 @@ Kaki group" above, which stays on the plain client and inherits RLS's
 private-data limit — an admin dashboard's whole job is seeing the true
 aggregate, a per-user feature's isn't.
 
+**Staying signed in depends on `middleware.ts`, not just the Supabase
+client config.** `@supabase/ssr`'s access token is short-lived; the refresh
+token is what's supposed to rotate it before it expires, and that rotation
+has to persist a new cookie. Server Components can't set cookies at all —
+so before this middleware existed, a refreshed session was computed and
+then silently discarded on every request past the first, and the token
+eventually expired for real. `getCurrentUser()` then reads "no valid
+session" as "never signed in," which is exactly what sent a returning user
+back through onboarding into a brand-new anonymous identity, orphaning
+everything tied to the old one. Middleware is the one place in the request
+pipeline that *can* persist a refreshed cookie before a Server Component
+ever runs, which is also why this couldn't have been fixed anywhere else.
+
+**Following an event's own invite link now actually registers the visit.**
+`join_event_via_invite` (migration 036) is `SECURITY DEFINER` because
+`event_invitees_insert`'s RLS policy is host-only by design — a visitor
+adding themselves needs the same kind of deliberate, gated exception as
+`attach_place_to_option`, not a loosened policy that would also let a host
+be invited-added by anyone who merely knows their event exists. Narrow on
+purpose: the function only ever inserts a row for `auth.uid()`, never an
+id passed in, so it can't be used to invite anyone else.
+
+**Push notifications read across users the same way admin analytics
+does, for the same reason.** `get_push_targets` (migration 037) is
+`SECURITY DEFINER` because both `push_subscriptions` and `profiles` are
+owner-scoped by RLS — notifying someone as a side effect of *your* action
+(inviting them, closing a Jio) means reading *their* subscription, which a
+plain client query would refuse. Unlike `get_admin_analytics`, there's no
+admin check: any signed-in user legitimately triggers these sends just by
+using the app normally, the same "any authenticated teammate" trust
+boundary the rest of this single-office app already runs on. Also unlike
+the Kaki-rating/admin-analytics pair above, this one stays a narrow,
+purpose-built read (exactly the columns the send path needs) rather than
+a broadened table-wide SELECT policy — a push endpoint and keys are more
+sensitive than a display name or a rating.
+
 ---
 
 ## Tests
 
 ```bash
-npm test          # 326 tests across 27 files
+npm test          # 330 tests across 27 files
 npm run typecheck
 npm run lint
 ```
@@ -517,7 +555,7 @@ npm run lint
 |---|---|
 | `recommend.test.ts` | Every scoring component, exclusions, ranking, boosts, group mode |
 | `blogImport.test.ts` | HTML extraction and the full SSRF matrix |
-| `eventAdditions.test.ts` | Who can add, remove, invite, vote and close |
+| `eventAdditions.test.ts` | Who can add, remove, invite, vote and close; joining via an invite link makes a stranger a real invitee, not just visible |
 | `metrics.test.ts` | User and group statistics, cuisine streaks |
 | `discovery.test.ts` | OSM normalisation and deduplication |
 | `voting.test.ts` | Borda count, partial ballots, tie-breaking |
@@ -555,13 +593,12 @@ the other half of the gate.
 
 In rough priority order.
 
-1. **Push notifications.** Migration 025 created the tables; nothing else is
-   wired. Still needs the `web-push` dependency, VAPID keys, a subscribe
-   endpoint, service-worker `push`/`notificationclick` handlers, and the send
-   calls. Note that iOS only delivers Web Push to a PWA installed to the home
-   screen — a normal Safari tab cannot even ask for permission. The
-   strongest single case for it: a cancelled Jio is only discoverable by
-   opening the app, since nothing tells invitees it happened.
+1. **Push for "someone voted" / a reminder before voting closes.** The
+   pipeline itself is built (see Push notifications below) — these are two
+   more triggers on top of it, deferred because "non-host votes → notify
+   host" needs a batching/throttling decision first (per-vote would spam a
+   popular Jio's host) and a pre-close reminder was always the lowest
+   priority of the trigger set.
 2. **Custom domain.** Currently `*.vercel.app`. Point DNS, add the domain in
    Vercel, then update the Supabase Site URL and redirect URLs.
 
