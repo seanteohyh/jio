@@ -233,6 +233,22 @@ export default function EventsPage() {
   const upcoming = filtered.filter(
     (e) => e.status === "open" && new Date(e.scheduled_at).getTime() > now - 3600000
   );
+
+  // §4a — a single pinned summary, independent of the Hosting/Invited/Past
+  // filter and the calendar/list toggle below: "what's next for me,"
+  // covering both hosting and invited, not "what matches this filter." A
+  // month grid still needs knowing which day to look at; this removes that
+  // for the one Jio that actually matters most. Reads from the full `events`
+  // set, not `filtered`, on purpose — it should not disappear just because
+  // someone has "Hosting" selected.
+  const nextJio = events
+    .filter(
+      (e) =>
+        e.status === "open" &&
+        e.date_phase !== "polling" &&
+        new Date(e.scheduled_at).getTime() > now
+    )
+    .sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at))[0];
   const past = filtered
     .filter((e) => !upcoming.includes(e))
     .sort((a, b) => b.scheduled_at.localeCompare(a.scheduled_at));
@@ -343,6 +359,15 @@ export default function EventsPage() {
 
       {!isLoading && events.length > 0 && (
         <>
+          {nextJio && (
+            <div>
+              <p className="text-stone mb-1.5 text-xs font-medium uppercase tracking-wide">
+                Up next
+              </p>
+              <EventRow event={nextJio} />
+            </div>
+          )}
+
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="no-scrollbar flex gap-1.5 overflow-x-auto">
               {FILTERS.map((f) => (
