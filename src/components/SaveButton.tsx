@@ -41,15 +41,36 @@ export default function SaveButton({
     event.preventDefault();
     event.stopPropagation();
 
-    try {
-      await fetch("/api/wishlist", {
+    // Optimistic: the bookmark flips the instant you tap it, not once the
+    // round trip finishes (CHANGES_20260804.md §5 — waiting for the full
+    // client → Vercel → Supabase → back trip before any visual change is
+    // what "laggy" actually was). SWR rolls the icon back on its own if the
+    // request fails.
+    const current = data?.wishlist ?? [];
+    const optimisticList = saved
+      ? current.filter((w) => w.place_id !== placeId)
+      : [
+          ...current,
+          {
+            user_id: "optimistic",
+            place_id: placeId,
+            created_at: new Date().toISOString(),
+          } as WishlistEntry,
+        ];
+
+    await globalMutate(
+      "/api/wishlist",
+      fetch("/api/wishlist", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ place_id: placeId }),
-      });
-    } finally {
-      globalMutate("/api/wishlist");
-    }
+      }).then(() => fetcher<{ wishlist: WishlistEntry[] }>("/api/wishlist")),
+      {
+        optimisticData: { wishlist: optimisticList },
+        rollbackOnError: true,
+        revalidate: false,
+      }
+    );
   };
 
   return (

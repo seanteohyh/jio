@@ -88,15 +88,32 @@ export default function EventDetailPage({
     prevStatusRef.current = current;
   }, [data]);
 
-  // Seed the ballot from the server once, then leave it alone so a realtime
-  // refresh cannot yank options out from under someone mid-drag.
+  // Seed the ballot from the server once, then leave the voter's own order
+  // alone so a realtime refresh cannot yank options out from under someone
+  // mid-drag. That "leave it alone" used to mean the ranking widget never
+  // looked at `data.event.options` again after the first touch — so an
+  // option someone else added mid-vote showed up in the raw options list
+  // (which reads live data directly) but never in "Your ranking," and
+  // could never actually be ranked (CHANGES_20260804.md §3). Once touched,
+  // this still doesn't reset the voter's order, but it does merge in any
+  // option id it hasn't seen yet, appended at the end, unranked.
   useEffect(() => {
-    if (!data || ballotTouched) return;
-    setBallot(
-      data.viewer.myVote.length > 0
-        ? data.viewer.myVote
-        : data.event.options.map((o) => o.place_id)
-    );
+    if (!data) return;
+    if (!ballotTouched) {
+      setBallot(
+        data.viewer.myVote.length > 0
+          ? data.viewer.myVote
+          : data.event.options.map((o) => o.place_id)
+      );
+      return;
+    }
+    setBallot((prev) => {
+      const known = new Set(prev);
+      const arrived = data.event.options
+        .map((o) => o.place_id)
+        .filter((id) => !known.has(id));
+      return arrived.length > 0 ? [...prev, ...arrived] : prev;
+    });
   }, [data, ballotTouched]);
 
   const { data: placesData } = useSWR<{ places: Place[] }>(
@@ -158,15 +175,63 @@ export default function EventDetailPage({
     }
   };
 
-  const submitBallot = () =>
-    run(() =>
+  // Optimistic: voting/ranking and RSVP are the two highest-traffic buttons
+  // on this page, and `run()`'s plain await-then-revalidate meant every tap
+  // waited out the full client → Vercel → Supabase → back round trip before
+  // anything visibly changed (CHANGES_20260804.md §5). Both update `viewer`
+  // instantly and let the real fetch settle in the background; SWR rolls
+  // back on its own if the request fails. The Borda tally itself is left to
+  // the real revalidation rather than predicted client-side — it depends on
+  // every other voter's ballots (and is redacted entirely for a hidden-vote
+  // Jio), so a guessed number would either be wrong or leak what §14 hides.
+  const submitBallot = () => {
+    if (!data) return;
+    setActionError(null);
+    setBusy(true);
+    mutate(
       mutateJson(`/api/events/${id}/vote`, "POST", {
         ranked_place_ids: ballot,
-      })
-    );
+      }).then(() => fetcher<EventResponse>(`/api/events/${id}`)),
+      {
+        optimisticData: { ...data, viewer: { ...data.viewer, myVote: ballot } },
+        rollbackOnError: true,
+        revalidate: false,
+      }
+    )
+      .catch((err) =>
+        setActionError(err instanceof Error ? err.message : "Something failed")
+      )
+      .finally(() => setBusy(false));
+  };
 
-  const sendRsvp = (response: RsvpResponse) =>
-    run(() => mutateJson(`/api/events/${id}/rsvp`, "POST", { response }));
+  const sendRsvp = (response: RsvpResponse) => {
+    if (!data) return;
+    setActionError(null);
+    setBusy(true);
+    const delta =
+      (data.viewer.myRsvp === "yes" ? -1 : 0) + (response === "yes" ? 1 : 0);
+    mutate(
+      mutateJson(`/api/events/${id}/rsvp`, "POST", { response }).then(() =>
+        fetcher<EventResponse>(`/api/events/${id}`)
+      ),
+      {
+        optimisticData: {
+          ...data,
+          event: {
+            ...data.event,
+            going_count: Math.max(0, (data.event.going_count ?? 0) + delta),
+          },
+          viewer: { ...data.viewer, myRsvp: response },
+        },
+        rollbackOnError: true,
+        revalidate: false,
+      }
+    )
+      .catch((err) =>
+        setActionError(err instanceof Error ? err.message : "Something failed")
+      )
+      .finally(() => setBusy(false));
+  };
 
   const addOption = (placeId: string) =>
     run(async () => {
