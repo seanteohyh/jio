@@ -1,5 +1,7 @@
 import type {
+  AccountMergePreview,
   AdminAnalytics,
+  DuplicateProfileGroup,
   EventDetail,
   EventOption,
   Filters,
@@ -429,6 +431,53 @@ export interface Repo {
     resolution: FlagResolution,
     reason?: string | null
   ): Promise<void>;
+
+  // ---- Account merge (CHANGES_20260807.md §4/§5) ----
+  /**
+   * Groups every profile by case/whitespace-normalized display name,
+   * returning only groups of 2+ — the raw material for §5's "possible
+   * duplicate accounts" admin list. Admin-only: the caller must check
+   * `isAdmin` first, same convention as `getAdminAnalytics`.
+   */
+  listDuplicateProfiles(): Promise<DuplicateProfileGroup[]>;
+  /** Row counts per table for one account — shown before a merge commits,
+   *  so "what will move" isn't a surprise after the fact. */
+  previewAccountMerge(userId: string): Promise<AccountMergePreview>;
+  /**
+   * Moves every row `mergeUserId` owns (Jios hosted, votes, RSVPs, invites,
+   * Kaki ownership/membership, wishlist, visits, push subscriptions, prefs)
+   * onto `keepUserId`, then retires the now-empty account. Two front
+   * doors, one operation: §4 is self-service (`keepUserId` must equal
+   * `callerId` — reclaiming your own name pulls another account's data
+   * onto the session you're currently signed in as, since there's no way
+   * to swap which `auth.uid()` a browser holds instead), §5 is
+   * admin-triggered (`callerId` must be an admin; picks both sides
+   * directly). See migration 040 for the reassignment/collision handling,
+   * and `serviceClient.ts` for why retiring the old account needs the
+   * service role.
+   */
+  mergeUserAccounts(
+    callerId: string,
+    keepUserId: string,
+    mergeUserId: string
+  ): Promise<void>;
+  /**
+   * Collision-safe counterpart to name-based claim — a fresh unguessable
+   * token tied to one specific account rather than a name, so it stays safe
+   * once two different real people can share a display name. Self
+   * (`userId === callerId`) or admin. Regenerating overwrites and retires
+   * any previous token for that account.
+   */
+  generateRecoveryToken(callerId: string, userId: string): Promise<string>;
+  /**
+   * The other half — resolves a token back to the account it belongs to, or
+   * `null` if it's unknown/already used. No authorization check by design:
+   * same "possession of the token is the invite" reasoning as an event or
+   * Kaki invite link. The caller (an API route) is responsible for what it
+   * does with the resolved id — normally feeding it into
+   * `mergeUserAccounts` as the merge side.
+   */
+  resolveRecoveryToken(token: string): Promise<string | null>;
 }
 
 /** Method names the conformance test walks. Keep in sync with the interface. */
@@ -505,6 +554,11 @@ export const REPO_METHODS = [
   "listMyFlags",
   "listPendingFlags",
   "resolvePlaceFlags",
+  "listDuplicateProfiles",
+  "previewAccountMerge",
+  "mergeUserAccounts",
+  "generateRecoveryToken",
+  "resolveRecoveryToken",
 ] as const;
 
 export type RepoMethod = (typeof REPO_METHODS)[number];

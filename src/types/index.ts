@@ -162,6 +162,26 @@ export interface TeamUser {
   display_name: string;
 }
 
+/** One group of likely-duplicate accounts — same display name, different
+ *  `auth.uid()`s — CHANGES_20260807.md §1a/§5. Only groups of 2+ are ever
+ *  returned; a name nobody shares isn't a candidate. */
+export interface DuplicateProfileGroup {
+  normalized_name: string;
+  accounts: Array<{
+    user_id: string;
+    display_name: string;
+    created_at?: string;
+  }>;
+}
+
+/** Row counts per table for one account, shown before an account merge
+ *  commits — §5's "preview what will move" requirement. */
+export interface AccountMergePreview {
+  user_id: string;
+  display_name: string;
+  counts: Record<string, number>;
+}
+
 // ---------------------------------------------------------------------------
 // Events
 // ---------------------------------------------------------------------------

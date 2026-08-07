@@ -21,6 +21,7 @@ import AttachEmailPanel from "@/components/profile/AttachEmailPanel";
 import MyFlagsList from "@/components/profile/MyFlagsList";
 import PushNotificationToggle from "@/components/profile/PushNotificationToggle";
 import AddToHomeScreenCard from "@/components/profile/AddToHomeScreenCard";
+import RecoveryLinkPanel from "@/components/profile/RecoveryLinkPanel";
 import { fetcher, mutateJson } from "@/lib/fetcher";
 import { config, features } from "@/lib/config";
 import { BUDGET_TIERS, CUISINES } from "@/lib/constants";
@@ -353,6 +354,12 @@ export default function ProfilePage() {
         <PushNotificationToggle />
       </Card>
 
+      {config.authAdapter === "name" && !config.isDemo && (
+        <Card>
+          <RecoveryLinkPanel />
+        </Card>
+      )}
+
       <Card className="space-y-3">
         <SectionHeading>Account</SectionHeading>
         {features.kakis && (
@@ -374,6 +381,14 @@ export default function ProfilePage() {
             className="text-ember block text-sm underline"
           >
             Analytics
+          </Link>
+        )}
+        {me?.user?.is_admin && (
+          <Link
+            href="/admin/accounts"
+            className="text-ember block text-sm underline"
+          >
+            Accounts
           </Link>
         )}
         {me?.user?.is_admin && features.offices && (

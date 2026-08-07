@@ -1,4 +1,5 @@
 import { createAuthServerClient } from "@/lib/supabase/serverAuth";
+import { getRepoAsync } from "@/lib/data/repo";
 import { UNSUPPORTED, type AuthAdapter } from "./index";
 
 /**
@@ -20,12 +21,20 @@ import { UNSUPPORTED, type AuthAdapter } from "./index";
  *
  * The trade-off you are actually accepting:
  *
- *  - **Identity is bound to the browser.** Clear site data and you come back as
- *    a new person with no history. Same on a second device — your phone is a
- *    different user from your laptop.
  *  - **Anyone can claim any name.** There is no secret, so nothing stops
- *    someone typing a colleague's name. Fine for a team that already trusts
- *    each other; not fine if that stops being true.
+ *    someone typing a colleague's name — which is also how recovery works.
+ *    Fine for a team that already trusts each other; not fine if that stops
+ *    being true.
+ *
+ * Identity is otherwise bound to the browser session — clear site data and
+ * you land on a session with no history — but typing your old name again
+ * (from this browser or a new one) reclaims it: `signInWithName` below
+ * checks for an existing, different profile with the same
+ * case/whitespace-normalized name and, on a match, merges that account's
+ * data onto the current session instead of forking a new one
+ * (CHANGES_20260807.md §4). This is the direct fix for the identity-loss
+ * bug's actual damage: whatever caused a session to go stale, retyping your
+ * name always gets you back to the same account rather than a fresh one.
  *
  * Both are fixed by switching `NEXT_PUBLIC_JIO_AUTH_ADAPTER` to `email`. No
  * other code changes — that is what this adapter layer is for.
@@ -62,61 +71,87 @@ export const nameAuth: AuthAdapter = {
     try {
       const client = await createAuthServerClient();
 
-      // Already signed in? Treat this as a rename rather than minting a second
+      // Already signed in? Reuse that session rather than minting a second
       // identity — otherwise refreshing the login page orphans your history.
       const { data: existing } = await client.auth.getUser();
-      if (existing.user) {
-        await client.auth.updateUser({ data: { display_name: name } });
-        await client
-          .from("profiles")
-          .upsert(
-            { user_id: existing.user.id, display_name: name },
-            { onConflict: "user_id" }
-          );
-        return { ok: true };
-      }
+      let userId = existing.user?.id ?? null;
+      let isNewSession = false;
 
-      const { data, error } = await client.auth.signInAnonymously({
-        options: { data: { display_name: name } },
-      });
+      if (!userId) {
+        const { data, error } = await client.auth.signInAnonymously();
 
-      if (error) {
-        // The overwhelmingly likely cause, and not obvious from the raw text.
-        if (/anonymous/i.test(error.message)) {
-          return {
-            ok: false,
-            error:
-              "Anonymous sign-ins are switched off in Supabase. Enable them " +
-              "under Authentication → Providers → Anonymous sign-ins.",
-          };
+        if (error) {
+          // The overwhelmingly likely cause, and not obvious from the raw text.
+          if (/anonymous/i.test(error.message)) {
+            return {
+              ok: false,
+              error:
+                "Anonymous sign-ins are switched off in Supabase. Enable them " +
+                "under Authentication → Providers → Anonymous sign-ins.",
+            };
+          }
+          return { ok: false, error: error.message };
         }
-        return { ok: false, error: error.message };
+        if (!data.user) {
+          return { ok: false, error: "Could not start a session" };
+        }
+        userId = data.user.id;
+        isNewSession = true;
       }
 
-      if (!data.user) {
-        return { ok: false, error: "Could not start a session" };
-      }
-
-      // The migration 011 trigger will have inserted a placeholder profile,
-      // since an anonymous user has no email to derive a name from. Overwrite
-      // it with what they actually typed.
+      // CHANGES_20260807.md §4 — does a *different* account already use this
+      // name? Case/whitespace-normalized: "Sean" and "sean " are the same
+      // identity for matching, even though the stored/displayed name keeps
+      // whatever casing was actually typed. If so, this is a claim, not a
+      // fresh sign-up or a plain rename: pull that account's data onto the
+      // session we're already holding, then retire it. There is no way to
+      // instead swap which `auth.uid()` this browser is signed in as — an
+      // anonymous session has no password to verify a login against — so
+      // "logging in as" someone always works in this direction.
       //
-      // `onboarded_at` is stamped here, not left for /welcome. The onboarding
-      // screen exists to collect a display name from someone who arrived
-      // without one — which is the `email` mode story. In `name` mode the name
-      // was just typed on the previous screen, so leaving this null sent every
-      // new user to /welcome to confirm a value they had already given. One
-      // question, asked once.
+      // This is the fix for the duplicate-account symptom underneath
+      // CHANGES_20260807.md §1: previously, typing an existing name from a
+      // session with no matching name of its own always fell straight
+      // through to a plain rename/sign-up, silently forking a second
+      // account with the same display name instead of resolving back to it.
+      const { data: profileRows } = await client
+        .from("profiles")
+        .select("user_id, display_name")
+        .neq("user_id", userId);
+
+      const normalized = name.toLowerCase();
+      const match = (profileRows ?? []).find(
+        (p) => p.display_name.trim().toLowerCase() === normalized
+      );
+
+      if (match) {
+        const repo = await getRepoAsync();
+        await repo.mergeUserAccounts(userId, userId, match.user_id);
+      }
+
+      await client.auth.updateUser({ data: { display_name: name } });
+
+      // The migration 011 trigger will have inserted a placeholder profile
+      // for a brand-new session, since an anonymous user has no email to
+      // derive a name from. Overwrite it with what they actually typed.
+      //
+      // `onboarded_at` is stamped only for a new session, not left for
+      // /welcome. The onboarding screen exists to collect a display name
+      // from someone who arrived without one — which is the `email` mode
+      // story. In `name` mode the name was just typed on the previous
+      // screen (or reused via the claim above), so leaving this null sent
+      // every new user to /welcome to confirm a value they had already
+      // given. One question, asked once.
+      const patch: {
+        user_id: string;
+        display_name: string;
+        onboarded_at?: string;
+      } = { user_id: userId, display_name: name };
+      if (isNewSession) patch.onboarded_at = new Date().toISOString();
+
       const { error: profileError } = await client
         .from("profiles")
-        .upsert(
-          {
-            user_id: data.user.id,
-            display_name: name,
-            onboarded_at: new Date().toISOString(),
-          },
-          { onConflict: "user_id" }
-        );
+        .upsert(patch, { onConflict: "user_id" });
 
       if (profileError) return { ok: false, error: profileError.message };
 

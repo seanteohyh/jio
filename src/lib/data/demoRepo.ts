@@ -114,6 +114,10 @@ interface DemoStore {
     p256dh: string;
     auth_key: string;
   }[];
+  /** Kept out of the `Profile` type on purpose, same reason it's excluded
+   *  from the client-readable column grant in live mode (041) — this is
+   *  never something a client should be able to read off a profile. */
+  recoveryTokens: { user_id: string; token: string }[];
 }
 
 const globalStore = globalThis as typeof globalThis & {
@@ -144,6 +148,7 @@ function seed(): DemoStore {
     placeFlags: [],
     recurringSeries: [],
     pushSubscriptions: [],
+    recoveryTokens: [],
   };
 }
 
@@ -2108,6 +2113,165 @@ export const demoRepo: Repo = {
         });
       }
     }
+  },
+
+  async listDuplicateProfiles() {
+    const s = store();
+    const groups = new Map<
+      string,
+      { user_id: string; display_name: string; created_at?: string }[]
+    >();
+    for (const p of s.profiles) {
+      const key = p.display_name.trim().toLowerCase();
+      const bucket = groups.get(key);
+      if (bucket) bucket.push(p);
+      else groups.set(key, [p]);
+    }
+    return Array.from(groups.entries())
+      .filter(([, accounts]) => accounts.length > 1)
+      .map(([normalized_name, accounts]) => ({ normalized_name, accounts }));
+  },
+
+  async previewAccountMerge(userId) {
+    const s = store();
+    const profile = s.profiles.find((p) => p.user_id === userId);
+    return {
+      user_id: userId,
+      display_name: profile?.display_name ?? "Unknown",
+      counts: {
+        "Jios hosted": s.events.filter((e) => e.host_id === userId).length,
+        Votes: s.votes.filter((v) => v.user_id === userId).length,
+        RSVPs: s.rsvps.filter((r) => r.user_id === userId).length,
+        Invitations: s.invitees.filter((i) => i.user_id === userId).length,
+        "Kaki groups created": s.kakis.filter((k) => k.created_by === userId)
+          .length,
+        "Kaki memberships": s.kakiMembers.filter((m) => m.user_id === userId)
+          .length,
+        "Wishlist saves": s.wishlist.filter((w) => w.user_id === userId)
+          .length,
+        "Visits logged": s.visits.filter((v) => v.user_id === userId).length,
+        "Push subscriptions": s.pushSubscriptions.filter(
+          (p) => p.user_id === userId
+        ).length,
+      },
+    };
+  },
+
+  async mergeUserAccounts(callerId, keepUserId, mergeUserId) {
+    if (keepUserId === mergeUserId) {
+      throw new Error("Cannot merge an account into itself");
+    }
+
+    const isAdmin = await demoRepo.isAdmin(callerId);
+    if (callerId !== keepUserId && !isAdmin) {
+      throw new Error("You may only merge another account into your own");
+    }
+
+    const s = store();
+
+    for (const e of s.events) {
+      if (e.host_id === mergeUserId) e.host_id = keepUserId;
+    }
+    for (const k of s.kakis) {
+      if (k.created_by === mergeUserId) k.created_by = keepUserId;
+    }
+
+    s.votes = s.votes.filter(
+      (v) =>
+        !(
+          v.user_id === mergeUserId &&
+          s.votes.some(
+            (o) =>
+              o.user_id === keepUserId &&
+              o.event_id === v.event_id &&
+              o.place_id === v.place_id
+          )
+        )
+    );
+    for (const v of s.votes) if (v.user_id === mergeUserId) v.user_id = keepUserId;
+
+    s.rsvps = s.rsvps.filter(
+      (r) =>
+        !(
+          r.user_id === mergeUserId &&
+          s.rsvps.some((o) => o.user_id === keepUserId && o.event_id === r.event_id)
+        )
+    );
+    for (const r of s.rsvps) if (r.user_id === mergeUserId) r.user_id = keepUserId;
+
+    s.invitees = s.invitees.filter(
+      (i) =>
+        !(
+          i.user_id === mergeUserId &&
+          s.invitees.some(
+            (o) => o.user_id === keepUserId && o.event_id === i.event_id
+          )
+        )
+    );
+    for (const i of s.invitees) if (i.user_id === mergeUserId) i.user_id = keepUserId;
+
+    s.kakiMembers = s.kakiMembers.filter(
+      (m) =>
+        !(
+          m.user_id === mergeUserId &&
+          s.kakiMembers.some(
+            (o) => o.user_id === keepUserId && o.kaki_id === m.kaki_id
+          )
+        )
+    );
+    for (const m of s.kakiMembers) {
+      if (m.user_id === mergeUserId) m.user_id = keepUserId;
+    }
+
+    s.wishlist = s.wishlist.filter(
+      (w) =>
+        !(
+          w.user_id === mergeUserId &&
+          s.wishlist.some(
+            (o) => o.user_id === keepUserId && o.place_id === w.place_id
+          )
+        )
+    );
+    for (const w of s.wishlist) if (w.user_id === mergeUserId) w.user_id = keepUserId;
+
+    for (const v of s.visits) if (v.user_id === mergeUserId) v.user_id = keepUserId;
+    for (const p of s.pushSubscriptions) {
+      if (p.user_id === mergeUserId) p.user_id = keepUserId;
+    }
+
+    if (s.prefs.some((p) => p.user_id === keepUserId)) {
+      s.prefs = s.prefs.filter((p) => p.user_id !== mergeUserId);
+    } else {
+      for (const p of s.prefs) if (p.user_id === mergeUserId) p.user_id = keepUserId;
+    }
+
+    s.profiles = s.profiles.filter((p) => p.user_id !== mergeUserId);
+    // Mirrors the real cascade: deleting the old auth.users row takes its
+    // profiles row, recovery_token included, with it — so a stale link to
+    // an already-merged account resolves to nothing, not a ghost.
+    s.recoveryTokens = s.recoveryTokens.filter((t) => t.user_id !== mergeUserId);
+  },
+
+  async generateRecoveryToken(callerId, userId) {
+    const isAdmin = await demoRepo.isAdmin(callerId);
+    if (callerId !== userId && !isAdmin) {
+      throw new Error("You may only get a recovery link for your own account");
+    }
+
+    const s = store();
+    if (!s.profiles.some((p) => p.user_id === userId)) {
+      throw new Error("That account does not exist");
+    }
+
+    const token = uuid();
+    s.recoveryTokens = s.recoveryTokens.filter((t) => t.user_id !== userId);
+    s.recoveryTokens.push({ user_id: userId, token });
+    return token;
+  },
+
+  async resolveRecoveryToken(token) {
+    const s = store();
+    return s.recoveryTokens.find((t) => t.token === token)?.user_id ?? null;
   },
 };
 

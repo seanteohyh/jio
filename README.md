@@ -49,7 +49,7 @@ When you are ready to make it real, see [Going live](#going-live).
 | **Home** | A quick-action dashboard, not a second Jios list: today's Jio becomes the headline when there is one; a capped list (next one or two) of what's coming up otherwise; "Same as last time?" one-tap repeat of your last hosted Jio. |
 | **Recurring Jios** | A standing weekly Jio — same place every time (auto-confirmed, no vote needed) or a vote over the same option pool each week. Generates its next occurrence lazily, a few days ahead, when the host loads Home or Jios; invitees are expanded fresh from current kaki membership every time, not frozen at series creation. |
 | **Push notifications** | Opt in from "You": get notified when you're invited to a Jio, when someone votes on one you're hosting (throttled to at most one push per event per ~10 minutes), when a Jio you're in is starting in 30 minutes and you haven't voted or RSVP'd, and when one you're in gets decided. iOS only ever delivers push to an installed PWA, never a browser tab, so the app also nudges toward "Add to Home Screen" after a few visits — dismissible with "remind me later," not a one-shot ask — plus an always-available "Add to home screen" card in "You" for anyone who dismissed that prompt but changes their mind later. |
-| **Admin** | Moderation (reports, block/unblock), an analytics dashboard (growth, Jio outcomes, top places, Kaki activity, moderation and wishlist trends, a same-day participation funnel), and office management — all reachable from "You", no dedicated nav icon, since admins are the one group that needs it least often. |
+| **Admin** | Moderation (reports, block/unblock), an analytics dashboard (growth, Jio outcomes, top places, Kaki activity, moderation and wishlist trends, a same-day participation funnel), office management, and an accounts screen for merging duplicate identities (auto-surfaced by shared name, or search any account) and issuing recovery links — all reachable from "You", no dedicated nav icon, since admins are the one group that needs it least often. |
 
 ---
 
@@ -146,10 +146,29 @@ Zero sign-up friction, security model intact.
 
 Two things you are accepting in exchange:
 
-- **Identity is bound to the browser.** Clear site data and you come back as a
-  new person with no history. Your phone is a different user from your laptop.
+- **Identity is bound to the browser session.** Clear site data — or just lose
+  the session some other way — and you land on a fresh one with no history.
+  Your phone is a different user from your laptop. Recoverable, see below.
 - **Anyone can claim any name.** There is no secret, so nothing stops someone
-  typing a colleague's name. Fine for a team that already trusts each other.
+  typing a colleague's name. Fine for a team that already trusts each other —
+  and while it lasts, it's also the recovery mechanism (next paragraph).
+
+**Recovering a lost identity** doesn't require the session-storage fix to be
+perfect — two independent paths exist regardless of what caused the loss.
+Typing your name again resolves to your *existing* profile rather than
+forking a new one if a different, case/whitespace-normalized-matching
+profile already exists (`nameAuth.signInWithName`, CHANGES_20260807.md §4) —
+same "anyone can claim any name" trade-off as above, just now actually
+useful instead of a landmine. That stops being safe the moment two different
+real people can share a name, which is where **recovery links** come in:
+an unguessable, per-account token (get one from "You" while still signed
+in, or an admin issues one from `/admin/accounts` for someone already locked
+out) that redeems at `/recover/<token>` with zero name-matching involved —
+collision-proof by construction, and designed to keep working unmodified if
+name-based claim is later turned off. Both funnel into the same reassignment
+operation an admin can also trigger directly from `/admin/accounts` — pick
+the account to keep, pick the stale one(s) to fold in, preview what moves,
+confirm.
 
 Setup: enable **Authentication → Providers → Anonymous sign-ins** in the
 Supabase dashboard, and apply migration 015.
@@ -230,7 +249,7 @@ Roughly 30 minutes end to end. Everything below stays on a free tier.
    `service_role` key. The last one is a secret; it bypasses all access
    control.
 3. **SQL Editor** — run every file in `supabase/migrations/` in numeric order,
-   001 through 039. They are idempotent, so re-running is harmless.
+   001 through 041. They are idempotent, so re-running is harmless.
 4. **Authentication → Providers → Anonymous sign-ins** — turn this on. It is
    what makes name-only sign-in work.
 5. **Authentication → URL Configuration** — set the Site URL to your deployed
@@ -361,9 +380,11 @@ key, even when that key is sitting in the environment — that silent-escalation
 bug is exactly the kind that works fine in development and leaks everything in
 production.
 
-**The service-role client has one caller.** `/api/cron/discover`, which needs
-to write to the review queue with no user session. The module throws at import
-time if it is ever bundled for the browser.
+**The service-role client has two callers.** `/api/cron/discover`, which needs
+to write to the review queue with no user session, and account merge
+(`mergeUserAccounts`), which needs to delete the old `auth.users` row once its
+data has moved — an Auth Admin API operation no RLS policy could ever grant.
+The module throws at import time if it is ever bundled for the browser.
 
 **Blog import is SSRF-guarded.** `validateBlogUrl()` rejects localhost, all the
 private IPv4 ranges, link-local (which is where cloud metadata endpoints live),
@@ -378,6 +399,12 @@ read events, options, kakis and profiles. Invite tokens are unguessable, so
 possession of an id already implies an invite, and the alternative — recursive
 membership checks inside policies — needs `SECURITY DEFINER` helper functions
 that are much easier to get subtly wrong. Writes are owner-scoped throughout.
+One exception: `profiles.recovery_token` (migration 041) is deliberately
+*not* covered by that same permissive read — RLS is row-level, so the fix is
+a column-level grant (`revoke select on profiles ... grant select (the
+public columns) ...`) rather than a policy, and `getProfile()`'s query was
+switched off `select("*")` accordingly, since `*` errors on any column the
+role lacks privilege on rather than silently dropping it.
 
 **Adding a place to a Jio is checked twice.** Once in the repo, for a readable
 error message, and once in the RLS policy from migration 013, which is the
@@ -560,12 +587,40 @@ uses for recurring series. The trade-off is the same one stated there: the
 reminder only actually fires when *someone* with a stake in the Jio has the
 app open somewhere near that 30-minute mark, not on a guaranteed clock.
 
+**Account merge writes across two different `auth.uid()`s, so it has to be
+`SECURITY DEFINER` — and it has to check *which* two.** `merge_user_accounts`
+(migration 040) moves every row a `user_id`-owned table has for one account
+onto another (Jios hosted, votes, RSVPs, invites, Kaki ownership/membership,
+wishlist, visits, push subscriptions, prefs), which no RLS policy could ever
+permit as a plain write. The authorization is deliberately narrower than
+"any admin, any pair": the caller must either be merging into their *own*
+current session (self-service name-claim / recovery-link redemption,
+CHANGES_20260807.md §4) or be an admin merging two accounts that are neither
+their own (§5's admin tool) — never an arbitrary user moving a stranger's
+data around. Composite-PK tables (votes, RSVPs, invites, Kaki membership,
+wishlist) get an explicit collision check first — if both accounts already
+have a row for the same event/kaki/place, the surviving account's own row
+wins and the merged-in duplicate is dropped, rather than erroring on the
+resulting duplicate key.
+
+**Recovery-link generation is gated the same way merge is; redemption
+deliberately is not.** `generate_recovery_token` (migration 041) — self, or
+admin for someone else — matches `merge_user_accounts`'s authorization
+exactly, since it's gating access to the same underlying capability one step
+removed. `resolve_recovery_token` has no auth check at all: same "possession
+of the token is the invite" reasoning already applied to every other
+unguessable token in this schema (`lunch_events.invite_token`,
+`kakis.invite_token`) — the token itself is the credential, checking the
+caller's identity on top of it wouldn't add anything since whoever is
+redeeming it *is*, by construction, whoever's browser currently holds the
+link.
+
 ---
 
 ## Tests
 
 ```bash
-npm test          # 340 tests across 27 files
+npm test          # 362 tests across 28 files
 npm run typecheck
 npm run lint
 ```
@@ -575,6 +630,7 @@ npm run lint
 | `recommend.test.ts` | Every scoring component, exclusions, ranking, boosts, group mode |
 | `blogImport.test.ts` | HTML extraction and the full SSRF matrix |
 | `eventAdditions.test.ts` | Who can add, remove, invite, vote and close; joining via an invite link makes a stranger a real invitee, not just visible; the vote-push throttle window; the starting-soon reminder's timing, one-shot firing, and non-responder targeting |
+| `accountMerge.test.ts` | Duplicate-name grouping; merge authorization (self vs. admin vs. neither); row reassignment and collision handling across every owned table; recovery-token generation, resolution, regeneration, and cleanup after a merge |
 | `metrics.test.ts` | User and group statistics, cuisine streaks |
 | `discovery.test.ts` | OSM normalisation and deduplication |
 | `voting.test.ts` | Borda count, partial ballots, tie-breaking |

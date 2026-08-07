@@ -678,9 +678,13 @@ export const supabaseRepo: Repo = {
 
   async getProfile(userId) {
     const client = await db();
+    // Explicit column list, not `select("*")` — migration 041 revokes
+    // table-level SELECT on profiles (recovery_token must never be
+    // client-readable), and `*` errors on any column the role lacks
+    // privilege on rather than silently omitting it.
     const { data, error } = await client
       .from("profiles")
-      .select("*")
+      .select("user_id, display_name, created_at, onboarded_at, notify_events")
       .eq("user_id", userId)
       .maybeSingle();
 
@@ -2596,6 +2600,148 @@ export const supabaseRepo: Repo = {
       p_reason: reason ?? null,
     });
     if (error) fail("Could not resolve that flag", error);
+  },
+
+  async listDuplicateProfiles() {
+    const client = await db();
+    const { data, error } = await client
+      .from("profiles")
+      .select("user_id, display_name, created_at")
+      .order("created_at");
+    if (error) fail("Could not load accounts", error);
+
+    const groups = new Map<
+      string,
+      { user_id: string; display_name: string; created_at?: string }[]
+    >();
+    for (const row of (data ?? []) as {
+      user_id: string;
+      display_name: string;
+      created_at?: string;
+    }[]) {
+      const key = row.display_name.trim().toLowerCase();
+      const bucket = groups.get(key);
+      if (bucket) bucket.push(row);
+      else groups.set(key, [row]);
+    }
+
+    return Array.from(groups.entries())
+      .filter(([, accounts]) => accounts.length > 1)
+      .map(([normalized_name, accounts]) => ({ normalized_name, accounts }));
+  },
+
+  async previewAccountMerge(userId) {
+    const client = await db();
+
+    const countIn = async (table: string, column: string) => {
+      const { count, error } = await client
+        .from(table)
+        .select("*", { count: "exact", head: true })
+        .eq(column, userId);
+      if (error) fail(`Could not count ${table}`, error);
+      return count ?? 0;
+    };
+
+    const [
+      display_name,
+      lunch_events,
+      event_votes,
+      event_rsvps,
+      event_invitees,
+      kakis,
+      kaki_members,
+      wishlist,
+      visits,
+      push_subscriptions,
+    ] = await Promise.all([
+      client
+        .from("profiles")
+        .select("display_name")
+        .eq("user_id", userId)
+        .maybeSingle()
+        .then(({ data }) => (data as { display_name: string } | null)?.display_name ?? "Unknown"),
+      countIn("lunch_events", "host_id"),
+      countIn("event_votes", "user_id"),
+      countIn("event_rsvps", "user_id"),
+      countIn("event_invitees", "user_id"),
+      countIn("kakis", "created_by"),
+      countIn("kaki_members", "user_id"),
+      countIn("wishlist", "user_id"),
+      countIn("visits", "user_id"),
+      countIn("push_subscriptions", "user_id"),
+    ]);
+
+    return {
+      user_id: userId,
+      display_name,
+      counts: {
+        "Jios hosted": lunch_events,
+        Votes: event_votes,
+        RSVPs: event_rsvps,
+        Invitations: event_invitees,
+        "Kaki groups created": kakis,
+        "Kaki memberships": kaki_members,
+        "Wishlist saves": wishlist,
+        "Visits logged": visits,
+        "Push subscriptions": push_subscriptions,
+      },
+    };
+  },
+
+  async mergeUserAccounts(callerId, keepUserId, mergeUserId) {
+    if (keepUserId === mergeUserId) {
+      throw new Error("Cannot merge an account into itself");
+    }
+
+    const isAdmin = await supabaseRepo.isAdmin(callerId);
+    if (callerId !== keepUserId && !isAdmin) {
+      throw new Error("You may only merge another account into your own");
+    }
+
+    const client = await db();
+    const { error } = await client.rpc("merge_user_accounts", {
+      p_keep_user_id: keepUserId,
+      p_merge_user_id: mergeUserId,
+    });
+    if (error) fail("Could not merge those accounts", error);
+
+    // Retiring the old auth user needs the service role — see
+    // serviceClient.ts for why this is the one other sanctioned caller.
+    const { createServiceRoleClient } = await import(
+      "@/lib/supabase/serviceClient"
+    );
+    const admin = createServiceRoleClient();
+    const { error: deleteError } = await admin.auth.admin.deleteUser(
+      mergeUserId
+    );
+    if (deleteError) {
+      // The data has already moved — a failed cleanup here is a stray
+      // empty account left behind, not a lost-data problem, so this is
+      // reported but not thrown as a hard failure of the merge itself.
+      console.error(
+        `[account merge] moved data from ${mergeUserId} to ${keepUserId} but could not delete the old account: ${deleteError.message}`
+      );
+    }
+  },
+
+  // `callerId` isn't passed to the RPC — generate_recovery_token checks
+  // auth.uid() against p_user_id itself, same reasoning as cancel_event.
+  async generateRecoveryToken(_callerId, userId) {
+    const client = await db();
+    const { data, error } = await client.rpc("generate_recovery_token", {
+      p_user_id: userId,
+    });
+    if (error) fail("Could not create a recovery link", error);
+    return data as string;
+  },
+
+  async resolveRecoveryToken(token) {
+    const client = await db();
+    const { data, error } = await client.rpc("resolve_recovery_token", {
+      p_token: token,
+    });
+    if (error) fail("Could not check that recovery link", error);
+    return (data as string | null) ?? null;
   },
 };
 
