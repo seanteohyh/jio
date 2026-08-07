@@ -50,7 +50,17 @@ export const nameAuth: AuthAdapter = {
     try {
       const client = await createAuthServerClient();
       const { data, error } = await client.auth.getUser();
-      if (error || !data.user) return null;
+      if (error || !data.user) {
+        // Temporary diagnostic — see the matching comment in lib/auth.ts.
+        // This is the specific *why*: an expired/invalid token reads
+        // differently here than a cookie that never arrived at all.
+        if (error) {
+          console.log(
+            `[auth-debug] client.auth.getUser() failed: ${error.message}`
+          );
+        }
+        return null;
+      }
 
       return {
         id: data.user.id,
