@@ -12,35 +12,7 @@ import type { AuthUser } from "@/types";
 /** The signed-in user, or null. Safe to call anywhere on the server. */
 export async function getCurrentUser(): Promise<AuthUser | null> {
   const auth = await getAuth();
-  const user = await auth.getCurrentUser();
-
-  // Temporary diagnostic — the "still logs out on iOS after closing all
-  // tabs" follow-up to CHANGES_20260804.md §1/CHANGES_20260807.md §1.
-  // Every code-level theory (sessionStorage, cookie maxAge, middleware,
-  // domain drift) has been ruled out by inspection; this is the one
-  // measurement left that distinguishes "no cookie arrived" from "a cookie
-  // arrived but the session behind it was rejected." Names only, never
-  // values — cookie values are live session tokens. Remove once the cause
-  // is confirmed.
-  if (!user) {
-    try {
-      const { cookies } = await import("next/headers");
-      const names = (await cookies()).getAll().map((c) => c.name);
-      console.log(
-        `[auth-debug] getCurrentUser() found nobody. Cookies present: ${
-          names.length > 0 ? names.join(", ") : "(none)"
-        }`
-      );
-    } catch (err) {
-      console.log(
-        `[auth-debug] getCurrentUser() found nobody, and couldn't read cookies to say why: ${
-          err instanceof Error ? err.message : String(err)
-        }`
-      );
-    }
-  }
-
-  return user;
+  return auth.getCurrentUser();
 }
 
 /**

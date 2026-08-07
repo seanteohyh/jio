@@ -479,11 +479,16 @@ describe("starting-soon reminder (remindDueEvents)", () => {
   });
 
   it("skips a Flexi Jio still polling for a date", async () => {
+    // Ten days apart, not one — inMinutes(20) and inMinutes(60 * 24) can
+    // land on the same calendar date whenever "now" is within 20 minutes
+    // of midnight, deduplicating to a single candidate and failing
+    // createFlexiEvent's "needs at least 2" check for reasons that have
+    // nothing to do with what this test is actually checking.
     const event = await demoRepo.createFlexiEvent(
       DEMO_USER_ID,
       "Flexi lunch",
       DEFAULT_OFFICE.id,
-      [inMinutes(20).slice(0, 10), inMinutes(60 * 24).slice(0, 10)],
+      [inMinutes(20).slice(0, 10), inMinutes(60 * 24 * 10).slice(0, 10)],
       null,
       [DEMO_TEAMMATE_A]
     );
