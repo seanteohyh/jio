@@ -3,6 +3,23 @@ import type { AuthUser } from "@/types";
 export interface AuthResult {
   ok: boolean;
   error?: string;
+  /**
+   * `signInWithName` only: true when a *different* account already uses this
+   * exact name and nothing has happened yet — no merge, no rename — pending
+   * the caller saying whether that's them. CHANGES_20260807c.md §3, item 1.
+   */
+  needsConfirmation?: boolean;
+  /** The matched account's exact stored name, for the confirmation prompt's
+   *  copy (may differ in case/whitespace from what was typed). */
+  matchedName?: string;
+  /**
+   * True when this call resolved `confirmClaim: false` on an actual match —
+   * i.e. two different real people, confirmed, now share a name. The caller
+   * (the sign-in route) uses this to notify admins, per §3 item 5; it isn't
+   * something `signInWithName` itself sends, since side effects like a push
+   * belong at the route layer, not the auth adapter.
+   */
+  duplicateConfirmed?: boolean;
 }
 
 /**
@@ -35,8 +52,22 @@ export interface AuthAdapter {
   /** The signed-in user, or null. Never throws. */
   getCurrentUser(): Promise<AuthUser | null>;
 
-  /** Name-only sign-in. Creates a distinct user with no credentials. */
-  signInWithName(displayName: string): Promise<AuthResult>;
+  /**
+   * Name-only sign-in. Creates a distinct user with no credentials.
+   *
+   * `confirmClaim` resolves the case where a different account already has
+   * this name (only checked when name-based claim is enabled — see
+   * `config.nameClaimEnabled`): omitted on the first attempt, and a match
+   * returns `{ ok: false, needsConfirmation: true, matchedName }` without
+   * changing anything. Call again with `confirmClaim: true` ("yes, that's
+   * me") to merge that account's data onto the current session, or `false`
+   * ("no, different person") to sign in as a distinct new account under the
+   * same name regardless. Ignored entirely when no match exists.
+   */
+  signInWithName(
+    displayName: string,
+    confirmClaim?: boolean
+  ): Promise<AuthResult>;
 
   /** Send a sign-in email. `redirectTo` is where the magic link lands. */
   signInWithEmail(

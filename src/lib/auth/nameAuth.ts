@@ -1,5 +1,6 @@
 import { createAuthServerClient } from "@/lib/supabase/serverAuth";
 import { getRepoAsync } from "@/lib/data/repo";
+import { config } from "@/lib/config";
 import { UNSUPPORTED, type AuthAdapter } from "./index";
 
 /**
@@ -63,7 +64,7 @@ export const nameAuth: AuthAdapter = {
     }
   },
 
-  async signInWithName(displayName) {
+  async signInWithName(displayName, confirmClaim) {
     const name = displayName.trim();
     if (!name) return { ok: false, error: "Put in a name" };
     if (name.length > 40) return { ok: false, error: "That name is too long" };
@@ -114,17 +115,39 @@ export const nameAuth: AuthAdapter = {
       // session with no matching name of its own always fell straight
       // through to a plain rename/sign-up, silently forking a second
       // account with the same display name instead of resolving back to it.
-      const { data: profileRows } = await client
-        .from("profiles")
-        .select("user_id, display_name")
-        .neq("user_id", userId);
+      //
+      // config.nameClaimEnabled (CHANGES_20260807c.md §3, item 2) is the
+      // admin-flippable off switch for this whole check — recovery links and
+      // the admin merge tool don't depend on it, so turning this off doesn't
+      // touch either.
+      const match = config.nameClaimEnabled
+        ? await (async () => {
+            const { data: profileRows } = await client
+              .from("profiles")
+              .select("user_id, display_name")
+              .neq("user_id", userId);
 
-      const normalized = name.toLowerCase();
-      const match = (profileRows ?? []).find(
-        (p) => p.display_name.trim().toLowerCase() === normalized
-      );
+            const normalized = name.toLowerCase();
+            return (profileRows ?? []).find(
+              (p) => p.display_name.trim().toLowerCase() === normalized
+            );
+          })()
+        : undefined;
 
-      if (match) {
+      // §3 item 1 — a match needs a decision before anything actually
+      // changes, rather than merging silently. First time through
+      // (`confirmClaim` omitted), stop here and ask; nothing above this
+      // point mutated a profile or moved any data (only possibly minted a
+      // fresh anonymous session, which is harmless either way this resolves).
+      if (match && confirmClaim === undefined) {
+        return {
+          ok: false,
+          needsConfirmation: true,
+          matchedName: match.display_name,
+        };
+      }
+
+      if (match && confirmClaim) {
         const repo = await getRepoAsync();
         await repo.mergeUserAccounts(userId, userId, match.user_id);
       }
@@ -155,7 +178,10 @@ export const nameAuth: AuthAdapter = {
 
       if (profileError) return { ok: false, error: profileError.message };
 
-      return { ok: true };
+      return {
+        ok: true,
+        duplicateConfirmed: Boolean(match) && confirmClaim === false,
+      };
     } catch (error) {
       return {
         ok: false,

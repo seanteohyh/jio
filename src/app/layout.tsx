@@ -6,6 +6,7 @@ import "./globals.css";
 import BottomNav from "@/components/BottomNav";
 import ServiceWorkerRegister from "@/components/ServiceWorkerRegister";
 import AddToHomeScreenPrompt from "@/components/AddToHomeScreenPrompt";
+import RecoveryNudgePrompt from "@/components/RecoveryNudgePrompt";
 import { InstallPromptProvider } from "@/components/InstallPromptProvider";
 import { config } from "@/lib/config";
 
@@ -74,6 +75,7 @@ export default function RootLayout({
           <BottomNav />
           <ServiceWorkerRegister />
           <AddToHomeScreenPrompt />
+          <RecoveryNudgePrompt />
         </InstallPromptProvider>
         <Analytics />
         <SpeedInsights />

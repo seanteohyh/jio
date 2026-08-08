@@ -1685,6 +1685,10 @@ export const demoRepo: Repo = {
     return userId === DEMO_USER_ID;
   },
 
+  async listAdminIds() {
+    return [DEMO_USER_ID];
+  },
+
   async blockPlace(userId, placeId, reason) {
     if (!reason || reason.trim().length === 0) {
       throw new Error("A reason is required to block a place");

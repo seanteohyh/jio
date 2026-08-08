@@ -98,6 +98,18 @@ export const config = {
   /** When false, only existing users can sign in. Only meaningful in email mode. */
   openSignup: process.env.NEXT_PUBLIC_JIO_OPEN_SIGNUP !== "false",
 
+  /**
+   * When false, typing an existing name never auto-merges — every name
+   * always signs in as (or renames) the current session, even one that
+   * collides with someone else's. CHANGES_20260807c.md §3, item 2: name
+   * match is only safe "while names happen to be unique across the team,"
+   * and the call made was to leave turning it off as a manual admin
+   * decision rather than an automatic trigger — recovery links and the
+   * admin merge tool (`/admin/accounts`) both keep working unaffected,
+   * since neither depends on this. Only meaningful in `name` mode.
+   */
+  nameClaimEnabled: process.env.JIO_NAME_CLAIM_ENABLED !== "false",
+
   overpassUrl:
     process.env.OVERPASS_API_URL || "https://overpass-api.de/api/interpreter",
 

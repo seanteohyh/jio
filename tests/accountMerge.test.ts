@@ -278,3 +278,11 @@ describe("recovery links", () => {
     expect(await demoRepo.resolveRecoveryToken(token)).toBeNull();
   });
 });
+
+describe("listAdminIds", () => {
+  // CHANGES_20260807c.md §3 item 5 — who a "possible duplicate" push goes to.
+  it("returns the demo admin", async () => {
+    const admins = await demoRepo.listAdminIds();
+    expect(admins).toEqual([DEMO_USER_ID]);
+  });
+});

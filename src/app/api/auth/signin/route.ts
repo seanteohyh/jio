@@ -1,9 +1,31 @@
 import { NextRequest } from "next/server";
 import { getAuth } from "@/lib/auth";
+import { getRepoAsync } from "@/lib/data/repo";
 import { badRequest, errorResponse, json, readJson } from "@/lib/api";
 import { config } from "@/lib/config";
+import { sendPushToUsers } from "@/lib/push";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/**
+ * §3 item 5 — a declined name-match is a *confirmed* duplicate, the one
+ * moment worth telling an admin about rather than waiting for someone to
+ * happen to check /admin/accounts. Best-effort: never lets a notification
+ * failure surface as a sign-in error.
+ */
+async function notifyAdminsOfDuplicateName(name: string): Promise<void> {
+  try {
+    const repo = await getRepoAsync();
+    const adminIds = await repo.listAdminIds();
+    await sendPushToUsers(repo, adminIds, {
+      title: "Possible duplicate account",
+      body: `Two accounts are now both named "${name}" — confirmed as different people at sign-in.`,
+      url: "/admin/accounts",
+    });
+  } catch {
+    // Logged inside sendPushToUsers already; nothing more to do here.
+  }
+}
 
 /**
  * Sign in.
@@ -23,6 +45,10 @@ export async function POST(request: NextRequest) {
       display_name?: string;
       email?: string;
       next?: string;
+      /** Omitted on the first attempt. `true`/`false` resolves a
+       *  `needs_confirmation` response from a previous call — see
+       *  signInWithName's doc comment. */
+      confirm_claim?: boolean;
     }>(request);
 
     if (!body) return badRequest("Expected a JSON body");
@@ -35,8 +61,23 @@ export async function POST(request: NextRequest) {
       if (!name) return badRequest("Put in a name so people know who you are");
       if (name.length > 40) return badRequest("That name is a bit long");
 
-      const result = await auth.signInWithName(name);
+      const result = await auth.signInWithName(name, body.confirm_claim);
+
+      if (result.needsConfirmation) {
+        // Not an error — the client shows a confirm prompt and calls this
+        // same route again with confirm_claim set. Nothing has changed yet.
+        return json({
+          ok: false,
+          needs_confirmation: true,
+          matched_name: result.matchedName,
+        });
+      }
+
       if (!result.ok) return badRequest(result.error ?? "Could not sign in");
+
+      if (result.duplicateConfirmed) {
+        await notifyAdminsOfDuplicateName(name);
+      }
 
       return json({ ok: true, display_name: name });
     }

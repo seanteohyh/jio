@@ -22,9 +22,12 @@ function NameForm({ next }: { next: string }) {
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Set once a sign-in attempt comes back "an account with this exact name
+  // already exists — is that you?" (CHANGES_20260807c.md §3 item 1). Holds
+  // the matched account's exact stored name for the prompt's copy.
+  const [pendingMatch, setPendingMatch] = useState<string | null>(null);
 
-  const submit = async (event: React.FormEvent) => {
-    event.preventDefault();
+  const attempt = async (confirmClaim?: boolean) => {
     setBusy(true);
     setError(null);
 
@@ -32,9 +35,16 @@ function NameForm({ next }: { next: string }) {
       const response = await fetch("/api/auth/signin", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ display_name: name }),
+        body: JSON.stringify({ display_name: name, confirm_claim: confirmClaim }),
       });
       const payload = await response.json();
+
+      if (payload.needs_confirmation) {
+        setPendingMatch(payload.matched_name ?? name);
+        setBusy(false);
+        return;
+      }
+
       if (!response.ok) throw new Error(payload.error);
 
       router.push(next);
@@ -44,6 +54,61 @@ function NameForm({ next }: { next: string }) {
       setBusy(false);
     }
   };
+
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    await attempt(undefined);
+  };
+
+  if (pendingMatch) {
+    return (
+      <div className="space-y-4">
+        <p className="text-ink text-sm">
+          An account named{" "}
+          <span className="font-medium">&ldquo;{pendingMatch}&rdquo;</span>{" "}
+          already exists.
+        </p>
+        <p className="text-stone text-xs">
+          Is this you? Say yes and everything under that name — your votes,
+          your history — comes with you. Say no and you sign in as a
+          different person who happens to share the name.
+        </p>
+
+        {error && <ErrorNote>{error}</ErrorNote>}
+
+        <div className="flex gap-2">
+          <Button
+            type="button"
+            className="flex-1"
+            disabled={busy}
+            onClick={() => attempt(true)}
+          >
+            {busy ? "One moment…" : "Yes, that's me"}
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            className="flex-1"
+            disabled={busy}
+            onClick={() => attempt(false)}
+          >
+            No, different person
+          </Button>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => {
+            setPendingMatch(null);
+            setError(null);
+          }}
+          className="text-stone w-full text-center text-xs underline"
+        >
+          Use a different name instead
+        </button>
+      </div>
+    );
+  }
 
   return (
     <form onSubmit={submit} className="space-y-3">

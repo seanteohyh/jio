@@ -2425,6 +2425,13 @@ export const supabaseRepo: Repo = {
   // Postgres because the functions authorize off `auth.uid()` from the
   // session itself, not a client-supplied value.
 
+  async listAdminIds() {
+    const client = await db();
+    const { data, error } = await client.rpc("list_admin_ids");
+    if (error) fail("Could not list admins", error);
+    return (data as string[] | null) ?? [];
+  },
+
   async isAdmin(userId) {
     const client = await db();
     // RLS (`admins_select_self`) only ever lets a session see its own row,

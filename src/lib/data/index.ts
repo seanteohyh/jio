@@ -382,6 +382,10 @@ export interface Repo {
   // ---- Admin & moderation ----
   /** Whether `userId` is on the admin allowlist. Never self-service. */
   isAdmin(userId: string): Promise<boolean>;
+  /** Every admin's user id — for notifying "an admin", not one specific
+   *  person. CHANGES_20260807c.md §3 item 5's duplicate-name push reads
+   *  this rather than hardcoding who happens to be an admin today. */
+  listAdminIds(): Promise<string[]>;
   /**
    * Sets a place's status to `blocked`. Only the place's own creator or an
    * admin may do this — enforced here (RLS/a SECURITY DEFINER function in
@@ -545,6 +549,7 @@ export const REPO_METHODS = [
   "dismissLobang",
   "suggestPlacesForFriend",
   "isAdmin",
+  "listAdminIds",
   "getAdminAnalytics",
   "blockPlace",
   "unblockPlace",
