@@ -40,8 +40,9 @@ When you are ready to make it real, see [Going live](#going-live).
 | **Jios** | Create a lunch outing, everyone ranks the options, a Borda count decides. RSVP, live vote updates, a roulette wheel for when the group genuinely cannot choose, and a month calendar with Hosting / Invited / Past filters for browsing. Anyone can edit a place, any signed-in user may edit any place's details, and the host can cancel a Jio outright — it stays visible, marked cancelled, rather than vanishing. Once a Jio is decided, its result — place, time, final points — can be copied or shared as a PNG, generated client-side, for pasting straight into a chat instead of a link. A host can also start a Jio with votes hidden: nobody, host included, sees the running standing until it closes — only the ballot count shows. |
 | **Vote on a place that isn't listed yet** | Typing a name the search doesn't find logs it as a vote option immediately, no place record required. A non-blocking prompt afterward offers to add it to the pool; declining leaves it exactly as a text-only choice, permanently. |
 | **Kakis** | Lunch groups with a shareable invite link and shared stats — group favourites, who eats out most, who is most adventurous. |
-| **Places** | Searchable list with cuisine, budget, walk-time and rating filters, sortable by nearest, highest-rated, or rated by your Kaki group. Add places by hand, import candidate names from a food blog, or let the daily cron find them on OpenStreetMap. Cuisine tagging covers a fixed, scored list (now including Modern and Traditional) plus free-text "Other" tags that show on the place but never affect recommendations. |
-| **Map** | Leaflet map of everything in walking distance, with real walking routes when OneMap is configured. |
+| **Lobangs** | "Saw this online, thought of you" — send any registered place to specific teammates or a whole Kaki, with an optional note and personalized "quick pick" suggestions. Two entry points side by side: from a closed Jio in "You → Past Jios" (the winning place pinned as a default), and directly from a place's own page (`/places/[id]`) for the more common case of just browsing and thinking of someone. |
+| **Places** | Searchable list with cuisine, budget, walk-time and rating filters, sortable by nearest, highest-rated, or rated by your Kaki group — plus a "Kaki favourites only" chip that actually narrows the list, not just reorders it, and a badge on the card itself once at least 2 Kaki-member visits back a place's rating, so a lone review doesn't read as group consensus. Add places by hand, import candidate names from a food blog, or let the daily cron find them on OpenStreetMap. Cuisine tagging covers a fixed, scored list (now including Modern and Traditional) plus free-text "Other" tags that show on the place but never affect recommendations. |
+| **Map** | Leaflet map of everything in walking distance, with real walking routes when OneMap is configured. A Kaki-favourite place gets an amber ring on its marker, layered independently of the existing selected/not-selected fill color. |
 | **Reviews** | Log a visit privately, or share it as a review. Each visit is its own entry, editable and deletable later — including un-sharing a review back to private. |
 | **Saved places** | Bookmark anywhere from any list. `/places` has an All / Saved split, and saving nudges a place up your own suggestions. |
 | **Weather** | Checks the NEA two-hour forecast. When rain is likely, the walk penalty doubles and closer places quietly rise. |
@@ -155,20 +156,36 @@ Two things you are accepting in exchange:
 
 **Recovering a lost identity** doesn't require the session-storage fix to be
 perfect — two independent paths exist regardless of what caused the loss.
-Typing your name again resolves to your *existing* profile rather than
-forking a new one if a different, case/whitespace-normalized-matching
+Typing your name again offers to resolve to your *existing* profile rather
+than forking a new one, if a different, case/whitespace-normalized-matching
 profile already exists (`nameAuth.signInWithName`, CHANGES_20260807.md §4) —
 same "anyone can claim any name" trade-off as above, just now actually
-useful instead of a landmine. That stops being safe the moment two different
-real people can share a name, which is where **recovery links** come in:
-an unguessable, per-account token (get one from "You" while still signed
-in, or an admin issues one from `/admin/accounts` for someone already locked
-out) that redeems at `/recover/<token>` with zero name-matching involved —
-collision-proof by construction, and designed to keep working unmodified if
-name-based claim is later turned off. Both funnel into the same reassignment
-operation an admin can also trigger directly from `/admin/accounts` — pick
-the account to keep, pick the stale one(s) to fold in, preview what moves,
-confirm.
+useful instead of a landmine. **Offers**, not merges silently:
+CHANGES_20260807c.md §3 added a confirmation step first — "an account named
+'X' already exists, is this you?" — since the earlier silent version caught
+the deliberate-impersonation case fine but not the accidental one (a typo,
+or two different real people who happen to share a first name). Answering
+"no, different person" signs in as a distinct account under the same name
+and pushes a notification to every admin, since that's a confirmed real
+duplicate, not a maybe. Whether typing a name can auto-merge at all is a
+manual switch — `JIO_NAME_CLAIM_ENABLED=false` turns it off once names
+genuinely aren't unique across the team anymore (decided to be a manual
+call, not an automatic team-size trigger — the confirmation step already
+catches the accidental case that made an automatic trigger feel urgent).
+
+That stops being safe the moment two different real people can share a
+name, which is where **recovery links** come in: an unguessable, per-account
+token (get one from "You" while still signed in — nudged after a few visits
+if you haven't, same dismissible pattern as the install prompt below, since
+you can't generate one for an account you've already lost — or an admin
+issues one from `/admin/accounts` for someone already locked out) that
+redeems at `/recover/<token>` with zero name-matching involved —
+collision-proof by construction, and built independently of the name-claim
+code path specifically so it keeps working unmodified once
+`JIO_NAME_CLAIM_ENABLED` is turned off. Both funnel into the same
+reassignment operation an admin can also trigger directly from
+`/admin/accounts` — pick the account to keep, pick the stale one(s) to fold
+in, preview what moves, confirm.
 
 Setup: enable **Authentication → Providers → Anonymous sign-ins** in the
 Supabase dashboard, and apply migration 015.
@@ -249,7 +266,7 @@ Roughly 30 minutes end to end. Everything below stays on a free tier.
    `service_role` key. The last one is a secret; it bypasses all access
    control.
 3. **SQL Editor** — run every file in `supabase/migrations/` in numeric order,
-   001 through 041. They are idempotent, so re-running is harmless.
+   001 through 042. They are idempotent, so re-running is harmless.
 4. **Authentication → Providers → Anonymous sign-ins** — turn this on. It is
    what makes name-only sign-in work.
 5. **Authentication → URL Configuration** — set the Site URL to your deployed
@@ -294,6 +311,7 @@ the environment variables. Vercel detects Next.js with no configuration.
 | `NEXT_PUBLIC_SITE_URL` | Your live URL. Used to build shareable invite links — without it the app falls back to the browser's origin, which leaves the first server render showing a bare path. Do **not** use `VERCEL_URL`: it resolves to the per-deployment hostname, not the production alias. |
 | `ONEMAP_EMAIL` / `ONEMAP_PASSWORD` | Optional, from step 3 |
 | `VAPID_PUBLIC_KEY` / `NEXT_PUBLIC_VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` | Optional — push notifications. Generate with `npx web-push generate-vapid-keys`; the public key goes in **both** variables (server and client need it under different names), same value. Without these, push silently no-ops rather than breaking anything. |
+| `JIO_NAME_CLAIM_ENABLED` | Optional, defaults to `true`. Set to `false` once names genuinely aren't unique across the team anymore — typing an existing name then always signs in as (or renames) the current session rather than offering to merge. Only meaningful in `name` mode; recovery links and the admin merge tool at `/admin/accounts` both keep working unaffected either way. |
 
 Then go back to Supabase and set the Site URL to your live URL.
 
@@ -410,6 +428,36 @@ role lacks privilege on rather than silently dropping it.
 error message, and once in the RLS policy from migration 013, which is the
 actual gate. Host, kaki member or explicit invitee, and only while the event is
 open.
+
+**Listing every admin needs `SECURITY DEFINER` too, for the same reason
+checking one does not.** `admins_select_self` only ever lets a session see
+its own row in that table — enough for an `isAdmin` check, not enough to
+enumerate the allowlist. `list_admin_ids` (migration 042) exists for exactly
+one caller: notifying admins when a declined name-match confirms a real
+duplicate (CHANGES_20260807c.md §3 item 5) — granted to any authenticated
+user, since it is the person who just signed up (not necessarily an admin
+themselves) who triggers that notification.
+
+**The browser-side Supabase client never writes a session cookie, on
+purpose.** It exists for exactly one thing — authenticating a Realtime
+websocket on the Jio detail page — which needs *reading* the current
+session, never writing one. Left at its defaults, `createBrowserClient` gets
+no `cookies` adapter and falls back to managing the session itself via plain
+`document.cookie`, and with `autoRefreshToken` on by default, just visiting
+that page starts an internal refresh loop that can rewrite the session
+cookie from client-side JS. Safari's Intelligent Tracking Prevention treats
+a script-written cookie differently from the real `Set-Cookie` response
+header every other session write in this app uses (`middleware.ts` /
+`serverAuth.ts`) — the leading theory behind an iOS-specific sign-out
+reproducing in minutes rather than the access token's real ~1 hour lifetime
+(CHANGES_20260807c.md §4). `src/lib/supabase/browser.ts` now passes an
+explicit `cookies` adapter whose `setAll` is a deliberate no-op and disables
+`autoRefreshToken`, so nothing this client does — however it might try —
+can ever write a cookie. The trade-off: a tab left open with no navigation
+for over an hour can see its Realtime connection go stale, since neither
+this client nor the server-side middleware (which only runs on navigation)
+refreshes it in that scenario. A reload fixes it; it is a soft failure, not
+the sign-out this was written to close off.
 
 **Admins are a DB-side allowlist, populated by hand.** The `admins` table
 (migration 017) has no insert/update/delete policy for `authenticated` at
@@ -620,7 +668,7 @@ link.
 ## Tests
 
 ```bash
-npm test          # 362 tests across 28 files
+npm test          # 366 tests across 28 files
 npm run typecheck
 npm run lint
 ```
@@ -630,7 +678,7 @@ npm run lint
 | `recommend.test.ts` | Every scoring component, exclusions, ranking, boosts, group mode |
 | `blogImport.test.ts` | HTML extraction and the full SSRF matrix |
 | `eventAdditions.test.ts` | Who can add, remove, invite, vote and close; joining via an invite link makes a stranger a real invitee, not just visible; the vote-push throttle window; the starting-soon reminder's timing, one-shot firing, and non-responder targeting |
-| `accountMerge.test.ts` | Duplicate-name grouping; merge authorization (self vs. admin vs. neither); row reassignment and collision handling across every owned table; recovery-token generation, resolution, regeneration, and cleanup after a merge |
+| `accountMerge.test.ts` | Duplicate-name grouping; merge authorization (self vs. admin vs. neither); row reassignment and collision handling across every owned table; recovery-token generation, resolution, regeneration, and cleanup after a merge; listing every admin |
 | `metrics.test.ts` | User and group statistics, cuisine streaks |
 | `discovery.test.ts` | OSM normalisation and deduplication |
 | `voting.test.ts` | Borda count, partial ballots, tie-breaking |
@@ -653,7 +701,7 @@ npm run lint
 | `recurringSeries.test.ts` | Recurring-series date math (lookahead window, no double-generation), fixed vs. voted occurrences, fresh kaki-membership expansion per occurrence |
 | `sortPlacesForList.test.ts` | `/places`'s nearest-first default vs. the highest-rated sort, unrated places sinking rather than sorting first, tie-breaking |
 | `hiddenVotes.test.ts` | A hidden-vote Jio's standing is blind only while open, reveals on close, and voter count is distinct voters not ballot rows |
-| `kakiRating.test.ts` | "Rated by your Kaki group" averages only the member set's ratings, scoped independently per place |
+| `kakiRating.test.ts` | "Rated by your Kaki group" averages only the member set's ratings, scoped independently per place; the companion visit-count used for the badge/filter's minimum-2 threshold |
 | `adminAnalytics.test.ts` | Asia/Singapore day/week bucketing across the UTC boundary, median with no-data returning `null` not `0`, walk-time bucket edges |
 
 **`npm test` does not typecheck.** Vitest transforms TypeScript with esbuild,
