@@ -162,6 +162,7 @@ function BrowseList() {
     baseQuery.set("cuisines", filters.cuisines.join(","));
   }
   if (filters.search) baseQuery.set("q", filters.search);
+  if (filters.kakiFavouritesOnly) baseQuery.set("kakiFavouritesOnly", "true");
   const filterKey = baseQuery.toString();
 
   // A filter change starts the list over at page 1.

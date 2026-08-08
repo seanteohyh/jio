@@ -11,8 +11,11 @@ import {
 } from "@/lib/api";
 import { DEFAULT_OFFICE } from "@/lib/constants";
 import { isEnabled } from "@/lib/config";
-import { computeKakiRatingByPlace } from "@/lib/metrics";
+import { computeKakiRatingByPlace, countKakiVisitsByPlace } from "@/lib/metrics";
 import type { BudgetTier, Filters, Place, PlaceStatus } from "@/types";
+
+/** A lone review shouldn't read as group consensus — CHANGES_20260807c.md §2. */
+const MIN_KAKI_VISITS_FOR_BADGE = 2;
 
 const PAGE_SIZE = 15;
 
@@ -39,37 +42,62 @@ export async function GET(request: NextRequest) {
       officeId: params.get("officeId") ?? DEFAULT_OFFICE.id,
     };
 
-    // §12f — "rated by your Kaki group" needs the requesting user's Kaki
-    // membership, which the repo's listPlaces has no notion of, so this
-    // mode is computed here rather than pushed down like "walk"/"rating"
-    // are. That also means it can't use the repo's own pagination — the
-    // full filtered set has to be scored and sorted first.
-    if (params.get("sortBy") === "kaki_rating" && isEnabled("kakis")) {
-      const { places: allPlaces } = await repo.listPlaces(baseFilters);
+    const sortBy = params.get("sortBy");
+    const kakiFavouritesOnly = params.get("kakiFavouritesOnly") === "true";
 
+    // §12f / CHANGES_20260807c.md §2 — anything Kaki-rating-related needs the
+    // requesting user's Kaki membership, which the repo's listPlaces has no
+    // notion of, so it's computed here rather than pushed down like
+    // "walk"/"rating" are. Skipped entirely for someone in no Kaki at all —
+    // "your Kakis' opinion" from a member set of just yourself isn't a
+    // signal worth the extra visit-list fetches.
+    let kakiRatingByPlace: Record<string, number> = {};
+    if (isEnabled("kakis")) {
       const kakis = await repo.listKakis(user.id);
-      const memberIds = new Set<string>([user.id]);
-      for (const kaki of kakis) {
-        const detail = await repo.getKaki(kaki.id);
-        for (const member of detail?.members ?? []) {
-          memberIds.add(member.user_id);
+      if (kakis.length > 0) {
+        const memberIds = new Set<string>([user.id]);
+        for (const kaki of kakis) {
+          const detail = await repo.getKaki(kaki.id);
+          for (const member of detail?.members ?? []) {
+            memberIds.add(member.user_id);
+          }
+        }
+
+        const visitLists = await Promise.all(
+          Array.from(memberIds).map((id) => repo.listVisits(undefined, id))
+        );
+        const allVisits = visitLists.flat();
+        const ratings = computeKakiRatingByPlace(allVisits, memberIds);
+        const counts = countKakiVisitsByPlace(allVisits, memberIds);
+
+        // A lone review reads as one person's opinion, not "your Kakis
+        // liked this" — held back from both the badge and the filter until
+        // there's at least MIN_KAKI_VISITS_FOR_BADGE behind it.
+        for (const placeId of Object.keys(ratings)) {
+          if ((counts[placeId] ?? 0) >= MIN_KAKI_VISITS_FOR_BADGE) {
+            kakiRatingByPlace[placeId] = ratings[placeId];
+          }
         }
       }
+    }
 
-      const visitLists = await Promise.all(
-        Array.from(memberIds).map((id) => repo.listVisits(undefined, id))
-      );
-      const kakiRatingByPlace = computeKakiRatingByPlace(
-        visitLists.flat(),
-        memberIds
-      );
+    const attachKakiRating = (place: Place): Place => ({
+      ...place,
+      kaki_rating: kakiRatingByPlace[place.id] ?? null,
+    });
 
-      const rated = allPlaces
-        .map((place) => ({
-          ...place,
-          kaki_rating: kakiRatingByPlace[place.id] ?? null,
-        }))
-        .sort((a, b) => {
+    // A real sort or a real filter over kaki_rating both need the full
+    // matching set scored before slicing — neither can use the repo's own
+    // pagination.
+    if (sortBy === "kaki_rating" || kakiFavouritesOnly) {
+      const { places: allPlaces } = await repo.listPlaces(baseFilters);
+      let scored = allPlaces.map(attachKakiRating);
+
+      if (kakiFavouritesOnly) {
+        scored = scored.filter((p) => typeof p.kaki_rating === "number");
+      }
+      if (sortBy === "kaki_rating") {
+        scored = [...scored].sort((a, b) => {
           const aR = typeof a.kaki_rating === "number" ? a.kaki_rating : -Infinity;
           const bR = typeof b.kaki_rating === "number" ? b.kaki_rating : -Infinity;
           if (aR !== bR) return bR - aR;
@@ -78,11 +106,12 @@ export async function GET(request: NextRequest) {
           if (aW !== bW) return aW - bW;
           return a.name.localeCompare(b.name);
         });
+      }
 
-      const total = rated.length;
+      const total = scored.length;
       const places = page
-        ? rated.slice((page - 1) * limit, (page - 1) * limit + limit)
-        : rated;
+        ? scored.slice((page - 1) * limit, (page - 1) * limit + limit)
+        : scored;
 
       return json({ places, total });
     }
@@ -90,12 +119,12 @@ export async function GET(request: NextRequest) {
     const { places, total } = await repo.listPlaces(
       {
         ...baseFilters,
-        sortBy: params.get("sortBy") === "rating" ? "rating" : "walk",
+        sortBy: sortBy === "rating" ? "rating" : "walk",
       },
       page ? { limit, offset: (page - 1) * limit } : undefined
     );
 
-    return json({ places, total });
+    return json({ places: places.map(attachKakiRating), total });
   } catch (error) {
     return errorResponse(error);
   }

@@ -14,6 +14,10 @@ export interface FilterState {
   /** "kaki_rating" — §12f — is computed at the API layer, not by the repo;
    *  see the sort branch in src/app/api/places/route.ts. */
   sortBy: "walk" | "rating" | "kaki_rating";
+  /** Narrows the list instead of just reordering it — CHANGES_20260807c.md
+   *  §2's "real filter" gap on top of the existing sort. Also computed at
+   *  the API layer, same place as the sort. */
+  kakiFavouritesOnly: boolean;
 }
 
 export const DEFAULT_FILTERS: FilterState = {
@@ -22,6 +26,7 @@ export const DEFAULT_FILTERS: FilterState = {
   budgetMax: 4,
   maxWalk: 30,
   sortBy: "walk",
+  kakiFavouritesOnly: false,
 };
 
 /**
@@ -100,6 +105,20 @@ export default function FilterBar({
           </label>
         )}
 
+        {features.kakis && (
+          <Chip
+            active={value.kakiFavouritesOnly}
+            onClick={() =>
+              onChange({
+                ...value,
+                kakiFavouritesOnly: !value.kakiFavouritesOnly,
+              })
+            }
+          >
+            Kaki favourites only
+          </Chip>
+        )}
+
         <label className="flex items-center gap-2 text-xs">
           <span className="text-stone">Up to</span>
           <select
@@ -143,6 +162,7 @@ export default function FilterBar({
           value.budgetMax !== 4 ||
           value.maxWalk !== 30 ||
           value.sortBy !== "walk" ||
+          value.kakiFavouritesOnly ||
           value.search) && (
           <button
             type="button"

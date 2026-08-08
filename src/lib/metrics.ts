@@ -349,3 +349,24 @@ export function computeKakiRatingByPlace(
   }
   return result;
 }
+
+/**
+ * Companion to `computeKakiRatingByPlace` — how many rated visits from the
+ * same member set back that average. CHANGES_20260807c.md §2's badge only
+ * shows above a minimum (2), so one lone review doesn't read as group
+ * consensus; kept as a separate function rather than folded into the
+ * average's return shape so the existing sort call site and its tests stay
+ * untouched.
+ */
+export function countKakiVisitsByPlace(
+  visits: Visit[],
+  memberIds: Set<string>
+): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const visit of visits) {
+    if (!memberIds.has(visit.user_id)) continue;
+    if (typeof visit.rating !== "number") continue;
+    counts[visit.place_id] = (counts[visit.place_id] ?? 0) + 1;
+  }
+  return counts;
+}

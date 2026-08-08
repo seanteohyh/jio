@@ -24,14 +24,22 @@ import type { Office, Place } from "@/types";
  * and is the single most common Leaflet-in-webpack bug.
  */
 
-function markerIcon(color: string, label?: string) {
+/**
+ * `ring` is a second, independent signal layered on top of `color` — CHANGES_
+ * 20260807c.md §2's map cue for a Kaki favourite. Deliberately not a fill
+ * color: `color` already means selected (sage) vs. not (ember), and reusing
+ * green for "favourite" would collide with green already meaning "selected"
+ * the moment a selected pin is also a favourite. The border can carry a
+ * second color without disturbing the first.
+ */
+function markerIcon(color: string, label?: string, ring?: string) {
   return L.divIcon({
     className: "",
     html: `<span style="
       display:flex;align-items:center;justify-content:center;
       width:22px;height:22px;border-radius:50% 50% 50% 0;
       transform:rotate(-45deg);
-      background:${color};border:2px solid #faf7f2;
+      background:${color};border:2px solid ${ring ?? "#faf7f2"};
       box-shadow:0 1px 4px rgba(0,0,0,.3);
       font-size:9px;color:#fff;font-weight:600;
     "><span style="transform:rotate(45deg)">${label ?? ""}</span></span>`,
@@ -40,6 +48,9 @@ function markerIcon(color: string, label?: string) {
     popupAnchor: [0, -20],
   });
 }
+
+/** Matches --color-amber, the same tone PlaceCard's "your Kakis" badge uses. */
+const KAKI_FAVOURITE_RING = "#d98a2b";
 
 /** Refits the viewport when the set of visible places changes. */
 function FitBounds({ points }: { points: [number, number][] }) {
@@ -119,7 +130,10 @@ export default function LeafletMap({
           position={[place.lat, place.lng]}
           icon={markerIcon(
             place.id === selectedId ? "#567b57" : "#b4532f",
-            place.walk_minutes ? String(place.walk_minutes) : ""
+            place.walk_minutes ? String(place.walk_minutes) : "",
+            typeof place.kaki_rating === "number"
+              ? KAKI_FAVOURITE_RING
+              : undefined
           )}
           eventHandlers={{ click: () => onSelect?.(place) }}
         >
@@ -132,6 +146,14 @@ export default function LeafletMap({
                 : ""}
               {place.cuisine.map(formatCuisine).join(", ")}
             </span>
+            {typeof place.kaki_rating === "number" && (
+              <>
+                <br />
+                <span style={{ color: "#d98a2b", fontSize: 12 }}>
+                  ★ {place.kaki_rating.toFixed(1)} · your Kakis
+                </span>
+              </>
+            )}
             <br />
             <Link href={`/places/${place.id}`} style={{ color: "#b4532f" }}>
               Open

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeKakiRatingByPlace } from "@/lib/metrics";
+import { computeKakiRatingByPlace, countKakiVisitsByPlace } from "@/lib/metrics";
 import type { Visit } from "@/types";
 
 /**
@@ -56,5 +56,41 @@ describe("computeKakiRatingByPlace", () => {
 
     expect(result["place-a"]).toBe(4);
     expect(result["place-b"]).toBe(3);
+  });
+});
+
+describe("countKakiVisitsByPlace", () => {
+  // CHANGES_20260807c.md §2 — the badge/filter threshold's data source: how
+  // many member-set visits actually back a place's kaki_rating.
+  it("counts only rated visits from the member set", () => {
+    const visits = [
+      visit("alex", "place-a", 5),
+      visit("mei", "place-a", 3),
+      visit("stranger", "place-a", 1),
+    ];
+
+    const result = countKakiVisitsByPlace(visits, new Set(["alex", "mei"]));
+
+    expect(result["place-a"]).toBe(2);
+  });
+
+  it("omits a place nobody in the member set has rated", () => {
+    const visits = [visit("stranger", "place-a", 5)];
+    const result = countKakiVisitsByPlace(visits, new Set(["alex"]));
+
+    expect(result["place-a"]).toBeUndefined();
+  });
+
+  it("scopes independently per place", () => {
+    const visits = [
+      visit("alex", "place-a", 4),
+      visit("alex", "place-b", 2),
+      visit("mei", "place-b", 4),
+    ];
+
+    const result = countKakiVisitsByPlace(visits, new Set(["alex", "mei"]));
+
+    expect(result["place-a"]).toBe(1);
+    expect(result["place-b"]).toBe(2);
   });
 });

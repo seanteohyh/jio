@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, Footprints } from "lucide-react";
+import { ArrowRight, Footprints, Users } from "lucide-react";
 import { BudgetBadge, Stars, TintPill } from "./ui";
 import { cn, formatCuisine } from "@/lib/utils";
 import type { Place } from "@/types";
@@ -85,6 +85,20 @@ export default function PlaceCard({
                 </span>
               ) : null}
             </div>
+          )}
+
+          {/* CHANGES_20260807c.md §2 — only ever set server-side once at
+              least two Kaki-member visits back it, so this never reads as
+              group consensus off one lone review. */}
+          {typeof place.kaki_rating === "number" && (
+            <TintPill
+              tone="delight"
+              className="mt-1.5"
+              title="Highly rated by your Kaki group"
+            >
+              <Users className="h-3 w-3" aria-hidden="true" />
+              {place.kaki_rating.toFixed(1)} · your Kakis
+            </TintPill>
           )}
 
           {why && (
