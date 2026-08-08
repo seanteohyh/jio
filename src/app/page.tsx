@@ -38,14 +38,24 @@ export default async function HomePage() {
   let events: LunchEvent[] = [];
   try {
     const repo = await getRepoAsync();
-    profile = await repo.getProfile(user.id);
-    if (features.events) {
-      // Lazy generation: loading Home is one of the two places (with the
-      // Jios list) that triggers a host's recurring series to generate its
-      // next occurrence. See 031_recurring_series.sql.
-      await repo.generateDueOccurrences(user.id);
-      events = await repo.listEvents(user.id);
-    }
+    // The profile fetch doesn't depend on events (or vice versa) — run them
+    // together rather than as a four-deep sequential waterfall, which was
+    // stacking up real round-trip latency on every Home load.
+    const [profileResult, eventsResult] = await Promise.all([
+      repo.getProfile(user.id),
+      features.events
+        ? // Lazy generation: loading Home is one of the two places (with
+          // the Jios list) that triggers a host's recurring series to
+          // generate its next occurrence. See 031_recurring_series.sql.
+          // Has to stay sequential with listEvents — a newly generated
+          // occurrence needs to exist before it can be listed.
+          repo
+            .generateDueOccurrences(user.id)
+            .then(() => repo.listEvents(user.id))
+        : Promise.resolve([]),
+    ]);
+    profile = profileResult;
+    events = eventsResult;
   } catch {
     // Fall back to whatever we already have.
   }

@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { AUTH_HEADER_NAME } from "@/lib/supabase/authHeader";
 
 /**
  * Refreshes the Supabase session cookie on every request — CHANGES_20260804.md
@@ -21,16 +22,35 @@ import { NextResponse, type NextRequest } from "next/server";
  * Server Component ever runs, so it's also the one place this can actually
  * be fixed — a Server Component or route handler retrying the refresh
  * itself would hit the identical "can't persist it" wall.
+ *
+ * It's also the one place that's already paying for a `getUser()` network
+ * round-trip to Supabase's Auth server on every request — every page and
+ * route handler downstream was independently paying for that same call
+ * again via its own `getCurrentUser()`. The validated result is now passed
+ * forward via `AUTH_HEADER_NAME` so they can skip it — see
+ * `getValidatedUser()` in `lib/supabase/serverAuth.ts` for the consumer
+ * side, and `authHeader.ts` for why overwriting this unconditionally on
+ * every request is what makes trusting it safe.
  */
 export async function middleware(request: NextRequest) {
-  let response = NextResponse.next({ request });
-
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   // Demo mode / a misconfigured deploy has no Supabase project to talk to —
   // nothing to refresh, so fall through rather than throwing on every request.
-  if (!url || !key) return response;
+  if (!url || !key) return NextResponse.next({ request });
+
+  // Captured rather than applied to a `response` built mid-flight — the
+  // final response has to carry both these cookies *and* the auth header
+  // below, and the header's value isn't known until after `getUser()`
+  // resolves, which is also what triggers this callback. Building the one
+  // real response after both are known avoids constructing it twice and
+  // quietly dropping whichever one was applied to the earlier instance.
+  let refreshedCookies: {
+    name: string;
+    value: string;
+    options?: Record<string, unknown>;
+  }[] = [];
 
   const supabase = createServerClient(url, key, {
     cookies: {
@@ -38,24 +58,43 @@ export async function middleware(request: NextRequest) {
         return request.cookies.getAll();
       },
       setAll(cookiesToSet) {
-        // Mirror onto the request too, not just the response — a route
-        // handler later in this same request reads from `request.cookies`,
-        // and it should see the refreshed session, not the stale one it
-        // arrived with.
+        // Mirror onto the request too, not just deferred to the response —
+        // a route handler later in this same request reads from
+        // `request.cookies`, and it should see the refreshed session, not
+        // the stale one it arrived with.
         for (const { name, value } of cookiesToSet) {
           request.cookies.set(name, value);
         }
-        response = NextResponse.next({ request });
-        for (const { name, value, options } of cookiesToSet) {
-          response.cookies.set(name, value, options);
-        }
+        refreshedCookies = cookiesToSet;
       },
     },
   });
 
-  // The call itself is what triggers the refresh-if-needed logic — the
-  // return value isn't used here, only the cookies it sets via setAll above.
-  await supabase.auth.getUser();
+  const { data } = await supabase.auth.getUser();
+
+  // Always set, authenticated or not — never merely left alone. `.set()`
+  // replaces rather than appends, so this is the only value any code
+  // downstream will ever see for this header, regardless of what a client
+  // sent on the original request.
+  if (data.user) {
+    request.headers.set(
+      AUTH_HEADER_NAME,
+      JSON.stringify({
+        id: data.user.id,
+        email: data.user.email ?? null,
+        display_name:
+          (data.user.user_metadata?.display_name as string | undefined) ??
+          null,
+      })
+    );
+  } else {
+    request.headers.delete(AUTH_HEADER_NAME);
+  }
+
+  const response = NextResponse.next({ request });
+  for (const { name, value, options } of refreshedCookies) {
+    response.cookies.set(name, value, options);
+  }
 
   return response;
 }

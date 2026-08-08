@@ -1,4 +1,4 @@
-import { createAuthServerClient } from "@/lib/supabase/serverAuth";
+import { createAuthServerClient, getValidatedUser } from "@/lib/supabase/serverAuth";
 import { getRepoAsync } from "@/lib/data/repo";
 import { config } from "@/lib/config";
 import { UNSUPPORTED, type AuthAdapter } from "./index";
@@ -48,20 +48,7 @@ export const nameAuth: AuthAdapter = {
   capabilities: { name: true, email: false, attachEmail: true },
 
   async getCurrentUser() {
-    try {
-      const client = await createAuthServerClient();
-      const { data, error } = await client.auth.getUser();
-      if (error || !data.user) return null;
-
-      return {
-        id: data.user.id,
-        email: data.user.email ?? null,
-        display_name:
-          (data.user.user_metadata?.display_name as string | undefined) ?? null,
-      };
-    } catch {
-      return null;
-    }
+    return getValidatedUser();
   },
 
   async signInWithName(displayName, confirmClaim) {

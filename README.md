@@ -404,6 +404,21 @@ to write to the review queue with no user session, and account merge
 data has moved — an Auth Admin API operation no RLS policy could ever grant.
 The module throws at import time if it is ever bundled for the browser.
 
+**`middleware.ts` validates the session once per request; every page and
+route trusts that instead of repeating it.** Speed Insights showed FCP/LCP
+far worse than INP/CLS pointed to — a server-response problem, not a
+rendering one — and the cause was 55 pages each independently calling
+`getCurrentUser()`, which makes its own network round-trip to Supabase's
+Auth server, on top of the identical round-trip middleware had just made.
+`getValidatedUser()` (`lib/supabase/serverAuth.ts`) now reads the already-
+validated result from a request header (`AUTH_HEADER_NAME`,
+`lib/supabase/authHeader.ts`) instead, falling through to a real
+`getUser()` call only when that header is missing. Trusting a header like
+this is normally a spoofing risk; it isn't here because `middleware.ts`
+unconditionally overwrites it on every request — `Headers.set()` replaces
+rather than appends — so whatever a client sent never survives to be read
+downstream.
+
 **Blog import is SSRF-guarded.** `validateBlogUrl()` rejects localhost, all the
 private IPv4 ranges, link-local (which is where cloud metadata endpoints live),
 and the IPv6 equivalents — including IPv4-mapped addresses in both their dotted

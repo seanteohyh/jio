@@ -1,4 +1,4 @@
-import { createAuthServerClient } from "@/lib/supabase/serverAuth";
+import { createAuthServerClient, getValidatedUser } from "@/lib/supabase/serverAuth";
 import { UNSUPPORTED, type AuthAdapter } from "./index";
 
 /**
@@ -21,22 +21,7 @@ export const supabaseAuth: AuthAdapter = {
   },
 
   async getCurrentUser() {
-    try {
-      const client = await createAuthServerClient();
-      // getUser() revalidates against the auth server. getSession() only reads
-      // the cookie, which a client could have tampered with.
-      const { data, error } = await client.auth.getUser();
-      if (error || !data.user) return null;
-
-      return {
-        id: data.user.id,
-        email: data.user.email ?? null,
-        display_name:
-          (data.user.user_metadata?.display_name as string | undefined) ?? null,
-      };
-    } catch {
-      return null;
-    }
+    return getValidatedUser();
   },
 
   async signInWithEmail(email, redirectTo, options) {
