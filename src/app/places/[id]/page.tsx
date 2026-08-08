@@ -19,6 +19,7 @@ import {
   inputClass,
 } from "@/components/ui";
 import { fetcher, mutateJson } from "@/lib/fetcher";
+import SendLobangPanel from "@/components/profile/SendLobangPanel";
 import { features } from "@/lib/config";
 import { formatCuisine, formatDate } from "@/lib/utils";
 import type { AuthUser, FlagReason, Place, Visit } from "@/types";
@@ -70,6 +71,8 @@ export default function PlaceDetailPage({
   const [reportReason, setReportReason] = useState<FlagReason>("wrong_info");
   const [reportComment, setReportComment] = useState("");
   const [reportSent, setReportSent] = useState(false);
+  const [sendingLobang, setSendingLobang] = useState(false);
+  const [lobangSent, setLobangSent] = useState(false);
 
   if (isLoading) return <SkeletonDetail />;
   if (error) return <ErrorNote>{error.message}</ErrorNote>;
@@ -337,7 +340,27 @@ export default function PlaceDetailPage({
             {reporting ? "Never mind" : "Report an issue"}
           </Button>
         )}
+        {/* CHANGES_20260807c.md §1 — previously only reachable from a closed
+            Jio in "You → Past Jios." Most of the time the reason to send one
+            is just browsing Places and thinking of someone, not having a
+            decided Jio that happened to land here — so both entry points
+            stay, side by side, rather than one replacing the other. */}
+        {features.lobangs && !!me?.user && (
+          <Button
+            variant="secondary"
+            onClick={() => {
+              setLobangSent(false);
+              setSendingLobang((v) => !v);
+            }}
+          >
+            {sendingLobang ? "Never mind" : "Send lobang"}
+          </Button>
+        )}
       </div>
+
+      {lobangSent && (
+        <p className="text-sage text-xs">Lobang sent.</p>
+      )}
 
       {reportSent && (
         <p className="text-stone text-xs">
@@ -404,6 +427,19 @@ export default function PlaceDetailPage({
             </Button>
           </form>
         </Card>
+      )}
+
+      {sendingLobang && me?.user && (
+        <SendLobangPanel
+          selfId={me.user.id}
+          defaultPlaceId={place.id}
+          defaultPlaceName={place.name}
+          onSent={() => {
+            setSendingLobang(false);
+            setLobangSent(true);
+          }}
+          onCancel={() => setSendingLobang(false)}
+        />
       )}
 
       {logging && (
