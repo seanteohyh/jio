@@ -694,13 +694,17 @@ export const supabaseRepo: Repo = {
 
   async upsertProfile(userId, displayName) {
     const client = await db();
+    // Explicit column list, not bare `select()` — migration 041 revokes
+    // table-level SELECT on profiles (recovery_token must never be
+    // client-readable), and `select()` defaults to `*`, which errors on any
+    // column the role lacks privilege on rather than silently omitting it.
     const { data, error } = await client
       .from("profiles")
       .upsert(
         { user_id: userId, display_name: displayName },
         { onConflict: "user_id" }
       )
-      .select()
+      .select("user_id, display_name, created_at, onboarded_at, notify_events")
       .single();
 
     if (error) fail("Could not save your display name", error);
@@ -709,6 +713,7 @@ export const supabaseRepo: Repo = {
 
   async completeOnboarding(userId, displayName) {
     const client = await db();
+    // Same reason as upsertProfile above for the explicit column list.
     const { data, error } = await client
       .from("profiles")
       .upsert(
@@ -719,7 +724,7 @@ export const supabaseRepo: Repo = {
         },
         { onConflict: "user_id" }
       )
-      .select()
+      .select("user_id, display_name, created_at, onboarded_at, notify_events")
       .single();
 
     if (error) fail("Could not save your display name", error);

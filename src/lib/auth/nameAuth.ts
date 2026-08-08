@@ -158,19 +158,33 @@ export const nameAuth: AuthAdapter = {
       // for a brand-new session, since an anonymous user has no email to
       // derive a name from. Overwrite it with what they actually typed.
       //
-      // `onboarded_at` is stamped only for a new session, not left for
-      // /welcome. The onboarding screen exists to collect a display name
-      // from someone who arrived without one — which is the `email` mode
-      // story. In `name` mode the name was just typed on the previous
+      // `onboarded_at` is stamped whenever it isn't already set, not left
+      // for /welcome. The onboarding screen exists to collect a display
+      // name from someone who arrived without one — which is the `email`
+      // mode story. In `name` mode the name was just typed on the previous
       // screen (or reused via the claim above), so leaving this null sent
       // every new user to /welcome to confirm a value they had already
       // given. One question, asked once.
+      //
+      // Checked directly against the current row rather than `isNewSession`
+      // — §3 item 1's confirmation step splits sign-in across two requests,
+      // and by the second one (confirmClaim resolved) a session created on
+      // the *first* request already exists, so `isNewSession` alone no
+      // longer reliably says whether *this profile* has been onboarded yet.
+      const { data: currentProfile } = await client
+        .from("profiles")
+        .select("onboarded_at")
+        .eq("user_id", userId)
+        .maybeSingle();
+
       const patch: {
         user_id: string;
         display_name: string;
         onboarded_at?: string;
       } = { user_id: userId, display_name: name };
-      if (isNewSession) patch.onboarded_at = new Date().toISOString();
+      if (!currentProfile?.onboarded_at) {
+        patch.onboarded_at = new Date().toISOString();
+      }
 
       const { error: profileError } = await client
         .from("profiles")
