@@ -70,7 +70,13 @@ function NameForm({ next }: { next: string }) {
         </p>
         <p className="text-stone text-xs">
           Is this you? Say yes and everything under that name — your votes,
-          your history — comes with you. Say no and you sign in as a
+          your history — comes with you.{" "}
+          <span className="text-ink font-medium">
+            If that account is currently signed in anywhere else (another
+            tab, a home-screen icon on another device), saying yes signs it
+            out there
+          </span>{" "}
+          — it doesn't stay in sync, it moves. Say no and you sign in as a
           different person who happens to share the name.
         </p>
 

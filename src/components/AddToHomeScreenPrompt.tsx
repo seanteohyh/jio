@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { X, Share, PlusSquare, Smartphone } from "lucide-react";
 import { Button } from "./ui";
 import { useInstallPrompt } from "./InstallPromptProvider";
+import AttachEmailPanel from "./profile/AttachEmailPanel";
+import { config } from "@/lib/config";
 
 const VISIT_KEY = "jio-a2hs-visits";
 const SNOOZE_KEY = "jio-a2hs-snoozed-until";
@@ -31,10 +33,29 @@ const SNOOZE_DAYS = 7;
  *   button that would do nothing.
  * Anything else (desktop Firefox, etc.) has no reliable install path to
  * explain, so nothing renders there.
+ *
+ * Also the anchor for a second nudge — CHANGES_20260807c_1.md §7: installing
+ * the icon is the exact moment a second, independent storage context is
+ * about to exist (browser tab + home-screen icon, on iOS genuinely separate
+ * sessions — see §6/§5). Pairing "want this on your home screen?" with
+ * "since you'll be using two places, want an email so they both just work?"
+ * addresses that at the moment it becomes relevant, rather than as a
+ * generically-timed, separately-discovered option (the recovery-link nudge
+ * already does that timing for a different case — this one is deliberately
+ * tied to install specifically). `name` mode only: `email` mode's identity
+ * is already portable, nothing to fix.
  */
 export default function AddToHomeScreenPrompt() {
   const { platform, standalone, install: installViaPrompt } = useInstallPrompt();
   const [visible, setVisible] = useState(false);
+  // Android/Chrome: shown after a successful install, since .prompt()'s
+  // accepted/dismissed outcome is a real signal. iOS has no such signal —
+  // there's no way to know someone actually completed Share → Add to Home
+  // Screen — so its instructions and this offer sit together from the
+  // start instead of being sequenced.
+  const [showEmailNudge, setShowEmailNudge] = useState(false);
+  const [iosEmailOpen, setIosEmailOpen] = useState(false);
+  const offerEmail = config.authAdapter === "name";
 
   useEffect(() => {
     if (standalone) return;
@@ -66,10 +87,46 @@ export default function AddToHomeScreenPrompt() {
     // shouldn't reappear the moment they click somewhere else.
     const outcome = await installViaPrompt();
     if (outcome === "dismissed") remindLater();
-    else if (outcome === "accepted") setVisible(false);
+    else if (outcome === "accepted") {
+      if (offerEmail) setShowEmailNudge(true);
+      else setVisible(false);
+    }
   };
 
   if (!visible || !platform) return null;
+
+  if (showEmailNudge) {
+    return (
+      <div className="fixed inset-x-0 bottom-16 z-40 px-4 pb-[env(safe-area-inset-bottom)] md:bottom-4 md:left-64 md:right-4">
+        <div
+          className="border-line bg-cream mx-auto flex max-w-lg items-start gap-3 rounded-2xl border p-4"
+          style={{ boxShadow: "var(--shadow-sm)" }}
+          role="dialog"
+          aria-label="Attach an email"
+        >
+          <span className="bg-ember-tint text-ember flex h-9 w-9 shrink-0 items-center justify-center rounded-full">
+            <Smartphone className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-ink text-sm font-medium">Installed.</p>
+            <p className="text-stone mt-1 mb-2 text-xs">
+              You now have two places signed in — this tab and the new icon.
+              On this browser they're separate sessions, so attach an email
+              and they'll both just work as the same account, no juggling.
+            </p>
+            <AttachEmailPanel onAttached={() => setVisible(false)} />
+            <button
+              type="button"
+              onClick={() => setVisible(false)}
+              className="text-stone mt-2 text-xs underline"
+            >
+              Skip for now
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-x-0 bottom-16 z-40 px-4 pb-[env(safe-area-inset-bottom)] md:bottom-4 md:left-64 md:right-4">
@@ -105,7 +162,24 @@ export default function AddToHomeScreenPrompt() {
               />{" "}
               Add to Home Screen.
             </p>
-          ) : (
+          ) : null}
+          {platform === "ios" && offerEmail && (
+            <div className="mt-2">
+              {iosEmailOpen ? (
+                <AttachEmailPanel onAttached={() => setVisible(false)} />
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setIosEmailOpen(true)}
+                  className="text-ember text-xs underline"
+                >
+                  Also attach an email, so this tab and the new icon stay in
+                  sync
+                </button>
+              )}
+            </div>
+          )}
+          {platform !== "ios" && (
             <p className="text-stone mt-1 text-xs">
               Install it and you'll be able to get notified when a Jio needs
               your vote — no more finding out after everyone's already

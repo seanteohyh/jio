@@ -49,7 +49,7 @@ When you are ready to make it real, see [Going live](#going-live).
 | **Metrics** | What you actually eat versus what you think you eat, plus a nudge when you have had the same cuisine three days running. |
 | **Home** | A quick-action dashboard, not a second Jios list: today's Jio becomes the headline when there is one; a capped list (next one or two) of what's coming up otherwise; "Same as last time?" one-tap repeat of your last hosted Jio. |
 | **Recurring Jios** | A standing weekly Jio — same place every time (auto-confirmed, no vote needed) or a vote over the same option pool each week. Generates its next occurrence lazily, a few days ahead, when the host loads Home or Jios; invitees are expanded fresh from current kaki membership every time, not frozen at series creation. |
-| **Push notifications** | Opt in from "You": get notified when you're invited to a Jio, when someone votes on one you're hosting (throttled to at most one push per event per ~10 minutes), when a Jio you're in is starting in 30 minutes and you haven't voted or RSVP'd, and when one you're in gets decided. iOS only ever delivers push to an installed PWA, never a browser tab, so the app also nudges toward "Add to Home Screen" after a few visits — dismissible with "remind me later," not a one-shot ask — plus an always-available "Add to home screen" card in "You" for anyone who dismissed that prompt but changes their mind later. |
+| **Push notifications** | Opt in from "You": get notified when you're invited to a Jio, when someone votes on one you're hosting (throttled to at most one push per event per ~10 minutes), when a Jio you're in is starting in 30 minutes and you haven't voted or RSVP'd, and when one you're in gets decided. iOS only ever delivers push to an installed PWA, never a browser tab, so the app also nudges toward "Add to Home Screen" after a few visits — dismissible with "remind me later," not a one-shot ask — plus an always-available "Add to home screen" card in "You" for anyone who dismissed that prompt but changes their mind later. In `name` mode, a successful install is also followed by an offer to attach an email, since installing the icon is the moment a second, independent signed-in context is about to exist. |
 | **Admin** | Moderation (reports, block/unblock), an analytics dashboard (growth, Jio outcomes, top places, Kaki activity, moderation and wishlist trends, a same-day participation funnel), office management, and an accounts screen for merging duplicate identities (auto-surfaced by shared name, or search any account) and issuing recovery links — all reachable from "You", no dedicated nav icon, since admins are the one group that needs it least often. |
 
 ---
@@ -187,6 +187,22 @@ reassignment operation an admin can also trigger directly from
 `/admin/accounts` — pick the account to keep, pick the stale one(s) to fold
 in, preview what moves, confirm.
 
+**One real trap in `name` mode worth knowing about explicitly: a browser tab
+and a home-screen icon are genuinely separate storage contexts on iOS, each
+capable of holding its own signed-in session.** Confirming a name-match
+claim always deletes the matched account, which is exactly right when it's
+a genuinely abandoned duplicate — but if that account is actually the
+*other* context's live session (both tab and icon signed in as the same
+person, independently), confirming on one side signs the other out, and
+doing the same back on that side repeats it indefinitely
+(CHANGES_20260807c_1.md §6). The confirmation prompt now says this
+explicitly rather than leaving it a silent side effect. The actual fix is
+attaching an email: it makes an identity portable across contexts without
+ever needing the merge-and-retire machinery, so the Add-to-Home-Screen
+prompt now offers it right after a successful install — installing the icon
+is precisely the moment a second context is about to exist, which is a more
+useful moment to ask than a generically-timed nudge would be.
+
 Setup: enable **Authentication → Providers → Anonymous sign-ins** in the
 Supabase dashboard, and apply migration 015.
 
@@ -266,7 +282,7 @@ Roughly 30 minutes end to end. Everything below stays on a free tier.
    `service_role` key. The last one is a secret; it bypasses all access
    control.
 3. **SQL Editor** — run every file in `supabase/migrations/` in numeric order,
-   001 through 042. They are idempotent, so re-running is harmless.
+   001 through 043. They are idempotent, so re-running is harmless.
 4. **Authentication → Providers → Anonymous sign-ins** — turn this on. It is
    what makes name-only sign-in work.
 5. **Authentication → URL Configuration** — set the Site URL to your deployed
@@ -452,6 +468,19 @@ one caller: notifying admins when a declined name-match confirms a real
 duplicate (CHANGES_20260807c.md §3 item 5) — granted to any authenticated
 user, since it is the person who just signed up (not necessarily an admin
 themselves) who triggers that notification.
+
+**`admins.user_id` has no foreign key to `auth.users`, which used to mean
+admin status was silently dropped on every forced re-login.** Deliberate,
+per its own migration comment (017) — but it also means deleting an
+`auth.users` row during an account merge never cascades to `admins`, and
+`merge_user_accounts` (040) didn't touch that table either, so an admin's
+row was simply left behind, orphaned, pointing at a user that no longer
+existed. Confirmed bug, CHANGES_20260807c_1.md §8: any admin who went
+through §4-style recovery lost admin access every time, with nothing
+anywhere re-granting it, since the app deliberately never grants admin
+itself. Migration 043 adds `admins` to the reassignment list, same
+"surviving account's own row wins" shape as every other table
+`merge_user_accounts` already handles.
 
 **The browser-side Supabase client never writes a session cookie, on
 purpose.** It exists for exactly one thing — authenticating a Realtime
