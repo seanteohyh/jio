@@ -21,7 +21,7 @@ import { fetcher, mutateJson } from "@/lib/fetcher";
 import { eventInviteUrl } from "@/lib/shareUrl";
 import { subscribeToEventChanges } from "@/lib/realtime";
 import { features } from "@/lib/config";
-import { cn, formatDate, formatDateTime } from "@/lib/utils";
+import { cn, formatDate, formatDateTime, placeDescriptor } from "@/lib/utils";
 import type { EventDetail, Place, RsvpResponse } from "@/types";
 
 interface EventResponse {
@@ -660,6 +660,11 @@ export default function EventDetailPage({
                     />
                   </div>
                 )}
+                {option.place && placeDescriptor(option.place) && (
+                  <p className="text-stone mt-0.5 text-[11px]">
+                    {placeDescriptor(option.place)}
+                  </p>
+                )}
                 {option.added_by_name && (
                   <p className="text-stone mt-0.5 text-[11px]">
                     added by {option.added_by_name}
@@ -693,8 +698,15 @@ export default function EventDetailPage({
                   <span className="text-stone w-5 shrink-0 text-xs tabular-nums">
                     {index + 1}
                   </span>
-                  <span className="min-w-0 flex-1 truncate text-sm">
-                    {option?.place?.name ?? option?.label ?? "Unknown"}
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm">
+                      {option?.place?.name ?? option?.label ?? "Unknown"}
+                    </span>
+                    {option?.place && placeDescriptor(option.place) && (
+                      <span className="text-stone block truncate text-[11px]">
+                        {placeDescriptor(option.place)}
+                      </span>
+                    )}
                   </span>
                   <span className="flex shrink-0 gap-1">
                     <button

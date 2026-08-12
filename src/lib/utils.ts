@@ -77,6 +77,23 @@ export function formatCuisine(cuisine: string): string {
 }
 
 /**
+ * Short "what kind of place is this" descriptor — cuisine tags then
+ * free-text custom tags, the same combination `PlaceCard` uses for its pill
+ * row, just joined as compact text for a list row instead of a row of
+ * pills. CHANGES_20260812.md §3: voting on an unfamiliar place currently
+ * shows only its name; this is the data already sitting in `EventOption
+ * .place` on both the ballot and the standing, just never rendered.
+ */
+export function placeDescriptor(
+  place: Pick<Place, "cuisine" | "custom_cuisine_tags">,
+  limit = 2
+): string {
+  return [...place.cuisine.map(formatCuisine), ...place.custom_cuisine_tags]
+    .slice(0, limit)
+    .join(", ");
+}
+
+/**
  * True when the app should use the in-memory demo store.
  * Kept as a standalone function because both server and client code read it.
  */
