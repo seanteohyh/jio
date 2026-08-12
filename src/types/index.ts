@@ -96,6 +96,27 @@ export interface Place {
   kaki_rating?: number | null;
 }
 
+/**
+ * The subset of `Place` safe to show an anonymous visitor — CHANGES_20260812.md
+ * §4. Deliberately excludes `lat`/`lng` (an exact pin, beyond what a text
+ * address already gives away), `notes`, `created_by`, and anything from
+ * `Visit` (the named review list was only ever consented to be shared with
+ * the team, not the public internet). `get_public_place()` (migration 046)
+ * also only ever returns `status = 'active'` places, so this type carries no
+ * `status` field at all — there is nothing to branch on.
+ */
+export interface PublicPlace {
+  id: string;
+  name: string;
+  address: string | null;
+  cuisine: string[];
+  custom_cuisine_tags: string[];
+  budget_tier: BudgetTier;
+  best_dishes: string[];
+  avg_rating: number | null;
+  visit_count: number;
+}
+
 export interface Visit {
   id: string;
   place_id: string;

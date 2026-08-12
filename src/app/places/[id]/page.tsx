@@ -20,7 +20,9 @@ import {
 } from "@/components/ui";
 import { fetcher, mutateJson } from "@/lib/fetcher";
 import SendLobangPanel from "@/components/profile/SendLobangPanel";
-import { features } from "@/lib/config";
+import ShareLink from "@/components/ShareLink";
+import { placeShareUrl } from "@/lib/shareUrl";
+import { config, features } from "@/lib/config";
 import { formatCuisine, formatDate } from "@/lib/utils";
 import type { AuthUser, FlagReason, Place, Visit } from "@/types";
 
@@ -241,6 +243,14 @@ export default function PlaceDetailPage({
           </div>
         )}
       </header>
+
+      {place.status === "active" && (
+        <ShareLink
+          url={placeShareUrl(place.id)}
+          label="Share this place"
+          shareText={`Check out ${place.name} on ${config.appName}`}
+        />
+      )}
 
       {place.status === "needs_review" && (
         <Card className="border-amber/40 bg-amber-tint/60 space-y-3">

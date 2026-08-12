@@ -12,6 +12,7 @@ import {
   SkeletonDetail,
 } from "@/components/ui";
 import { KakiMetricsCharts } from "@/components/MetricsCharts";
+import AddKakiMemberPanel from "@/components/kakis/AddKakiMemberPanel";
 import { fetcher, mutateJson } from "@/lib/fetcher";
 import { formatDate } from "@/lib/utils";
 import type { KakiDetail, KakiMetrics } from "@/types";
@@ -30,7 +31,7 @@ export default function KakiDetailPage({
   const { id } = use(params);
   const router = useRouter();
 
-  const { data, error, isLoading } = useSWR<KakiResponse>(
+  const { data, error, isLoading, mutate } = useSWR<KakiResponse>(
     `/api/kakis/${id}`,
     fetcher
   );
@@ -109,6 +110,20 @@ export default function KakiDetailPage({
             </li>
           ))}
         </ul>
+
+        {viewer.isMember && (
+          <div className="border-line mt-3 border-t pt-3">
+            <AddKakiMemberPanel
+              existingMemberIds={kaki.members.map((m) => m.user_id)}
+              onAdd={async (userId) => {
+                await mutateJson(`/api/kakis/${id}/members`, "POST", {
+                  user_id: userId,
+                });
+                mutate();
+              }}
+            />
+          </div>
+        )}
       </Card>
 
       <Card>

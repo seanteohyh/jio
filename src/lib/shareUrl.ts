@@ -43,3 +43,13 @@ export function eventInviteUrl(token: string): string {
 export function kakiInviteUrl(token: string): string {
   return absoluteUrl(`/k/${token}`);
 }
+
+/**
+ * Shareable link that opens a place's public preview — CHANGES_20260812.md
+ * §4. Unlike the invite links above, there is no token: `place.id` is
+ * already an unguessable UUID, and `get_public_place()` only ever serves
+ * `status = 'active'` places, so it doubles as the public identifier.
+ */
+export function placeShareUrl(placeId: string): string {
+  return absoluteUrl(`/p/${placeId}`);
+}

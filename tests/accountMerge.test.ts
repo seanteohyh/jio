@@ -213,6 +213,22 @@ describe("mergeUserAccounts — reassignment", () => {
     const profile = await demoRepo.getProfile(DEMO_TEAMMATE_B);
     expect(profile).toBeNull();
   });
+
+  it("carries the earlier signup date forward, regardless of which account survives", async () => {
+    // CHANGES_20260812.md §5 — nameAuth always passes the freshly minted
+    // session as keep, so the *older* account here is deliberately the
+    // one being merged away, matching the real-world shape of the bug.
+    await demoRepo.upsertProfile(DEMO_TEAMMATE_B, "Original signup");
+    const original = await demoRepo.getProfile(DEMO_TEAMMATE_B);
+
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    await demoRepo.upsertProfile(DEMO_TEAMMATE_A, "Fresh re-login");
+
+    await demoRepo.mergeUserAccounts(DEMO_TEAMMATE_A, DEMO_TEAMMATE_A, DEMO_TEAMMATE_B);
+
+    const survivor = await demoRepo.getProfile(DEMO_TEAMMATE_A);
+    expect(survivor?.created_at).toBe(original?.created_at);
+  });
 });
 
 describe("recovery links", () => {

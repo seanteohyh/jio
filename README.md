@@ -37,11 +37,11 @@ When you are ready to make it real, see [Going live](#going-live).
 | | |
 |---|---|
 | **Suggest** | Ranks places on what you rate highly, what fits your budget, how far it is, and how recently you were there. Every suggestion says *why* it is there. |
-| **Jios** | Create a lunch outing, everyone ranks the options, a Borda count decides. RSVP, live vote updates, a roulette wheel for when the group genuinely cannot choose, and a month calendar with Hosting / Invited / Past filters for browsing. Anyone can edit a place, any signed-in user may edit any place's details, and the host can cancel a Jio outright — it stays visible, marked cancelled, rather than vanishing. Once a Jio is decided, its result — place, time, final points — can be copied or shared as a PNG, generated client-side, for pasting straight into a chat instead of a link. A host can also start a Jio with votes hidden: nobody, host included, sees the running standing until it closes — only the ballot count shows. |
+| **Jios** | Create a lunch outing, everyone ranks the options, a Borda count decides. RSVP, live vote updates, a roulette wheel for when the group genuinely cannot choose, and a month calendar with Hosting / Invited / Past filters for browsing. Anyone can edit a place, any signed-in user may edit any place's details, and the host can cancel a Jio outright — it stays visible, marked cancelled, rather than vanishing. Once a Jio is decided, its result — place, time, final points — can be copied or shared as a PNG, generated client-side, for pasting straight into a chat instead of a link. A host can also start a Jio with votes hidden: nobody, host included, sees the running standing until it closes — only the ballot count shows. Each option in the Standing and Your ranking lists shows a compact cuisine descriptor beneath its name, so a placeless or unfamiliar option still says something about what it is before anyone clicks in. |
 | **Vote on a place that isn't listed yet** | Typing a name the search doesn't find logs it as a vote option immediately, no place record required. A non-blocking prompt afterward offers to add it to the pool; declining leaves it exactly as a text-only choice, permanently. |
-| **Kakis** | Lunch groups with a shareable invite link and shared stats — group favourites, who eats out most, who is most adventurous. |
+| **Kakis** | Lunch groups with a shareable invite link and shared stats — group favourites, who eats out most, who is most adventurous. Any current member can also add someone directly by searching their name, without a link changing hands first — same trust level as the invite link itself, just faster for someone already sitting across the table. |
 | **Lobangs** | "Saw this online, thought of you" — send any registered place to specific teammates or a whole Kaki, with an optional note and personalized "quick pick" suggestions. Two entry points side by side: from a closed Jio in "You → Past Jios" (the winning place pinned as a default), and directly from a place's own page (`/places/[id]`) for the more common case of just browsing and thinking of someone. |
-| **Places** | Searchable list with cuisine, budget, walk-time and rating filters, sortable by nearest, highest-rated, or rated by your Kaki group — plus a "Kaki favourites only" chip that actually narrows the list, not just reorders it, and a badge on the card itself once at least 2 Kaki-member visits back a place's rating, so a lone review doesn't read as group consensus. Add places by hand, import candidate names from a food blog, or let the daily cron find them on OpenStreetMap. Cuisine tagging covers a fixed, scored list (now including Modern and Traditional) plus free-text "Other" tags that show on the place but never affect recommendations. |
+| **Places** | Searchable list with cuisine, budget, walk-time and rating filters, sortable by nearest, highest-rated, or rated by your Kaki group — plus a "Kaki favourites only" chip that actually narrows the list, not just reorders it, and a badge on the card itself once at least 2 Kaki-member visits back a place's rating, so a lone review doesn't read as group consensus. Add places by hand, import candidate names from a food blog, or let the daily cron find them on OpenStreetMap. Cuisine tagging covers a fixed, scored list (now including Modern and Traditional) plus free-text "Other" tags that show on the place but never affect recommendations. Every active place also has a public preview page (`/p/[id]`, linked from a Share button on the full page) — the app's only page that needs no sign-in, showing name, cuisine, address, best dishes and aggregate rating to anyone with the link, with a "Join to see more" prompt into `/login` for everything past that, including the named review list. |
 | **Map** | Leaflet map of everything in walking distance, with real walking routes when OneMap is configured. A Kaki-favourite place gets an amber ring on its marker, layered independently of the existing selected/not-selected fill color. |
 | **Reviews** | Log a visit privately, or share it as a review. Each visit is its own entry, editable and deletable later — including un-sharing a review back to private. |
 | **Saved places** | Bookmark anywhere from any list. `/places` has an All / Saved split, and saving nudges a place up your own suggestions. |
@@ -707,12 +707,55 @@ caller's identity on top of it wouldn't add anything since whoever is
 redeeming it *is*, by construction, whoever's browser currently holds the
 link.
 
+**Adding someone to a Kaki directly needs the same `SECURITY DEFINER`
+escape hatch as the invite link's own join step.** `kaki_members_insert`'s
+RLS policy is `user_id = auth.uid()` — you may add yourself, no one else —
+so `add_kaki_member` (migration 045) exists for exactly the same reason
+`join_event_via_invite` does: a legitimate second-party write RLS is never
+going to allow by policy alone. Authorization is narrower than "any
+signed-in user": the caller must already be a member of the Kaki they're
+adding someone to, checked inside the function before the insert runs, not
+left to the application layer alone.
+
+**Merging an account now also carries the earlier `profiles.created_at`
+forward.** Migration 044 extends `merge_user_accounts`'s existing `create or
+replace` with one `least()` update: the survivor keeps whichever signup
+date is older. Everything else about a merge was already collision-safe
+across owned tables; this closes the one field that wasn't — without it, a
+merge silently rewrote history by making a years-old account look brand
+new, which is exactly what was distorting the admin analytics "new users"
+chart (CHANGES_20260812.md §5).
+
+**The public place-preview page is the first route in this app an
+anonymous request can see anything through, so it earns its own function
+rather than a loosened policy.** `places_select` (007_rls.sql) is
+`for select to authenticated using (true)` — a signed-out visitor runs as
+Postgres role `anon`, which that policy grants nothing to, so a plain
+`select` from `places` already returns nothing for them; there was no
+accidental exposure to patch. `get_public_place` (migration 046) is
+`SECURITY DEFINER`, callable by `anon`, and returns exactly the
+`PublicPlace` shape — name, address, cuisine, best dishes, aggregate rating
+— scoped to `status = 'active'` so a still-under-review or blocked place
+never becomes the first thing a forwarded link shows a stranger. `place.id`
+doubles as the public identifier rather than a new invite-token system:
+it's already an unguessable UUID, and the function's own `status` filter is
+what keeps it from being useful for anything beyond a place already meant
+to be public. Deliberately excluded from that shape: `lat`/`lng` (an exact
+pin is more than a text address already gives away), `notes`,
+`created_by`, and the named review list entirely — visits were only ever
+shared with "the team," not the public internet, and nothing about this
+feature changes that consent. A signed-in visitor who opens a `/p/[id]`
+link is bounced straight to the full `/places/[id]` page instead of seeing
+the cut-down version — same reasoning as `/k/[token]` sending an existing
+Kaki member straight into the group rather than a join screen they don't
+need.
+
 ---
 
 ## Tests
 
 ```bash
-npm test          # 366 tests across 28 files
+npm test          # 378 tests across 30 files
 npm run typecheck
 npm run lint
 ```
@@ -747,6 +790,8 @@ npm run lint
 | `hiddenVotes.test.ts` | A hidden-vote Jio's standing is blind only while open, reveals on close, and voter count is distinct voters not ballot rows |
 | `kakiRating.test.ts` | "Rated by your Kaki group" averages only the member set's ratings, scoped independently per place; the companion visit-count used for the badge/filter's minimum-2 threshold |
 | `adminAnalytics.test.ts` | Asia/Singapore day/week bucketing across the UTC boundary, median with no-data returning `null` not `0`, walk-time bucket edges |
+| `kakiMembers.test.ts` | Adding an existing user to a Kaki directly: any current member can, a non-member can't, no duplicate membership, rejects a nonexistent group |
+| `publicPlace.test.ts` | The public place-preview data: only the safe field subset, never `notes`/`created_by`/an exact pin, hides `needs_review` and `blocked` places, computed rating and visit count match the authenticated view |
 
 **`npm test` does not typecheck.** Vitest transforms TypeScript with esbuild,
 which strips annotations without checking them, and the suite is all pure

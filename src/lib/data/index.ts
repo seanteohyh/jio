@@ -17,6 +17,7 @@ import type {
   Place,
   PlaceFlag,
   PlacesPage,
+  PublicPlace,
   PlacesPagination,
   Profile,
   PushSubscriptionInput,
@@ -57,6 +58,16 @@ export interface Repo {
     pagination?: PlacesPagination
   ): Promise<PlacesPage>;
   getPlace(id: string): Promise<Place | null>;
+
+  /**
+   * The public-preview counterpart to `getPlace` — CHANGES_20260812.md §4.
+   * No auth required, returns `null` for a missing place *or* one that
+   * isn't `active` (needs-review and blocked places stay unlisted), and
+   * never returns more than `PublicPlace` carries. `place.id` doubles as
+   * the public identifier — there is no separate share token to leak or to
+   * rotate if a link gets passed around further than intended.
+   */
+  getPublicPlace(id: string): Promise<PublicPlace | null>;
   createPlace(
     data: Omit<Place, "id" | "created_at" | "updated_at">
   ): Promise<Place>;
@@ -347,6 +358,18 @@ export interface Repo {
   listKakis(userId: string): Promise<Kaki[]>;
   joinKaki(token: string, userId: string): Promise<Kaki>;
   leaveKaki(kakiId: string, userId: string): Promise<void>;
+  /**
+   * Adds an existing user to a Kaki directly, without an invite link
+   * changing hands first — CHANGES_20260812.md §1. `addedBy` must already
+   * be a member; any current member may add anyone, same trust level as
+   * the invite link (anyone holding it can already join themselves). A
+   * no-op if `userId` is already a member.
+   */
+  addKakiMember(
+    kakiId: string,
+    userId: string,
+    addedBy: string
+  ): Promise<void>;
 
   // ---- Lobangs (personalized tip-offs sent to a teammate or a Kaki) ----
   /**
@@ -488,6 +511,7 @@ export interface Repo {
 export const REPO_METHODS = [
   "listPlaces",
   "getPlace",
+  "getPublicPlace",
   "createPlace",
   "updatePlace",
   "deletePlace",
@@ -542,6 +566,7 @@ export const REPO_METHODS = [
   "listKakis",
   "joinKaki",
   "leaveKaki",
+  "addKakiMember",
   "sendLobang",
   "listLobangsReceived",
   "listLobangsSent",

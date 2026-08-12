@@ -397,6 +397,30 @@ export const demoRepo: Repo = {
     return place ? enrich(place) : null;
   },
 
+  async getPublicPlace(id) {
+    const found = store().places.find(
+      (p) => p.id === id && p.status === "active"
+    );
+    if (!found) return null;
+
+    // Rating and visit count are computed at read time in demo mode (see
+    // `enrich`), not stored on the place row — `getPlace` already goes
+    // through it, so this has to as well or the public preview would show
+    // a place as unrated even when `getPlace` shows it with a real score.
+    const place = enrich(found);
+    return {
+      id: place.id,
+      name: place.name,
+      address: place.address ?? null,
+      cuisine: place.cuisine,
+      custom_cuisine_tags: place.custom_cuisine_tags,
+      budget_tier: place.budget_tier,
+      best_dishes: place.best_dishes,
+      avg_rating: place.avg_rating ?? null,
+      visit_count: place.visit_count ?? 0,
+    };
+  },
+
   async createPlace(data) {
     const now = new Date().toISOString();
     const place: Place = {
@@ -1557,6 +1581,31 @@ export const demoRepo: Repo = {
     );
   },
 
+  async addKakiMember(kakiId, userId, addedBy) {
+    const s = store();
+    if (!s.kakis.some((k) => k.id === kakiId)) {
+      throw new Error("That group does not exist");
+    }
+
+    const callerIsMember = s.kakiMembers.some(
+      (m) => m.kaki_id === kakiId && m.user_id === addedBy
+    );
+    if (!callerIsMember) {
+      throw new Error("Only a member of this group can add someone to it");
+    }
+
+    const already = s.kakiMembers.some(
+      (m) => m.kaki_id === kakiId && m.user_id === userId
+    );
+    if (!already) {
+      s.kakiMembers.push({
+        kaki_id: kakiId,
+        user_id: userId,
+        joined_at: new Date().toISOString(),
+      });
+    }
+  },
+
   // ---- Lobangs ----
 
   async sendLobang(fromUserId, target, placeId, note, eventId) {
@@ -2247,6 +2296,21 @@ export const demoRepo: Repo = {
       s.prefs = s.prefs.filter((p) => p.user_id !== mergeUserId);
     } else {
       for (const p of s.prefs) if (p.user_id === mergeUserId) p.user_id = keepUserId;
+    }
+
+    // CHANGES_20260812.md §5 — the survivor's signup date should read as
+    // continuous no matter which account happened to survive, since
+    // admin analytics' "new users" chart reads this per account.
+    const keepProfile = s.profiles.find((p) => p.user_id === keepUserId);
+    const mergeProfile = s.profiles.find((p) => p.user_id === mergeUserId);
+    if (keepProfile && mergeProfile?.created_at) {
+      const mergeCreatedAt = new Date(mergeProfile.created_at).getTime();
+      const keepCreatedAt = keepProfile.created_at
+        ? new Date(keepProfile.created_at).getTime()
+        : Infinity;
+      if (mergeCreatedAt < keepCreatedAt) {
+        keepProfile.created_at = mergeProfile.created_at;
+      }
     }
 
     s.profiles = s.profiles.filter((p) => p.user_id !== mergeUserId);

@@ -450,6 +450,29 @@ export const supabaseRepo: Repo = {
     };
   },
 
+  async getPublicPlace(id) {
+    const client = await db();
+    const { data, error } = await client.rpc("get_public_place", {
+      p_place_id: id,
+    });
+
+    if (error) fail("Could not load that place", error);
+    const row = data?.[0];
+    if (!row) return null;
+
+    return {
+      id: row.id,
+      name: row.name,
+      address: row.address ?? null,
+      cuisine: row.cuisine ?? [],
+      custom_cuisine_tags: row.custom_cuisine_tags ?? [],
+      budget_tier: row.budget_tier,
+      best_dishes: row.best_dishes ?? [],
+      avg_rating: row.avg_rating ?? null,
+      visit_count: row.visit_count ?? 0,
+    };
+  },
+
   async createPlace(data) {
     const client = await db();
     const { data: row, error } = await client
@@ -2248,6 +2271,17 @@ export const supabaseRepo: Repo = {
       .eq("user_id", userId);
 
     if (error) fail("Could not leave that group", error);
+  },
+
+  // `addedBy` isn't passed to the RPC — add_kaki_member checks auth.uid()
+  // is already a member itself, same reasoning as cancel_event.
+  async addKakiMember(kakiId, userId, _addedBy) {
+    const client = await db();
+    const { error } = await client.rpc("add_kaki_member", {
+      p_kaki_id: kakiId,
+      p_user_id: userId,
+    });
+    if (error) fail("Could not add that person to the group", error);
   },
 
   // ---- Lobangs ----
