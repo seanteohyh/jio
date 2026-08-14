@@ -34,6 +34,7 @@ function visit(placeId: string, userId: string, rating = 4): Visit {
     notes: null,
     visited_at: new Date().toISOString(),
     is_public: true,
+    like_count: 0,
   };
 }
 

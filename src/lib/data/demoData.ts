@@ -330,7 +330,7 @@ function daysFromNow(n: number, hour = 12, minute = 15): string {
  * charts to look like real data.
  */
 function buildVisits(): Visit[] {
-  const rows: Omit<Visit, "id">[] = [
+  const rows: Omit<Visit, "id" | "like_count">[] = [
     // The demo user's own history.
     { place_id: "demo-place-05", user_id: DEMO_USER_ID, rating: 5, best_dishes: ["Beef harami set"], notes: "Fast and good.", visited_at: daysAgo(1), is_public: true },
     { place_id: "demo-place-07", user_id: DEMO_USER_ID, rating: 4, best_dishes: ["Volcano ramen"], notes: null, visited_at: daysAgo(2), is_public: false },
@@ -360,6 +360,7 @@ function buildVisits(): Visit[] {
     ...row,
     id: `demo-visit-${index + 1}`,
     created_at: new Date(`${row.visited_at}T13:00:00Z`).toISOString(),
+    like_count: 0,
   }));
 }
 

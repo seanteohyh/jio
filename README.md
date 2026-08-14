@@ -41,15 +41,15 @@ When you are ready to make it real, see [Going live](#going-live).
 | **Vote on a place that isn't listed yet** | Typing a name the search doesn't find logs it as a vote option immediately, no place record required. A non-blocking prompt afterward offers to add it to the pool; declining leaves it exactly as a text-only choice, permanently. |
 | **Kakis** | Lunch groups with a shareable invite link and shared stats — group favourites, who eats out most, who is most adventurous. Any current member can also add someone directly by searching their name, without a link changing hands first — same trust level as the invite link itself, just faster for someone already sitting across the table. |
 | **Lobangs** | "Saw this online, thought of you" — send any registered place to specific teammates or a whole Kaki, with an optional note and personalized "quick pick" suggestions. Two entry points side by side: from a closed Jio in "You → Past Jios" (the winning place pinned as a default), and directly from a place's own page (`/places/[id]`) for the more common case of just browsing and thinking of someone. |
-| **Places** | Searchable list with cuisine, budget, walk-time and rating filters, sortable by nearest, highest-rated, or rated by your Kaki group — plus a "Kaki favourites only" chip that actually narrows the list, not just reorders it, and a badge on the card itself once at least 2 Kaki-member visits back a place's rating, so a lone review doesn't read as group consensus. Add places by hand, import candidate names from a food blog, or let the daily cron find them on OpenStreetMap. Cuisine tagging covers a fixed, scored list (now including Modern and Traditional) plus free-text "Other" tags that show on the place but never affect recommendations. Every active place also has a public preview page (`/p/[id]`, linked from a Share button on the full page) — the app's only page that needs no sign-in, showing name, cuisine, address, best dishes and aggregate rating to anyone with the link, with a "Join to see more" prompt into `/login` for everything past that, including the named review list. |
+| **Places** | Searchable list with cuisine, budget, walk-time and rating filters, sortable by nearest, highest-rated, or rated by your Kaki group — plus a "Kaki favourites only" chip that actually narrows the list, not just reorders it, and a badge on the card itself once at least 2 Kaki-member visits back a place's rating, so a lone review doesn't read as group consensus. Add places by hand (address or postal code — a postal code found anywhere in a pasted-in address, e.g. one copied straight from Google Maps, is tried first, since OneMap's road/block index can choke on a business-name prefix or unit number that a bare postal code sidesteps), import candidate names from a food blog, or let the daily cron find them on OpenStreetMap. Cuisine tagging covers a fixed, scored list (now including Modern and Traditional) plus free-text "Other" tags that show on the place but never affect recommendations. A place's own page has a "View on Google Maps" link next to Directions, computed from its coordinates — no stored link, no Google API call. Every active place also has a public preview page (`/p/[id]`, linked from a Share button on the full page) — the app's only page that needs no sign-in, showing name, cuisine, address, best dishes, aggregate rating and the same Maps link to anyone with the link, with a "Join to see more" prompt into `/login` for everything past that, including the named review list. |
 | **Map** | Leaflet map of everything in walking distance, with real walking routes when OneMap is configured. A Kaki-favourite place gets an amber ring on its marker, layered independently of the existing selected/not-selected fill color. |
-| **Reviews** | Log a visit privately, or share it as a review. Each visit is its own entry, editable and deletable later — including un-sharing a review back to private. |
+| **Reviews** | Log a visit privately, or share it as a review. Each visit is its own entry, editable and deletable later — including un-sharing a review back to private. Each shared review can be liked — a bare count plus your own toggle state, no "liked by" list — which nudges the reviewer with a throttled push (at most one per review per ~10 minutes) and feeds into a weekly recap push for anyone whose reviews got at least one like that week. |
 | **Saved places** | Bookmark anywhere from any list. `/places` has an All / Saved split, and saving nudges a place up your own suggestions. |
 | **Weather** | Checks the NEA two-hour forecast. When rain is likely, the walk penalty doubles and closer places quietly rise. |
 | **Metrics** | What you actually eat versus what you think you eat, plus a nudge when you have had the same cuisine three days running. |
 | **Home** | A quick-action dashboard, not a second Jios list: today's Jio becomes the headline when there is one; a capped list (next one or two) of what's coming up otherwise; "Same as last time?" one-tap repeat of your last hosted Jio. |
 | **Recurring Jios** | A standing weekly Jio — same place every time (auto-confirmed, no vote needed) or a vote over the same option pool each week. Generates its next occurrence lazily, a few days ahead, when the host loads Home or Jios; invitees are expanded fresh from current kaki membership every time, not frozen at series creation. |
-| **Push notifications** | Opt in from "You": get notified when you're invited to a Jio, when someone votes on one you're hosting (throttled to at most one push per event per ~10 minutes), when a Jio you're in is starting in 30 minutes and you haven't voted or RSVP'd, and when one you're in gets decided. iOS only ever delivers push to an installed PWA, never a browser tab, so the app also nudges toward "Add to Home Screen" after a few visits — dismissible with "remind me later," not a one-shot ask — plus an always-available "Add to home screen" card in "You" for anyone who dismissed that prompt but changes their mind later. In `name` mode, a successful install is also followed by an offer to attach an email, since installing the icon is the moment a second, independent signed-in context is about to exist. |
+| **Push notifications** | Opt in from "You": get notified when you're invited to a Jio, when someone votes on one you're hosting (throttled to at most one push per event per ~10 minutes), when a Jio you're in is starting in 30 minutes and you haven't voted or RSVP'd, when one you're in gets decided, when someone likes a review you shared (same ~10 minute throttle, skipped for liking your own review), and a weekly recap of how many likes your reviews picked up, sent only if that count is above zero. iOS only ever delivers push to an installed PWA, never a browser tab, so the app also nudges toward "Add to Home Screen" after a few visits — dismissible with "remind me later," not a one-shot ask — plus an always-available "Add to home screen" card in "You" for anyone who dismissed that prompt but changes their mind later. In `name` mode, a successful install is also followed by an offer to attach an email, since installing the icon is the moment a second, independent signed-in context is about to exist. |
 | **Admin** | Moderation (reports, block/unblock), an analytics dashboard (growth, Jio outcomes, top places, Kaki activity, moderation and wishlist trends, a same-day participation funnel), office management, and an accounts screen for merging duplicate identities (auto-surfaced by shared name, or search any account) and issuing recovery links — all reachable from "You", no dedicated nav icon, since admins are the one group that needs it least often. |
 
 ---
@@ -282,7 +282,7 @@ Roughly 30 minutes end to end. Everything below stays on a free tier.
    `service_role` key. The last one is a secret; it bypasses all access
    control.
 3. **SQL Editor** — run every file in `supabase/migrations/` in numeric order,
-   001 through 043. They are idempotent, so re-running is harmless.
+   001 through 048. They are idempotent, so re-running is harmless.
 4. **Authentication → Providers → Anonymous sign-ins** — turn this on. It is
    what makes name-only sign-in work.
 5. **Authentication → URL Configuration** — set the Site URL to your deployed
@@ -366,10 +366,15 @@ discovery cron queries the database on every run, which keeps the project
 awake. This is not a side effect — it is half of why that cron exists. If you
 disable discovery, add some other daily ping.
 
-**Vercel Hobby runs crons at most once a day.** `vercel.json` is set to 02:00
-UTC accordingly. For anything more frequent, point an external scheduler such
-as [cron-job.org](https://cron-job.org) at `/api/cron/discover` with the same
-bearer token.
+**Vercel Hobby runs each cron job at most once a day** (imprecise timing,
+±59 minutes), but the old per-project job-count cap is gone — Hobby now
+allows up to 100 cron jobs, confirmed directly against Vercel's docs
+(last updated 2026-07-15). `vercel.json` has two: discovery at 02:00 UTC,
+and the weekly review-likes recap (CHANGES_20260814.md §3) at 03:00 UTC
+every Monday — comfortably under the once-a-day-per-job limit since it
+only fires once a week. For anything more frequent than once a day, point
+an external scheduler such as [cron-job.org](https://cron-job.org) at the
+route with the same bearer token.
 
 **Multi-office discovery is paced, not parallel.** With more than one office,
 the cron sweeps them one after another with a 2s gap between each — not to
@@ -414,11 +419,14 @@ key, even when that key is sitting in the environment — that silent-escalation
 bug is exactly the kind that works fine in development and leaks everything in
 production.
 
-**The service-role client has two callers.** `/api/cron/discover`, which needs
-to write to the review queue with no user session, and account merge
+**The service-role client has three callers.** `/api/cron/discover`, which
+needs to write to the review queue with no user session; account merge
 (`mergeUserAccounts`), which needs to delete the old `auth.users` row once its
-data has moved — an Auth Admin API operation no RLS policy could ever grant.
-The module throws at import time if it is ever bundled for the browser.
+data has moved — an Auth Admin API operation no RLS policy could ever grant;
+and `/api/cron/weekly-recap` (`listReviewLikesSince`), which needs to read
+every user's `review_likes` rows with no user session to satisfy that
+table's owner-only RLS policy. The module throws at import time if it is
+ever bundled for the browser.
 
 **`middleware.ts` validates the session once per request; every page and
 route trusts that instead of repeating it.** Speed Insights showed FCP/LCP
@@ -679,6 +687,17 @@ uses for recurring series. The trade-off is the same one stated there: the
 reminder only actually fires when *someone* with a stake in the Jio has the
 app open somewhere near that 30-minute mark, not on a guaranteed clock.
 
+**The like-triggered push reuses that exact shape; the weekly recap is the
+one push that's cron rather than inline, because it genuinely needs to be.**
+`claim_review_like_push_window` (migration 048) is the same one-purpose
+atomic claim as `claim_vote_push_window`, fired inline from the like route
+the instant a like lands — no cron slot needed, same as vote-push. The
+weekly recap can't work that way: "how many likes this week" only means
+something once the week is over, not the instant any single like happens,
+so it's the one push in this app that genuinely needs a scheduled sweep
+rather than firing off a user action. That's what earns it the second
+`vercel.json` cron entry rather than a third inline claim function.
+
 **Account merge writes across two different `auth.uid()`s, so it has to be
 `SECURITY DEFINER` — and it has to check *which* two.** `merge_user_accounts`
 (migration 040) moves every row a `user_id`-owned table has for one account
@@ -732,30 +751,51 @@ rather than a loosened policy.** `places_select` (007_rls.sql) is
 `for select to authenticated using (true)` — a signed-out visitor runs as
 Postgres role `anon`, which that policy grants nothing to, so a plain
 `select` from `places` already returns nothing for them; there was no
-accidental exposure to patch. `get_public_place` (migration 046) is
-`SECURITY DEFINER`, callable by `anon`, and returns exactly the
-`PublicPlace` shape — name, address, cuisine, best dishes, aggregate rating
-— scoped to `status = 'active'` so a still-under-review or blocked place
-never becomes the first thing a forwarded link shows a stranger. `place.id`
-doubles as the public identifier rather than a new invite-token system:
-it's already an unguessable UUID, and the function's own `status` filter is
-what keeps it from being useful for anything beyond a place already meant
-to be public. Deliberately excluded from that shape: `lat`/`lng` (an exact
-pin is more than a text address already gives away), `notes`,
-`created_by`, and the named review list entirely — visits were only ever
-shared with "the team," not the public internet, and nothing about this
-feature changes that consent. A signed-in visitor who opens a `/p/[id]`
-link is bounced straight to the full `/places/[id]` page instead of seeing
-the cut-down version — same reasoning as `/k/[token]` sending an existing
-Kaki member straight into the group rather than a join screen they don't
-need.
+accidental exposure to patch. `get_public_place` (migration 046, widened by
+047) is `SECURITY DEFINER`, callable by `anon`, and returns the
+`PublicPlace` shape — name, address, cuisine, best dishes, aggregate
+rating, and `lat`/`lng` — scoped to `status = 'active'` so a
+still-under-review or blocked place never becomes the first thing a
+forwarded link shows a stranger. `place.id` doubles as the public
+identifier rather than a new invite-token system: it's already an
+unguessable UUID, and the function's own `status` filter is what keeps it
+from being useful for anything beyond a place already meant to be public.
+`lat`/`lng` are included deliberately (migration 047,
+CHANGES_20260814.md §2) so a signed-out visitor gets the same "View on
+Google Maps" link a signed-in one does — every place here is a restaurant
+or eatery already publicly discoverable on Google Maps regardless, so the
+exact pin doesn't carry the same sensitivity as `notes` or `created_by`,
+both still excluded, along with the named review list entirely — visits
+were only ever shared with "the team," not the public internet, and
+nothing about this feature changes that consent. A signed-in visitor who
+opens a `/p/[id]` link is bounced straight to the full `/places/[id]` page
+instead of seeing the cut-down version — same reasoning as `/k/[token]`
+sending an existing Kaki member straight into the group rather than a join
+screen they don't need.
+
+**Review likes are the one place a second-party write needs the same
+`SECURITY DEFINER` throttle shape as vote-push, for the same reason.**
+`claim_review_like_push_window` (migration 048) exists because
+`visits_update` (007_rls.sql) is `user_id = auth.uid()` — only a review's
+own author may write to it — but the person claiming the push window is
+whoever just liked the review, not its author. Matches
+`claim_vote_push_window` (038) exactly: an atomic claim-the-window update
+rather than a real debounce, since Vercel Hobby's cron is nowhere near
+frequent enough to wait out a quiet period. `review_likes` itself needs no
+elevated path at all — a user's own like/unlike is already covered by
+plain RLS scoped to `user_id = auth.uid()`, same as `wishlist`. Reading
+across every user's likes for the weekly recap is the one place this
+reaches for the service-role client instead: the cron runs with no user
+session, so there's no `auth.uid()` for RLS to match, the same "no session
+to go through RLS with" situation as the discovery cron's writes
+(`lib/supabase/serviceClient.ts`).
 
 ---
 
 ## Tests
 
 ```bash
-npm test          # 378 tests across 30 files
+npm test          # 387 tests across 31 files
 npm run typecheck
 npm run lint
 ```
@@ -791,7 +831,8 @@ npm run lint
 | `kakiRating.test.ts` | "Rated by your Kaki group" averages only the member set's ratings, scoped independently per place; the companion visit-count used for the badge/filter's minimum-2 threshold |
 | `adminAnalytics.test.ts` | Asia/Singapore day/week bucketing across the UTC boundary, median with no-data returning `null` not `0`, walk-time bucket edges |
 | `kakiMembers.test.ts` | Adding an existing user to a Kaki directly: any current member can, a non-member can't, no duplicate membership, rejects a nonexistent group |
-| `publicPlace.test.ts` | The public place-preview data: only the safe field subset, never `notes`/`created_by`/an exact pin, hides `needs_review` and `blocked` places, computed rating and visit count match the authenticated view |
+| `publicPlace.test.ts` | The public place-preview data: only the safe field subset, never `notes`/`created_by`, carries `lat`/`lng`, hides `needs_review` and `blocked` places, computed rating and visit count match the authenticated view |
+| `reviewLikes.test.ts` | Toggling a like on/off, independent counts across multiple likers, `liked_by_me` populated only for a known viewer, the like-push throttle window (claims once, refuses within the window, claims again after), and `listReviewLikesSince`'s cutoff filtering |
 
 **`npm test` does not typecheck.** Vitest transforms TypeScript with esbuild,
 which strips annotations without checking them, and the suite is all pure

@@ -16,6 +16,7 @@ function visit(userId: string, placeId: string, rating: number): Visit {
     best_dishes: [],
     visited_at: new Date().toISOString(),
     is_public: false,
+    like_count: 0,
   };
 }
 

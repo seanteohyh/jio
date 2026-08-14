@@ -87,7 +87,7 @@ export default function LobangInbox() {
                     </p>
 
                     {l.note && (
-                      <p className="text-stone mt-1 text-sm italic">
+                      <p className="text-stone mt-1 text-sm whitespace-pre-wrap italic">
                         “{l.note}”
                       </p>
                     )}

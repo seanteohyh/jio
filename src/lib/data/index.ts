@@ -76,7 +76,9 @@ export interface Repo {
 
   // ---- Visits & reviews ----
   listVisits(placeId?: string, userId?: string): Promise<Visit[]>;
-  createVisit(data: Omit<Visit, "id" | "created_at">): Promise<Visit>;
+  createVisit(
+    data: Omit<Visit, "id" | "created_at" | "like_count">
+  ): Promise<Visit>;
 
   /**
    * Amend one of your own visits.
@@ -100,7 +102,36 @@ export interface Repo {
   /** Remove one of your own visits. Same ownership rule as `updateVisit`. */
   deleteVisit(id: string, userId: string): Promise<void>;
 
-  listPublicReviews(placeId: string): Promise<Visit[]>;
+  /** `viewerId`, when given, populates `liked_by_me` on each review. */
+  listPublicReviews(placeId: string, viewerId?: string): Promise<Visit[]>;
+
+  /**
+   * Toggle the caller's like on a review — on if it wasn't liked, off if it
+   * was, same "no separate add/remove endpoints" shape as `toggleWishlist`.
+   * `visit_user_id` comes back so the caller can decide whether to push a
+   * notification without a second lookup (and can skip a self-like).
+   */
+  toggleReviewLike(
+    userId: string,
+    visitId: string
+  ): Promise<{ liked: boolean; like_count: number; visit_user_id: string }>;
+  /**
+   * Throttle claim for the like-triggered push (048_review_likes.sql) — same
+   * shape as `claimVotePushWindow`, returns `true` at most once per
+   * `windowSeconds` (default 10 min) for a given review.
+   */
+  claimReviewLikePushWindow(
+    visitId: string,
+    windowSeconds?: number
+  ): Promise<boolean>;
+  /**
+   * Every like since `sinceIso`, with the liked review's owner — feeds the
+   * weekly recap cron, which buckets these by `sgtWeekKey` itself rather
+   * than this method knowing about "weeks."
+   */
+  listReviewLikesSince(
+    sinceIso: string
+  ): Promise<Array<{ visit_id: string; visit_user_id: string; created_at: string }>>;
 
   // ---- Walk cache & offices ----
   getWalkCache(officeId: string): Promise<WalkCacheEntry[]>;
@@ -520,6 +551,9 @@ export const REPO_METHODS = [
   "updateVisit",
   "deleteVisit",
   "listPublicReviews",
+  "toggleReviewLike",
+  "claimReviewLikePushWindow",
+  "listReviewLikesSince",
   "getWalkCache",
   "upsertWalkCache",
   "listOffices",

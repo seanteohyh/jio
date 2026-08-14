@@ -232,11 +232,44 @@ interface OneMapSearchResponse {
   results?: OneMapSearchResult[];
 }
 
+async function searchOneMap(searchVal: string): Promise<GeocodeResult | null> {
+  const url =
+    `${SEARCH_URL}?searchVal=${encodeURIComponent(searchVal)}` +
+    `&returnGeom=Y&getAddrDetails=Y&pageNum=1`;
+  const response = await fetch(url);
+  if (!response.ok) return null;
+
+  const json = (await response.json()) as OneMapSearchResponse;
+  const top = json.results?.[0];
+  if (!top?.LATITUDE || !top?.LONGITUDE) return null;
+
+  const lat = Number(top.LATITUDE);
+  const lng = Number(top.LONGITUDE);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+
+  return {
+    lat,
+    lng,
+    address: top.ADDRESS || [top.BLK_NO, top.ROAD_NAME].filter(Boolean).join(" ") || searchVal,
+  };
+}
+
+/** Matches a bare 6-digit Singapore postal code anywhere in the input. */
+const POSTAL_CODE_RE = /\b\d{6}\b/;
+
 /**
  * Turns an address or postal code into coordinates, so adding a place never
  * requires typing latitude/longitude by hand. This is OneMap's public
  * search endpoint — no auth token needed, unlike routing — so it works even
  * without ONEMAP_EMAIL/ONEMAP_PASSWORD configured.
+ *
+ * A full address pasted from Google Maps (e.g. "Paragon, 290 Orchard Rd,
+ * #04-31, Singapore 238859") often has a business-name prefix and unit
+ * number OneMap's road/block index can't parse as one blob, so a raw search
+ * on it can come back empty. When a 6-digit postal code is present in the
+ * input, search on that first — a bare postal code is a precise,
+ * near-unambiguous lookup that resolves reliably — falling back to the raw
+ * full-string search (today's behaviour) only when no code is found.
  *
  * Returns `null` on no match or any network failure, same "degrade rather
  * than throw" spirit as the rest of this file — the caller decides what a
@@ -248,25 +281,13 @@ export async function geocodeAddress(query: string): Promise<GeocodeResult | nul
   if (!trimmed) return null;
 
   try {
-    const url =
-      `${SEARCH_URL}?searchVal=${encodeURIComponent(trimmed)}` +
-      `&returnGeom=Y&getAddrDetails=Y&pageNum=1`;
-    const response = await fetch(url);
-    if (!response.ok) return null;
+    const postalMatch = trimmed.match(POSTAL_CODE_RE);
+    if (postalMatch) {
+      const byPostal = await searchOneMap(postalMatch[0]);
+      if (byPostal) return byPostal;
+    }
 
-    const json = (await response.json()) as OneMapSearchResponse;
-    const top = json.results?.[0];
-    if (!top?.LATITUDE || !top?.LONGITUDE) return null;
-
-    const lat = Number(top.LATITUDE);
-    const lng = Number(top.LONGITUDE);
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-
-    return {
-      lat,
-      lng,
-      address: top.ADDRESS || [top.BLK_NO, top.ROAD_NAME].filter(Boolean).join(" ") || trimmed,
-    };
+    return await searchOneMap(trimmed);
   } catch {
     return null;
   }

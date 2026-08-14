@@ -115,6 +115,8 @@ export interface PublicPlace {
   best_dishes: string[];
   avg_rating: number | null;
   visit_count: number;
+  lat: number;
+  lng: number;
 }
 
 export interface Visit {
@@ -127,11 +129,18 @@ export interface Visit {
   visited_at: string;
   created_at?: string;
   is_public: boolean;
+  /** Trigger-maintained (048_review_likes.sql), like avg_rating on places. */
+  like_count: number;
+  /** Throttle state for the like-triggered push — see 048_review_likes.sql.
+   *  Not meaningful to read outside `claimReviewLikePushWindow`. */
+  last_like_push_at?: string | null;
 
   /** Derived, only populated on review listings. */
   display_name?: string;
   /** Derived, only populated on review listings. */
   place_name?: string;
+  /** Derived, only populated when a viewer is known — "have I liked this." */
+  liked_by_me?: boolean;
 }
 
 export interface WalkCacheEntry {

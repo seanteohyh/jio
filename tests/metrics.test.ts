@@ -39,6 +39,7 @@ function visit(
     notes: null,
     visited_at: date,
     is_public: false,
+    like_count: 0,
   };
 }
 

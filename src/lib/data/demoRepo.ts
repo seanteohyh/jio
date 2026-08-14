@@ -99,6 +99,7 @@ interface DemoStore {
   candidateDates: EventCandidateDate[];
   dateVotes: EventDateVote[];
   wishlist: WishlistEntry[];
+  reviewLikes: { visit_id: string; user_id: string; created_at: string }[];
   lobangs: Lobang[];
   /** Recipients, snapshotted at send time. */
   lobangRecipients: { lobang_id: string; user_id: string; seen_at: string | null }[];
@@ -139,6 +140,7 @@ function seed(): DemoStore {
     candidateDates: [],
     dateVotes: [],
     wishlist: demoWishlist.map((w) => ({ ...w })),
+    reviewLikes: [],
     lobangs: demoLobangs.map((l) => ({ ...l })),
     lobangRecipients: demoLobangRecipients.map((r) => ({ ...r })),
     kakis: demoKakis.map((k) => ({ ...k })),
@@ -172,6 +174,15 @@ function displayNameFor(userId: string): string {
   const profile = store().profiles.find((p) => p.user_id === userId);
   if (profile) return profile.display_name;
   return `Teammate ${userId.slice(0, 6)}`;
+}
+
+/** Mirrors 048_review_likes.sql's recompute_review_like_count trigger. */
+function recomputeReviewLikeCount(visitId: string): number {
+  const s = store();
+  const count = s.reviewLikes.filter((l) => l.visit_id === visitId).length;
+  const visit = s.visits.find((v) => v.id === visitId);
+  if (visit) visit.like_count = count;
+  return count;
 }
 
 /**
@@ -418,6 +429,8 @@ export const demoRepo: Repo = {
       best_dishes: place.best_dishes,
       avg_rating: place.avg_rating ?? null,
       visit_count: place.visit_count ?? 0,
+      lat: place.lat,
+      lng: place.lng,
     };
   },
 
@@ -484,6 +497,7 @@ export const demoRepo: Repo = {
       ...data,
       id: `demo-visit-${uuid().slice(0, 8)}`,
       created_at: new Date().toISOString(),
+      like_count: 0,
     };
     store().visits.push(visit);
     return visit;
@@ -525,11 +539,81 @@ export const demoRepo: Repo = {
     visits.splice(index, 1);
   },
 
-  async listPublicReviews(placeId) {
-    return store()
-      .visits.filter((v) => v.place_id === placeId && v.is_public)
-      .map((v) => ({ ...v, display_name: displayNameFor(v.user_id) }))
+  async listPublicReviews(placeId, viewerId) {
+    const s = store();
+    return s.visits
+      .filter((v) => v.place_id === placeId && v.is_public)
+      .map((v) => ({
+        ...v,
+        display_name: displayNameFor(v.user_id),
+        liked_by_me: viewerId
+          ? s.reviewLikes.some(
+              (l) => l.visit_id === v.id && l.user_id === viewerId
+            )
+          : undefined,
+      }))
       .sort((a, b) => b.visited_at.localeCompare(a.visited_at));
+  },
+
+  async toggleReviewLike(userId, visitId) {
+    const s = store();
+    const visit = s.visits.find((v) => v.id === visitId);
+    if (!visit) throw new Error("That review does not exist");
+
+    const index = s.reviewLikes.findIndex(
+      (l) => l.visit_id === visitId && l.user_id === userId
+    );
+
+    if (index === -1) {
+      s.reviewLikes.push({
+        visit_id: visitId,
+        user_id: userId,
+        created_at: new Date().toISOString(),
+      });
+      return {
+        liked: true,
+        like_count: recomputeReviewLikeCount(visitId),
+        visit_user_id: visit.user_id,
+      };
+    }
+
+    s.reviewLikes.splice(index, 1);
+    return {
+      liked: false,
+      like_count: recomputeReviewLikeCount(visitId),
+      visit_user_id: visit.user_id,
+    };
+  },
+
+  async claimReviewLikePushWindow(visitId, windowSeconds = 600) {
+    const visit = store().visits.find((v) => v.id === visitId);
+    if (!visit) return false;
+
+    const now = Date.now();
+    if (
+      visit.last_like_push_at &&
+      now - new Date(visit.last_like_push_at).getTime() < windowSeconds * 1000
+    ) {
+      return false;
+    }
+
+    visit.last_like_push_at = new Date(now).toISOString();
+    return true;
+  },
+
+  async listReviewLikesSince(sinceIso) {
+    const s = store();
+    return s.reviewLikes
+      .filter((l) => l.created_at >= sinceIso)
+      .map((l) => {
+        const visit = s.visits.find((v) => v.id === l.visit_id);
+        return {
+          visit_id: l.visit_id,
+          visit_user_id: visit?.user_id ?? "",
+          created_at: l.created_at,
+        };
+      })
+      .filter((l) => l.visit_user_id !== "");
   },
 
   // ---- Walk cache & offices ----
