@@ -47,15 +47,22 @@ describe("getPublicPlace", () => {
     });
   });
 
-  it("never exposes notes, created_by, or an exact pin", async () => {
+  it("never exposes notes or created_by", async () => {
     const place = await seedPlace();
 
     const pub = await demoRepo.getPublicPlace(place.id);
 
     expect(pub).not.toHaveProperty("notes");
     expect(pub).not.toHaveProperty("created_by");
-    expect(pub).not.toHaveProperty("lat");
-    expect(pub).not.toHaveProperty("lng");
+  });
+
+  it("carries lat/lng, since places are public venues findable on Google Maps anyway", async () => {
+    const place = await seedPlace({ lat: 1.301, lng: 103.851 });
+
+    const pub = await demoRepo.getPublicPlace(place.id);
+
+    expect(pub?.lat).toBe(1.301);
+    expect(pub?.lng).toBe(103.851);
   });
 
   it("hides a place still waiting for review", async () => {

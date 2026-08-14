@@ -17,13 +17,17 @@ if (typeof window !== "undefined") {
 /**
  * Admin client. Bypasses RLS entirely.
  *
- * Two callers are allowed. The discovery cron needs to write into the
+ * Three callers are allowed. The discovery cron needs to write into the
  * review queue with no user session. Account merge (CHANGES_20260807.md
  * §4/§5, `mergeUserAccounts`) needs it to delete the old, now-empty
  * `auth.users` row once `merge_user_accounts` (migration 040) has moved
  * everything off it — that's an Auth Admin API operation, not a table
  * write, so there's no RLS policy that could ever grant it instead;
- * service role is the only way in. Anything else should be using
+ * service role is the only way in. The weekly recap cron
+ * (`listReviewLikesSince`, CHANGES_20260814.md §3) needs it for the same
+ * "no user session" reason as discovery — reading across every user's
+ * review_likes is exactly what `review_likes_select`'s owner-only RLS
+ * policy is meant to block for anyone else. Anything else should be using
  * `createServerClient()` and going through RLS like everyone else.
  */
 export function createServiceRoleClient(): SupabaseClient {

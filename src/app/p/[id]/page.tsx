@@ -12,7 +12,11 @@ import { formatCuisine } from "@/lib/utils";
  * unauthenticated page. `place.id` is the identifier (no separate invite
  * token, see `shareUrl.placeShareUrl`), and the data comes from
  * `getPublicPlace()`, which only ever returns the narrow, privacy-safe
- * `PublicPlace` shape — never the named review list, never an exact pin.
+ * `PublicPlace` shape — never the named review list, never notes or who
+ * added it. Coordinates *are* included (CHANGES_20260814.md §2) so a
+ * visitor can open the place in Google Maps — every place here is an
+ * already-public venue findable on Maps regardless, so the exact pin isn't
+ * sensitive the way notes/authorship are.
  *
  * A signed-in visitor who follows a shared link gets bounced straight to
  * the full `/places/[id]` page rather than seeing this cut-down version —
@@ -32,7 +36,20 @@ export default async function PublicPlacePage({
   }
 
   const repo = await getRepoAsync();
-  const place = await repo.getPublicPlace(id);
+
+  let place;
+  try {
+    place = await repo.getPublicPlace(id);
+  } catch (error) {
+    // A signed-out visitor gets the same "not available" state whether the
+    // place genuinely doesn't exist or the lookup itself failed server-side
+    // (e.g. a migration not yet applied) — a stranger following a shared
+    // link can't act on a raw error either way, and a calm, branded message
+    // beats Next's bare fallback page. Logged so it's still visible in
+    // Vercel's function logs for whoever's debugging it.
+    console.error("getPublicPlace failed", error);
+    place = null;
+  }
 
   if (!place) {
     return (
@@ -58,6 +75,15 @@ export default async function PublicPlacePage({
           <Stars rating={place.avg_rating} size="md" />
           {place.visit_count > 0 && <span>{place.visit_count} visits</span>}
         </div>
+
+        <a
+          href={`https://www.google.com/maps/search/?api=1&query=${place.lat},${place.lng}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="border-line bg-paper text-ink hover:bg-cream mt-3 inline-flex items-center rounded-lg border px-4 py-2.5 text-sm font-medium"
+        >
+          View on Google Maps
+        </a>
 
         {(place.cuisine.length > 0 || place.custom_cuisine_tags.length > 0) && (
           <div className="mt-3 flex flex-wrap gap-1.5">

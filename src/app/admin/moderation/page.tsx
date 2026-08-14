@@ -194,7 +194,7 @@ export default function ModerationPage() {
                       </Link>
                       <ul className="text-stone mt-1 space-y-0.5 text-xs">
                         {flags.map((f) => (
-                          <li key={f.id}>
+                          <li key={f.id} className="whitespace-pre-wrap">
                             {FLAG_REASON_LABELS[f.reason]} —{" "}
                             {f.flagged_by_name ?? "someone"}
                             {f.comment ? `: "${f.comment}"` : ""}
@@ -331,7 +331,7 @@ export default function ModerationPage() {
                     )}
                   </div>
                   {place.status === "blocked" && lastAction?.action === "block" && (
-                    <p className="text-stone text-xs">
+                    <p className="text-stone text-xs whitespace-pre-wrap">
                       Blocked by {lastAction.actor_display_name ?? "someone"}{" "}
                       {lastAction.created_at
                         ? `on ${formatDateTime(lastAction.created_at)}`
@@ -351,7 +351,7 @@ export default function ModerationPage() {
           <SectionHeading>Full activity log</SectionHeading>
           <ul className="space-y-1.5">
             {logData.log.map((entry) => (
-              <li key={entry.id} className="text-stone text-xs">
+              <li key={entry.id} className="text-stone text-xs whitespace-pre-wrap">
                 <span className="text-ink font-medium">
                   {entry.actor_display_name ?? "Someone"}
                 </span>{" "}

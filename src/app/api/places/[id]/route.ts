@@ -16,14 +16,14 @@ type Params = { params: Promise<{ id: string }> };
 
 export async function GET(_request: NextRequest, { params }: Params) {
   try {
-    await requireUser();
+    const user = await requireUser();
     const { id } = await params;
     const repo = await getRepoAsync();
 
     const place = await repo.getPlace(id);
     if (!place) return notFound("That place does not exist");
 
-    const reviews = await repo.listPublicReviews(id);
+    const reviews = await repo.listPublicReviews(id, user.id);
 
     return json({ place, reviews });
   } catch (error) {

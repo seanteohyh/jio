@@ -470,6 +470,8 @@ export const supabaseRepo: Repo = {
       best_dishes: row.best_dishes ?? [],
       avg_rating: row.avg_rating ?? null,
       visit_count: row.visit_count ?? 0,
+      lat: row.lat,
+      lng: row.lng,
     };
   },
 
@@ -605,7 +607,7 @@ export const supabaseRepo: Repo = {
     if (error) fail("Could not delete that visit", error);
   },
 
-  async listPublicReviews(placeId) {
+  async listPublicReviews(placeId, viewerId) {
     const client = await db();
     const { data, error } = await client
       .from("visits")
@@ -622,7 +624,120 @@ export const supabaseRepo: Repo = {
       visits.map((v) => v.user_id)
     );
 
-    return visits.map((v) => ({ ...v, display_name: names.get(v.user_id) }));
+    let likedIds: Set<string> | null = null;
+    if (viewerId && visits.length > 0) {
+      const { data: likes } = await client
+        .from("review_likes")
+        .select("visit_id")
+        .eq("user_id", viewerId)
+        .in("visit_id", visits.map((v) => v.id));
+      likedIds = new Set((likes ?? []).map((l) => l.visit_id as string));
+    }
+
+    return visits.map((v) => ({
+      ...v,
+      display_name: names.get(v.user_id),
+      liked_by_me: likedIds ? likedIds.has(v.id) : undefined,
+    }));
+  },
+
+  async toggleReviewLike(userId, visitId) {
+    const client = await db();
+
+    const { data: visit, error: visitError } = await client
+      .from("visits")
+      .select("user_id")
+      .eq("id", visitId)
+      .maybeSingle();
+    if (visitError) fail("Could not load that review", visitError);
+    if (!visit) throw new Error("That review does not exist");
+
+    const { data: existing } = await client
+      .from("review_likes")
+      .select("visit_id")
+      .eq("user_id", userId)
+      .eq("visit_id", visitId)
+      .maybeSingle();
+
+    if (existing) {
+      const { error } = await client
+        .from("review_likes")
+        .delete()
+        .eq("user_id", userId)
+        .eq("visit_id", visitId);
+      if (error) fail("Could not update your like", error);
+    } else {
+      const { error } = await client
+        .from("review_likes")
+        .insert({ user_id: userId, visit_id: visitId });
+      if (error) fail("Could not update your like", error);
+    }
+
+    const { data: updated, error: countError } = await client
+      .from("visits")
+      .select("like_count")
+      .eq("id", visitId)
+      .single();
+    if (countError) fail("Could not load that review", countError);
+
+    return {
+      liked: !existing,
+      like_count: (updated as { like_count: number }).like_count,
+      visit_user_id: (visit as { user_id: string }).user_id,
+    };
+  },
+
+  async claimReviewLikePushWindow(visitId, windowSeconds = 600) {
+    const client = await db();
+    const { data, error } = await client.rpc("claim_review_like_push_window", {
+      p_visit_id: visitId,
+      p_window_seconds: windowSeconds,
+    });
+
+    if (error) fail("Could not claim the like-push window", error);
+    return Boolean(data);
+  },
+
+  async listReviewLikesSince(sinceIso) {
+    // The weekly recap cron (the only caller) runs with no user session, so
+    // there is no `auth.uid()` for review_likes_select's RLS policy to match
+    // — same "no session to go through RLS with" situation as the discovery
+    // cron's writes, so this reaches for the same service-role client
+    // rather than a SECURITY DEFINER RPC granted to `anon` (which would
+    // hand this cross-user join to anyone with the public anon key, not
+    // just the cron).
+    const { createServiceRoleClient } = await import(
+      "@/lib/supabase/serviceClient"
+    );
+    const admin = createServiceRoleClient();
+
+    const { data: likes, error } = await admin
+      .from("review_likes")
+      .select("visit_id, created_at")
+      .gte("created_at", sinceIso);
+    if (error) fail("Could not load recent likes", error);
+    if (!likes || likes.length === 0) return [];
+
+    const { data: visitRows, error: visitError } = await admin
+      .from("visits")
+      .select("id, user_id")
+      .in("id", likes.map((l) => l.visit_id as string));
+    if (visitError) fail("Could not load recent likes", visitError);
+
+    const ownerOf = new Map(
+      ((visitRows ?? []) as { id: string; user_id: string }[]).map((v) => [
+        v.id,
+        v.user_id,
+      ])
+    );
+
+    return (likes as { visit_id: string; created_at: string }[])
+      .filter((l) => ownerOf.has(l.visit_id))
+      .map((l) => ({
+        visit_id: l.visit_id,
+        visit_user_id: ownerOf.get(l.visit_id) as string,
+        created_at: l.created_at,
+      }));
   },
 
   // ---- Walk cache & offices ----

@@ -51,6 +51,7 @@ function visit(
     notes: null,
     visited_at: date.toISOString().slice(0, 10),
     is_public: false,
+    like_count: 0,
   };
 }
 

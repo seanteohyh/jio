@@ -75,6 +75,7 @@ export default function PlaceDetailPage({
   const [reportSent, setReportSent] = useState(false);
   const [sendingLobang, setSendingLobang] = useState(false);
   const [lobangSent, setLobangSent] = useState(false);
+  const [likingId, setLikingId] = useState<string | null>(null);
 
   if (isLoading) return <SkeletonDetail />;
   if (error) return <ErrorNote>{error.message}</ErrorNote>;
@@ -91,6 +92,32 @@ export default function PlaceDetailPage({
       mutateWishlist();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Could not save");
+    }
+  };
+
+  const toggleLike = async (visitId: string) => {
+    setLikingId(visitId);
+    setActionError(null);
+    try {
+      const result = await mutateJson<{ liked: boolean; like_count: number }>(
+        `/api/visits/${visitId}/like`,
+        "POST"
+      );
+      mutate(
+        {
+          ...data,
+          reviews: reviews.map((r) =>
+            r.id === visitId
+              ? { ...r, liked_by_me: result.liked, like_count: result.like_count }
+              : r
+          ),
+        },
+        false
+      );
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Could not update your like");
+    } finally {
+      setLikingId(null);
     }
   };
 
@@ -287,7 +314,7 @@ export default function PlaceDetailPage({
 
       {place.notes && (
         <Card>
-          <p className="text-sm">{place.notes}</p>
+          <p className="text-sm whitespace-pre-wrap">{place.notes}</p>
         </Card>
       )}
 
@@ -320,6 +347,14 @@ export default function PlaceDetailPage({
           className="border-line bg-paper text-ink hover:bg-cream inline-flex items-center rounded-lg border px-4 py-2.5 text-sm font-medium"
         >
           Directions
+        </a>
+        <a
+          href={`https://www.google.com/maps/search/?api=1&query=${place.lat},${place.lng}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="border-line bg-paper text-ink hover:bg-cream inline-flex items-center rounded-lg border px-4 py-2.5 text-sm font-medium"
+        >
+          View on Google Maps
         </a>
         {/*
           Open to anyone signed in, deliberately. Correcting a wrong cuisine or
@@ -544,13 +579,26 @@ export default function PlaceDetailPage({
                       </div>
                       <Stars rating={review.rating} />
                       {review.notes && (
-                        <p className="mt-1 text-sm">{review.notes}</p>
+                        <p className="mt-1 text-sm whitespace-pre-wrap">{review.notes}</p>
                       )}
                       {review.best_dishes.length > 0 && (
                         <p className="text-stone mt-1 text-xs">
                           Had: {review.best_dishes.join(", ")}
                         </p>
                       )}
+                      <button
+                        type="button"
+                        onClick={() => toggleLike(review.id)}
+                        disabled={likingId === review.id}
+                        className={`mt-1.5 inline-flex items-center gap-1 text-xs font-medium ${
+                          review.liked_by_me
+                            ? "text-ember"
+                            : "text-stone hover:text-ink"
+                        }`}
+                      >
+                        {review.liked_by_me ? "♥" : "♡"}{" "}
+                        {review.like_count > 0 ? review.like_count : "Like"}
+                      </button>
                     </div>
                   </div>
                 </li>
