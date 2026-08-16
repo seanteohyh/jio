@@ -282,7 +282,7 @@ Roughly 30 minutes end to end. Everything below stays on a free tier.
    `service_role` key. The last one is a secret; it bypasses all access
    control.
 3. **SQL Editor** — run every file in `supabase/migrations/` in numeric order,
-   001 through 049. They are idempotent, so re-running is harmless.
+   001 through 050. They are idempotent, so re-running is harmless.
 4. **Authentication → Providers → Anonymous sign-ins** — turn this on. It is
    what makes name-only sign-in work.
 5. **Authentication → URL Configuration** — set the Site URL to your deployed
@@ -836,6 +836,26 @@ DEFINER` function, `status`'s exact shape — as the one legitimate way to
 set it. Only the app server calls it, right after
 `resolveAndStoreGooglePlaceId` (`lib/googlePlaces.ts`) runs following a
 create or a name/address edit, never from client input directly.
+
+**Two tables' RLS policies must never each hold a subquery into the
+other — `lobangs`/`lobang_recipients` did, and it broke every send.**
+019_lobang_group_send.sql gave `lobangs_select` a subquery into
+`lobang_recipients`, and gave `lobang_recipients_select`/`_insert`/
+`_delete` each a subquery back into `lobangs`. Evaluating either table's
+RLS-protected subquery requires evaluating the other table's policy, which
+requires the first table's policy again — Postgres has to expand that into
+the query plan before execution even starts, so it hit a genuine,
+unbounded A→B→A cycle and refused with "infinite recursion detected in
+policy for relation" (SQLSTATE 42P17), deterministically, on every
+`sendLobang()` call, not intermittently. 050_fix_lobang_rls_recursion.sql
+fixes it with the same `SECURITY DEFINER` escape hatch used everywhere
+else in this file for "one table's policy legitimately needs to read
+another's" — `is_lobang_sender`/`is_lobang_recipient` each do their lookup
+as the function owner, bypassing RLS for that one query, so checking "is
+this mine" no longer re-triggers the other table's policy. Worth
+remembering as a standing rule for any future pair of RLS-protected tables
+that reference each other: at most one side may hold a plain subquery into
+the other; the other side needs a `SECURITY DEFINER` function instead.
 
 ---
 
