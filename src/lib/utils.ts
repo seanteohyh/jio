@@ -1,5 +1,5 @@
 import { WALK_SPEED_M_PER_MIN } from "./constants";
-import type { Place } from "@/types";
+import type { Lobang, Place } from "@/types";
 
 /** Great-circle distance in metres between two lat/lng points. */
 export function haversine(
@@ -61,6 +61,25 @@ export function sortPlacesForList(
 
     return a.name.localeCompare(b.name);
   });
+}
+
+export type LobangFeedItem = Lobang & { direction: "received" | "sent" };
+
+/**
+ * Merges a received list and a sent list into one reverse-chronological
+ * feed — CHANGES_20260816.md §2's "browse" page. Pure so the ordering is
+ * unit-testable without a component; both API responses already carry
+ * everything the feed needs (display names, place, event title), so this
+ * is purely tag-and-sort, no fetching.
+ */
+export function mergeLobangFeed(
+  received: Lobang[],
+  sent: Lobang[]
+): LobangFeedItem[] {
+  return [
+    ...received.map((l) => ({ ...l, direction: "received" as const })),
+    ...sent.map((l) => ({ ...l, direction: "sent" as const })),
+  ].sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? ""));
 }
 
 /** Tiny className joiner. Falsy values are dropped. */
