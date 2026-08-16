@@ -66,18 +66,29 @@ export function LinkButton({
   href,
   children,
   variant = "primary",
+  size = "md",
   className,
+  target,
+  rel,
 }: {
   href: string;
   children: React.ReactNode;
   variant?: "primary" | "secondary" | "ghost";
+  size?: "sm" | "md";
   className?: string;
+  /** For an external link (e.g. `target="_blank"`) — `next/link` forwards
+   *  these straight onto the underlying `<a>`. */
+  target?: string;
+  rel?: string;
 }) {
   return (
     <Link
       href={href}
+      target={target}
+      rel={rel}
       className={cn(
-        "inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition-colors duration-150",
+        "inline-flex items-center justify-center gap-2 rounded-xl font-medium transition-colors duration-150",
+        size === "sm" ? "min-h-9 px-3 py-1.5 text-sm" : "min-h-11 px-4 py-2.5 text-sm",
         variant === "primary" && "bg-ember hover:bg-ember-deep text-white shadow-[var(--shadow-sm)]",
         variant === "secondary" &&
           "border-line bg-paper text-ink hover:bg-cream border",

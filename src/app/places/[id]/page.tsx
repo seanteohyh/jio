@@ -331,75 +331,96 @@ export default function PlaceDetailPage({
 
       {actionError && <ErrorNote>{actionError}</ErrorNote>}
 
-      <div className="flex flex-wrap gap-2">
-        <Button onClick={() => setLogging((v) => !v)}>
-          {logging ? "Never mind" : "I ate here"}
-        </Button>
-        {features.wishlist && (
-          <Button variant="secondary" onClick={toggleWishlist}>
-            {onWishlist ? "On your list ✓" : "Want to try"}
-          </Button>
-        )}
-        <a
-          href={`https://www.google.com/maps/dir/?api=1&destination=${place.lat},${place.lng}&travelmode=walking`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="border-line bg-paper text-ink hover:bg-cream inline-flex items-center rounded-lg border px-4 py-2.5 text-sm font-medium"
-        >
-          Directions
-        </a>
-        <a
-          href={googleMapsPlaceUrl(place)}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="border-line bg-paper text-ink hover:bg-cream inline-flex items-center rounded-lg border px-4 py-2.5 text-sm font-medium"
-        >
-          View on Google Maps
-        </a>
-        {/*
-          Open to anyone signed in, deliberately. Correcting a wrong cuisine or
-          a bad pin is the sort of thing that should take five seconds, not a
-          report and a wait. Taking a place *out* of circulation is the gated
-          action — that is "Remove this place" below, and archiving is
-          admin-only.
-        */}
-        <LinkButton href={`/places/${place.id}/edit`} variant="secondary">
-          Edit details
-        </LinkButton>
+      {/*
+        CHANGES_20260816.md §1 — three tiers by how often each is actually
+        used, built entirely from variants ui.tsx already defined but this
+        page never reached for (`ghost`, `LinkButton`'s `size`/external-link
+        support). Eight lookalike buttons in one flat row gets messier with
+        every action this file adds (lobang, the Maps link, likes next) —
+        tiering is what gives that growth somewhere to go.
+      */}
+      <div className="space-y-3">
+        <div>
+          <p className="text-stone mb-1.5 text-xs font-medium">Your visit</p>
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={() => setLogging((v) => !v)}>
+              {logging ? "Never mind" : "I ate here"}
+            </Button>
+            {features.wishlist && (
+              <Button variant="secondary" onClick={toggleWishlist}>
+                {onWishlist ? "On your list ✓" : "Want to try"}
+              </Button>
+            )}
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <LinkButton
+            href={`https://www.google.com/maps/dir/?api=1&destination=${place.lat},${place.lng}&travelmode=walking`}
+            variant="secondary"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Directions
+          </LinkButton>
+          <LinkButton
+            href={googleMapsPlaceUrl(place)}
+            variant="secondary"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            View on Google Maps
+          </LinkButton>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {/*
+            Open to anyone signed in, deliberately. Correcting a wrong cuisine or
+            a bad pin is the sort of thing that should take five seconds, not a
+            report and a wait. Taking a place *out* of circulation is the gated
+            action — that is "Remove this place" below, and archiving is
+            admin-only.
+          */}
+          <LinkButton href={`/places/${place.id}/edit`} variant="ghost" size="sm">
+            Edit details
+          </LinkButton>
+          {place.status === "active" && !!me?.user && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setReportSent(false);
+                setReporting((v) => !v);
+              }}
+            >
+              {reporting ? "Never mind" : "Report an issue"}
+            </Button>
+          )}
+          {/* CHANGES_20260807c.md §1 — previously only reachable from a closed
+              Jio in "You → Past Jios." Most of the time the reason to send one
+              is just browsing Places and thinking of someone, not having a
+              decided Jio that happened to land here — so both entry points
+              stay, side by side, rather than one replacing the other. */}
+          {features.lobangs && !!me?.user && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setLobangSent(false);
+                setSendingLobang((v) => !v);
+              }}
+            >
+              {sendingLobang ? "Never mind" : "Send lobang"}
+            </Button>
+          )}
+        </div>
+
         {canBlock && (
-          <Button
-            variant="danger"
-            onClick={() => setBlocking((v) => !v)}
-          >
-            {blocking ? "Never mind" : "Remove this place"}
-          </Button>
-        )}
-        {place.status === "active" && !!me?.user && (
-          <Button
-            variant="secondary"
-            onClick={() => {
-              setReportSent(false);
-              setReporting((v) => !v);
-            }}
-          >
-            {reporting ? "Never mind" : "Report an issue"}
-          </Button>
-        )}
-        {/* CHANGES_20260807c.md §1 — previously only reachable from a closed
-            Jio in "You → Past Jios." Most of the time the reason to send one
-            is just browsing Places and thinking of someone, not having a
-            decided Jio that happened to land here — so both entry points
-            stay, side by side, rather than one replacing the other. */}
-        {features.lobangs && !!me?.user && (
-          <Button
-            variant="secondary"
-            onClick={() => {
-              setLobangSent(false);
-              setSendingLobang((v) => !v);
-            }}
-          >
-            {sendingLobang ? "Never mind" : "Send lobang"}
-          </Button>
+          <div className="border-line border-t pt-3">
+            <Button variant="danger" onClick={() => setBlocking((v) => !v)}>
+              {blocking ? "Never mind" : "Remove this place"}
+            </Button>
+          </div>
         )}
       </div>
 
