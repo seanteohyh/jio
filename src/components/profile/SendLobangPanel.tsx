@@ -57,6 +57,11 @@ interface SendLobangPanelProps {
  * isn't registered yet, "Can't find it? Add it here" opens a minimal
  * add-place form inline, so composing a lobang never means losing your
  * note and recipient to a trip to /places/new and back.
+ *
+ * "Anyone (get a link)" is the one mode without a picker: it's a
+ * single-purpose "share this exact place," always the one this panel was
+ * opened from, so it skips the chip/search/add-place block entirely rather
+ * than asking the sender to reconfirm what they're already looking at.
  */
 export default function SendLobangPanel({
   selfId,
@@ -142,6 +147,13 @@ export default function SendLobangPanel({
     setToUserIds([]);
     setKakiId("");
     setPublicUrl(null);
+    // A public link is a single-purpose "share this exact place," not a
+    // recommendation composer — always the place this panel was opened
+    // from, never something to search for a substitute for.
+    if (next === "public" && defaultPlaceId) {
+      setPlaceId(defaultPlaceId);
+      setSelectedPlaceName(defaultPlaceName ?? "");
+    }
   };
 
   const choosePlace = (id: string, name: string) => {
@@ -386,7 +398,17 @@ export default function SendLobangPanel({
         )}
       </Field>
 
-      {hasRecipient && (
+      {hasRecipient && mode === "public" && defaultPlaceId && (
+        <p className="text-sm">
+          Sharing{" "}
+          <span className="font-medium">
+            {selectedPlaceName || defaultPlaceName || "this place"}
+          </span>
+          .
+        </p>
+      )}
+
+      {hasRecipient && !(mode === "public" && defaultPlaceId) && (
         <div className="space-y-3">
           <p className="text-ink text-sm font-medium">Place</p>
 
@@ -573,18 +595,16 @@ export default function SendLobangPanel({
         </div>
       )}
 
-      {hasRecipient && (
-        <Field label="Note (optional)">
-          <textarea
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            className={inputClass}
-            rows={2}
-            maxLength={280}
-            placeholder="Why you're thinking of them for this one"
-          />
-        </Field>
-      )}
+      <Field label="Note (optional)">
+        <textarea
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          className={inputClass}
+          rows={2}
+          maxLength={280}
+          placeholder="Why you're thinking of them for this one"
+        />
+      </Field>
 
       {error && <ErrorNote>{error}</ErrorNote>}
 
