@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { PlusSquare, Share, Smartphone } from "lucide-react";
-import { Button, Card } from "@/components/ui";
+import { Button } from "@/components/ui";
 import { useInstallPrompt } from "@/components/InstallPromptProvider";
 
 /**
@@ -16,6 +16,10 @@ import { useInstallPrompt } from "@/components/InstallPromptProvider";
  * reliable install path (desktop Firefox, etc.) — same as the auto-prompt,
  * for the same reason: a button that can't do anything is worse than no
  * button.
+ *
+ * No own `Card` wrapper (CHANGES_20260816.md §3) — this is only ever
+ * rendered on `/profile`, grouped with the page's other personal-account
+ * rows inside one shared card there, not as a standalone card of its own.
  */
 export default function AddToHomeScreenCard() {
   const { platform, standalone, install } = useInstallPrompt();
@@ -29,7 +33,7 @@ export default function AddToHomeScreenCard() {
   };
 
   return (
-    <Card className="flex items-start gap-3">
+    <div className="flex items-start gap-3">
       <span className="bg-ember-tint text-ember flex h-9 w-9 shrink-0 items-center justify-center rounded-full">
         <Smartphone className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
       </span>
@@ -65,6 +69,6 @@ export default function AddToHomeScreenCard() {
           </>
         )}
       </div>
-    </Card>
+    </div>
   );
 }
