@@ -12,6 +12,7 @@ import {
 import { DEFAULT_OFFICE } from "@/lib/constants";
 import { isEnabled } from "@/lib/config";
 import { computeKakiRatingByPlace, countKakiVisitsByPlace } from "@/lib/metrics";
+import { resolveAndStoreGooglePlaceId } from "@/lib/googlePlaces";
 import type { BudgetTier, Filters, Place, PlaceStatus } from "@/types";
 
 /** A lone review shouldn't read as group consensus — CHANGES_20260807c.md §2. */
@@ -174,7 +175,11 @@ export async function POST(request: NextRequest) {
       best_dishes: body.best_dishes ?? [],
       notes: body.notes?.trim() || null,
       created_by: user.id,
-    } as Omit<Place, "id" | "created_at" | "updated_at">);
+    } as Omit<Place, "id" | "created_at" | "updated_at" | "google_place_id">);
+
+    // Best-effort — never lets a Places lookup failure block adding a
+    // place. No-ops entirely without GOOGLE_PLACES_API_KEY configured.
+    await resolveAndStoreGooglePlaceId(repo, place);
 
     return json({ place }, 201);
   } catch (error) {

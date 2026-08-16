@@ -57,7 +57,7 @@ accident.
 
 Follow **Going live** in `README.md`. Roughly 20 minutes:
 
-1. Create a Supabase project, run the 48 migrations in the SQL editor
+1. Create a Supabase project, run the 49 migrations in the SQL editor
 2. Turn on **Authentication → Providers → Anonymous sign-ins**. This is the one
    dashboard toggle name-only sign-in needs, and the only thing that will make
    it fail with a confusing error if you miss it

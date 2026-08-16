@@ -23,7 +23,7 @@ import SendLobangPanel from "@/components/profile/SendLobangPanel";
 import ShareLink from "@/components/ShareLink";
 import { placeShareUrl } from "@/lib/shareUrl";
 import { config, features } from "@/lib/config";
-import { formatCuisine, formatDate } from "@/lib/utils";
+import { formatCuisine, formatDate, googleMapsPlaceUrl } from "@/lib/utils";
 import type { AuthUser, FlagReason, Place, Visit } from "@/types";
 
 interface PlaceResponse {
@@ -349,7 +349,7 @@ export default function PlaceDetailPage({
           Directions
         </a>
         <a
-          href={`https://www.google.com/maps/search/?api=1&query=${place.lat},${place.lng}`}
+          href={googleMapsPlaceUrl(place)}
           target="_blank"
           rel="noopener noreferrer"
           className="border-line bg-paper text-ink hover:bg-cream inline-flex items-center rounded-lg border px-4 py-2.5 text-sm font-medium"

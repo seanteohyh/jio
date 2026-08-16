@@ -472,6 +472,7 @@ export const supabaseRepo: Repo = {
       visit_count: row.visit_count ?? 0,
       lat: row.lat,
       lng: row.lng,
+      google_place_id: row.google_place_id ?? null,
     };
   },
 
@@ -495,6 +496,11 @@ export const supabaseRepo: Repo = {
     delete (patch as Record<string, unknown>).distance_m;
     delete (patch as Record<string, unknown>).avg_rating;
     delete (patch as Record<string, unknown>).visit_count;
+    // System-computed (049_google_place_id.sql) — also excluded from the
+    // grant itself, so a plain UPDATE naming this column would fail outright
+    // rather than silently no-op, but stripping it here keeps a client-sent
+    // value from ever reaching the query at all.
+    delete (patch as Record<string, unknown>).google_place_id;
 
     const { data: row, error } = await client
       .from("places")
@@ -505,6 +511,15 @@ export const supabaseRepo: Repo = {
 
     if (error) fail("Could not update that place", error);
     return row as Place;
+  },
+
+  async setGooglePlaceId(placeId, googlePlaceId) {
+    const client = await db();
+    const { error } = await client.rpc("set_google_place_id", {
+      p_place_id: placeId,
+      p_google_place_id: googlePlaceId,
+    });
+    if (error) fail("Could not save that place's Google Maps listing", error);
   },
 
   async deletePlace(id) {
