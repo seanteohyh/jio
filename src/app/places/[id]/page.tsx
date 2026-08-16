@@ -355,14 +355,12 @@ export default function PlaceDetailPage({
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <LinkButton
-            href={`https://www.google.com/maps/dir/?api=1&destination=${place.lat},${place.lng}&travelmode=walking`}
-            variant="secondary"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Directions
-          </LinkButton>
+          {/*
+            No separate "Directions" button — CHANGES_20260816.md §1 follow-up.
+            Google's own listing gets you turn-by-turn from there in one more
+            tap, so a dedicated Directions button was one more thing pointing
+            at the same app for marginal benefit.
+          */}
           <LinkButton
             href={googleMapsPlaceUrl(place)}
             variant="secondary"
@@ -371,6 +369,26 @@ export default function PlaceDetailPage({
           >
             View on Google Maps
           </LinkButton>
+          {/* CHANGES_20260807c.md §1 — previously only reachable from a closed
+              Jio in "You → Past Jios." Most of the time the reason to send one
+              is just browsing Places and thinking of someone, not having a
+              decided Jio that happened to land here — so both entry points
+              stay, side by side, rather than one replacing the other.
+              Kept at the same visual weight as Maps rather than folded into
+              the quiet tier below — CHANGES_20260816.md §1 follow-up: lobang
+              is a distinctive feature of this app, not an editing/moderation
+              afterthought like the two below it. */}
+          {features.lobangs && !!me?.user && (
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setLobangSent(false);
+                setSendingLobang((v) => !v);
+              }}
+            >
+              {sendingLobang ? "Never mind" : "Send lobang"}
+            </Button>
+          )}
         </div>
 
         <div className="flex flex-wrap gap-2">
@@ -394,23 +412,6 @@ export default function PlaceDetailPage({
               }}
             >
               {reporting ? "Never mind" : "Report an issue"}
-            </Button>
-          )}
-          {/* CHANGES_20260807c.md §1 — previously only reachable from a closed
-              Jio in "You → Past Jios." Most of the time the reason to send one
-              is just browsing Places and thinking of someone, not having a
-              decided Jio that happened to land here — so both entry points
-              stay, side by side, rather than one replacing the other. */}
-          {features.lobangs && !!me?.user && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                setLobangSent(false);
-                setSendingLobang((v) => !v);
-              }}
-            >
-              {sendingLobang ? "Never mind" : "Send lobang"}
             </Button>
           )}
         </div>
