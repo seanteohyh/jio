@@ -9,6 +9,7 @@ import {
   notFound,
   readJson,
 } from "@/lib/api";
+import { resolveAndStoreGooglePlaceId } from "@/lib/googlePlaces";
 import type { Place } from "@/types";
 
 // Next 15+ hands route params in as a Promise.
@@ -60,6 +61,14 @@ export async function PUT(request: NextRequest, { params }: Params) {
     }
 
     const place = await repo.updatePlace(id, body);
+
+    // Only re-resolve when the match-relevant fields actually changed — a
+    // budget/cuisine/notes-only edit has no reason to spend a lookup.
+    // Best-effort, same as on create: never blocks the edit itself.
+    if (body.name !== undefined || body.address !== undefined) {
+      await resolveAndStoreGooglePlaceId(repo, place);
+    }
+
     return json({ place });
   } catch (error) {
     return errorResponse(error);

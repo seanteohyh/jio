@@ -69,10 +69,20 @@ export interface Repo {
    */
   getPublicPlace(id: string): Promise<PublicPlace | null>;
   createPlace(
-    data: Omit<Place, "id" | "created_at" | "updated_at">
+    data: Omit<Place, "id" | "created_at" | "updated_at" | "google_place_id">
   ): Promise<Place>;
   updatePlace(id: string, data: Partial<Place>): Promise<Place>;
   deletePlace(id: string): Promise<void>;
+  /**
+   * The one legitimate way to set `google_place_id` (CHANGES_20260814.md
+   * §2, migration 049) — a system-computed match, excluded from
+   * `updatePlace`'s writable columns the same way `avg_rating` is. Called
+   * by the app server after `resolveAndStoreGooglePlaceId`
+   * (`lib/googlePlaces.ts`) runs, never directly from client input.
+   * `googlePlaceId: null` clears a previous match (e.g. a name edit that no
+   * longer resolves confidently).
+   */
+  setGooglePlaceId(placeId: string, googlePlaceId: string | null): Promise<void>;
 
   // ---- Visits & reviews ----
   listVisits(placeId?: string, userId?: string): Promise<Visit[]>;
@@ -546,6 +556,7 @@ export const REPO_METHODS = [
   "createPlace",
   "updatePlace",
   "deletePlace",
+  "setGooglePlaceId",
   "listVisits",
   "createVisit",
   "updateVisit",

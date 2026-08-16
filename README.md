@@ -41,7 +41,7 @@ When you are ready to make it real, see [Going live](#going-live).
 | **Vote on a place that isn't listed yet** | Typing a name the search doesn't find logs it as a vote option immediately, no place record required. A non-blocking prompt afterward offers to add it to the pool; declining leaves it exactly as a text-only choice, permanently. |
 | **Kakis** | Lunch groups with a shareable invite link and shared stats — group favourites, who eats out most, who is most adventurous. Any current member can also add someone directly by searching their name, without a link changing hands first — same trust level as the invite link itself, just faster for someone already sitting across the table. |
 | **Lobangs** | "Saw this online, thought of you" — send any registered place to specific teammates or a whole Kaki, with an optional note and personalized "quick pick" suggestions. Two entry points side by side: from a closed Jio in "You → Past Jios" (the winning place pinned as a default), and directly from a place's own page (`/places/[id]`) for the more common case of just browsing and thinking of someone. |
-| **Places** | Searchable list with cuisine, budget, walk-time and rating filters, sortable by nearest, highest-rated, or rated by your Kaki group — plus a "Kaki favourites only" chip that actually narrows the list, not just reorders it, and a badge on the card itself once at least 2 Kaki-member visits back a place's rating, so a lone review doesn't read as group consensus. Add places by hand (address or postal code — a postal code found anywhere in a pasted-in address, e.g. one copied straight from Google Maps, is tried first, since OneMap's road/block index can choke on a business-name prefix or unit number that a bare postal code sidesteps), import candidate names from a food blog, or let the daily cron find them on OpenStreetMap. Cuisine tagging covers a fixed, scored list (now including Modern and Traditional) plus free-text "Other" tags that show on the place but never affect recommendations. A place's own page has a "View on Google Maps" link next to Directions, computed from its coordinates — no stored link, no Google API call. Every active place also has a public preview page (`/p/[id]`, linked from a Share button on the full page) — the app's only page that needs no sign-in, showing name, cuisine, address, best dishes, aggregate rating and the same Maps link to anyone with the link, with a "Join to see more" prompt into `/login` for everything past that, including the named review list. |
+| **Places** | Searchable list with cuisine, budget, walk-time and rating filters, sortable by nearest, highest-rated, or rated by your Kaki group — plus a "Kaki favourites only" chip that actually narrows the list, not just reorders it, and a badge on the card itself once at least 2 Kaki-member visits back a place's rating, so a lone review doesn't read as group consensus. Add places by hand (address or postal code — a postal code found anywhere in a pasted-in address, e.g. one copied straight from Google Maps, is tried first, since OneMap's road/block index can choke on a business-name prefix or unit number that a bare postal code sidesteps), import candidate names from a food blog, or let the daily cron find them on OpenStreetMap. Cuisine tagging covers a fixed, scored list (now including Modern and Traditional) plus free-text "Other" tags that show on the place but never affect recommendations. A place's own page has a "View on Google Maps" link next to Directions. Without a Google Places API key configured it's a plain coordinate pin, computed client-side, no backend call — that's still the default. With one configured, the app resolves each place to its actual Google listing, best-effort, server-side, at create/edit time (gated on the result actually looking like the same place — name similarity plus a distance check — not just Google's own top result), and the link opens that instead: the restaurant's real page, photos and reviews included, with the coordinate link as an automatic fallback if the match ever stops resolving. Every active place also has a public preview page (`/p/[id]`, linked from a Share button on the full page) — the app's only page that needs no sign-in, showing name, cuisine, address, best dishes, aggregate rating and the same Maps link (real listing or pin, same rule) to anyone with the link, with a "Join to see more" prompt into `/login` for everything past that, including the named review list. |
 | **Map** | Leaflet map of everything in walking distance, with real walking routes when OneMap is configured. A Kaki-favourite place gets an amber ring on its marker, layered independently of the existing selected/not-selected fill color. |
 | **Reviews** | Log a visit privately, or share it as a review. Each visit is its own entry, editable and deletable later — including un-sharing a review back to private. Each shared review can be liked — a bare count plus your own toggle state, no "liked by" list — which nudges the reviewer with a throttled push (at most one per review per ~10 minutes) and feeds into a weekly recap push for anyone whose reviews got at least one like that week. |
 | **Saved places** | Bookmark anywhere from any list. `/places` has an All / Saved split, and saving nudges a place up your own suggestions. |
@@ -282,7 +282,7 @@ Roughly 30 minutes end to end. Everything below stays on a free tier.
    `service_role` key. The last one is a secret; it bypasses all access
    control.
 3. **SQL Editor** — run every file in `supabase/migrations/` in numeric order,
-   001 through 048. They are idempotent, so re-running is harmless.
+   001 through 049. They are idempotent, so re-running is harmless.
 4. **Authentication → Providers → Anonymous sign-ins** — turn this on. It is
    what makes name-only sign-in work.
 5. **Authentication → URL Configuration** — set the Site URL to your deployed
@@ -311,7 +311,25 @@ for real walking distances. Without it the app falls back to straight-line
 estimates, which run about 20–30% optimistic in a dense area — everything still
 works, the numbers are just softer.
 
-### 4. Deploy
+### 4. Google Places (optional)
+
+Without this, the "View on Google Maps" link on a place's page opens a
+coordinate pin — same as before this feature existed, nothing breaks.
+With it, the app resolves each place to its actual Google listing instead.
+
+1. Create a project at [console.cloud.google.com](https://console.cloud.google.com)
+   (or reuse an existing one) and enable **Places API (New)**.
+2. Enable billing on the project — required even though the lookup this
+   app makes should cost close to nothing at this scale (see the Free-tier
+   realities section below).
+3. **APIs & Services → Credentials** — create an API key, and restrict it
+   to the Places API specifically.
+4. Set `GOOGLE_PLACES_API_KEY` (below).
+5. Once deployed, run `npm run backfill:google-places` once to resolve
+   every place added before the key existed — new places resolve
+   themselves automatically going forward.
+
+### 5. Deploy
 
 Push to GitHub, import the repo at [vercel.com](https://vercel.com), and add
 the environment variables. Vercel detects Next.js with no configuration.
@@ -326,23 +344,26 @@ the environment variables. Vercel detects Next.js with no configuration.
 | `CRON_SECRET` | `openssl rand -hex 32` |
 | `NEXT_PUBLIC_SITE_URL` | Your live URL. Used to build shareable invite links — without it the app falls back to the browser's origin, which leaves the first server render showing a bare path. Do **not** use `VERCEL_URL`: it resolves to the per-deployment hostname, not the production alias. |
 | `ONEMAP_EMAIL` / `ONEMAP_PASSWORD` | Optional, from step 3 |
+| `GOOGLE_PLACES_API_KEY` | Optional, from step 4 |
 | `VAPID_PUBLIC_KEY` / `NEXT_PUBLIC_VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` | Optional — push notifications. Generate with `npx web-push generate-vapid-keys`; the public key goes in **both** variables (server and client need it under different names), same value. Without these, push silently no-ops rather than breaking anything. |
 | `JIO_NAME_CLAIM_ENABLED` | Optional, defaults to `true`. Set to `false` once names genuinely aren't unique across the team anymore — typing an existing name then always signs in as (or renames) the current session rather than offering to merge. Only meaningful in `name` mode; recovery links and the admin merge tool at `/admin/accounts` both keep working unaffected either way. |
 
 Then go back to Supabase and set the Site URL to your live URL.
 
-### 5. Seed some places
+### 6. Seed some places
 
 ```bash
-npm run seed:manual      # 25 hand-picked spots around Bras Basah / Bugis
-npm run seed:overpass    # everything OSM knows about nearby → review queue
-npm run seed:walktimes   # compute and cache walking times
+npm run seed:manual              # 25 hand-picked spots around Bras Basah / Bugis
+npm run seed:overpass            # everything OSM knows about nearby → review queue
+npm run seed:walktimes           # compute and cache walking times
+npm run backfill:google-places   # optional — needs step 4's API key set first
 ```
 
-All three read `.env.local` and exit cleanly with a message if Supabase is not
-configured, rather than failing.
+All four read `.env.local` and exit cleanly with a message if Supabase (or,
+for the last one, the Google Places key) is not configured, rather than
+failing.
 
-### 6. Check it worked
+### 7. Check it worked
 
 ```bash
 curl -H "Authorization: Bearer $CRON_SECRET" \
@@ -407,6 +428,19 @@ The 25 curated places in `scripts/manual-seed.json` are the fallback.
 **OneMap tokens last 72 hours.** They are cached in memory and refreshed 12
 hours early; a 401 clears the cache and retries once. If it still fails, the
 app falls back to haversine rather than showing an error.
+
+**Google Places requires billing enabled on the project even though the
+cost at this scale should be close to nothing.** The lookup this app makes
+(`places:searchText`, requesting only `id`/`displayName`/`location`) isn't
+Google's fully-free Essentials/IDs-only tier — the extra two fields are
+what `lib/googlePlaces.ts` needs to build its own confidence check, so
+they're requested deliberately — but at one small team's worth of
+occasional place adds/edits, real usage should land in the low cents,
+ever, not a recurring cost. Not independently verified against Google's
+live billing console — this session's sandbox blocks outbound requests to
+`developers.google.com` — so treat it as reasoned from Google's published
+pricing tiers, not confirmed firsthand; worth a spot-check against your
+own Cloud console once real usage starts.
 
 ---
 
@@ -752,9 +786,10 @@ rather than a loosened policy.** `places_select` (007_rls.sql) is
 Postgres role `anon`, which that policy grants nothing to, so a plain
 `select` from `places` already returns nothing for them; there was no
 accidental exposure to patch. `get_public_place` (migration 046, widened by
-047) is `SECURITY DEFINER`, callable by `anon`, and returns the
-`PublicPlace` shape — name, address, cuisine, best dishes, aggregate
-rating, and `lat`/`lng` — scoped to `status = 'active'` so a
+047 and again by 049) is `SECURITY DEFINER`, callable by `anon`, and
+returns the `PublicPlace` shape — name, address, cuisine, best dishes,
+aggregate rating, `lat`/`lng`, and `google_place_id` — scoped to
+`status = 'active'` so a
 still-under-review or blocked place never becomes the first thing a
 forwarded link shows a stranger. `place.id` doubles as the public
 identifier rather than a new invite-token system: it's already an
@@ -790,12 +825,24 @@ session, so there's no `auth.uid()` for RLS to match, the same "no session
 to go through RLS with" situation as the discovery cron's writes
 (`lib/supabase/serviceClient.ts`).
 
+**`google_place_id` is excluded from a plain place edit the same way
+`status` is, and for the same reason: a client that could set it directly
+could point a place's Maps link at an arbitrary listing.** 027's dynamic
+column grant (see "Adding a new *protected* column" in its own comment)
+made this a one-line change rather than a new mechanism: migration 049
+just re-runs that same derivation with `google_place_id` added to the
+exclusion list, and adds `set_google_place_id` — a narrow `SECURITY
+DEFINER` function, `status`'s exact shape — as the one legitimate way to
+set it. Only the app server calls it, right after
+`resolveAndStoreGooglePlaceId` (`lib/googlePlaces.ts`) runs following a
+create or a name/address edit, never from client input directly.
+
 ---
 
 ## Tests
 
 ```bash
-npm test          # 387 tests across 31 files
+npm test          # 396 tests across 32 files
 npm run typecheck
 npm run lint
 ```
@@ -833,6 +880,7 @@ npm run lint
 | `kakiMembers.test.ts` | Adding an existing user to a Kaki directly: any current member can, a non-member can't, no duplicate membership, rejects a nonexistent group |
 | `publicPlace.test.ts` | The public place-preview data: only the safe field subset, never `notes`/`created_by`, carries `lat`/`lng`, hides `needs_review` and `blocked` places, computed rating and visit count match the authenticated view |
 | `reviewLikes.test.ts` | Toggling a like on/off, independent counts across multiple likers, `liked_by_me` populated only for a known viewer, the like-push throttle window (claims once, refuses within the window, claims again after), and `listReviewLikesSince`'s cutoff filtering |
+| `googlePlaces.test.ts` | The Google Maps link confidence gate (`nameSimilarity` — exact/reordered/partial/unrelated/punctuation/empty-input matches) and the link builder (`googleMapsPlaceUrl` — real listing when a place id is present, coordinate fallback otherwise) |
 
 **`npm test` does not typecheck.** Vitest transforms TypeScript with esbuild,
 which strips annotations without checking them, and the suite is all pure

@@ -5,7 +5,7 @@ import { BudgetBadge, Card, Chip, LinkButton, SectionHeading, Stars } from "@/co
 import ShareLink from "@/components/ShareLink";
 import { placeShareUrl } from "@/lib/shareUrl";
 import { config } from "@/lib/config";
-import { formatCuisine } from "@/lib/utils";
+import { formatCuisine, googleMapsPlaceUrl } from "@/lib/utils";
 
 /**
  * Public place preview — CHANGES_20260812.md §4, the app's first
@@ -13,10 +13,12 @@ import { formatCuisine } from "@/lib/utils";
  * token, see `shareUrl.placeShareUrl`), and the data comes from
  * `getPublicPlace()`, which only ever returns the narrow, privacy-safe
  * `PublicPlace` shape — never the named review list, never notes or who
- * added it. Coordinates *are* included (CHANGES_20260814.md §2) so a
- * visitor can open the place in Google Maps — every place here is an
- * already-public venue findable on Maps regardless, so the exact pin isn't
- * sensitive the way notes/authorship are.
+ * added it. Coordinates and `google_place_id` *are* included
+ * (CHANGES_20260814.md §2) so a visitor gets the same "View on Google
+ * Maps" link — opening the restaurant's actual listing when one's been
+ * matched, a coordinate pin otherwise — as a signed-in visitor does. Every
+ * place here is an already-public venue findable on Maps regardless, so
+ * neither carries the same sensitivity as notes/authorship.
  *
  * A signed-in visitor who follows a shared link gets bounced straight to
  * the full `/places/[id]` page rather than seeing this cut-down version —
@@ -77,7 +79,7 @@ export default async function PublicPlacePage({
         </div>
 
         <a
-          href={`https://www.google.com/maps/search/?api=1&query=${place.lat},${place.lng}`}
+          href={googleMapsPlaceUrl(place)}
           target="_blank"
           rel="noopener noreferrer"
           className="border-line bg-paper text-ink hover:bg-cream mt-3 inline-flex items-center rounded-lg border px-4 py-2.5 text-sm font-medium"

@@ -431,6 +431,7 @@ export const demoRepo: Repo = {
       visit_count: place.visit_count ?? 0,
       lat: place.lat,
       lng: place.lng,
+      google_place_id: place.google_place_id ?? null,
     };
   },
 
@@ -441,6 +442,7 @@ export const demoRepo: Repo = {
       id: `demo-place-${uuid().slice(0, 8)}`,
       created_at: now,
       updated_at: now,
+      google_place_id: null,
     };
     store().places.push(place);
     return enrich(place);
@@ -455,10 +457,12 @@ export const demoRepo: Repo = {
     // plain update. A guarantee that holds in production but not in demo is
     // worse than none, since demo is the mode people develop against, so
     // strip it here too rather than trust every caller to leave it out.
+    // google_place_id is excluded the same way (049_google_place_id.sql) —
+    // system-computed, settable only through `setGooglePlaceId`.
     // (office_id isn't a field on Place at all today, so there's nothing to
     // strip for it yet — if a place ever becomes reassignable to a different
     // office, extend this same guard.)
-    const { status: _status, ...safeData } = data;
+    const { status: _status, google_place_id: _googlePlaceId, ...safeData } = data;
     s.places[index] = {
       ...s.places[index],
       ...safeData,
@@ -466,6 +470,12 @@ export const demoRepo: Repo = {
       updated_at: new Date().toISOString(),
     };
     return enrich(s.places[index]);
+  },
+
+  async setGooglePlaceId(placeId, googlePlaceId) {
+    const s = store();
+    const place = s.places.find((p) => p.id === placeId);
+    if (place) place.google_place_id = googlePlaceId;
   },
 
   async deletePlace(id) {

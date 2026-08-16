@@ -73,6 +73,15 @@ export interface Place {
   created_by?: string | null;
   created_at?: string;
   updated_at?: string;
+  /**
+   * Google's own Place ID for this listing, resolved best-effort at create/
+   * edit time by `src/lib/googlePlaces.ts` (CHANGES_20260814.md §2,
+   * migration 049) — `null` until a confident match is found, or if Google
+   * Places credentials aren't configured. System-computed, same class as
+   * `avg_rating`: a plain edit cannot set this directly (027/049's grant
+   * exclusion) — only `set_google_place_id` (SECURITY DEFINER) can.
+   */
+  google_place_id?: string | null;
 
   /** Derived, not stored: minutes on foot from the active office. */
   walk_minutes?: number | null;
@@ -98,10 +107,13 @@ export interface Place {
 
 /**
  * The subset of `Place` safe to show an anonymous visitor — CHANGES_20260812.md
- * §4. Deliberately excludes `lat`/`lng` (an exact pin, beyond what a text
- * address already gives away), `notes`, `created_by`, and anything from
- * `Visit` (the named review list was only ever consented to be shared with
- * the team, not the public internet). `get_public_place()` (migration 046)
+ * §4. Deliberately excludes `notes`, `created_by`, and anything from `Visit`
+ * (the named review list was only ever consented to be shared with the
+ * team, not the public internet). `lat`/`lng` and `google_place_id` *are*
+ * included (CHANGES_20260814.md §2, migrations 047/049) — every place here
+ * is a restaurant or eatery already publicly discoverable on Google Maps
+ * regardless, so neither the exact pin nor which Google listing it maps to
+ * carries the same sensitivity as `notes`/`created_by`. `get_public_place()`
  * also only ever returns `status = 'active'` places, so this type carries no
  * `status` field at all — there is nothing to branch on.
  */
@@ -117,6 +129,10 @@ export interface PublicPlace {
   visit_count: number;
   lat: number;
   lng: number;
+  /** Google's own Place ID for this listing, when a confident match was
+   *  found (src/lib/googlePlaces.ts) — `null` means fall back to a
+   *  coordinate-based Maps link, same shape as `Place.google_place_id`. */
+  google_place_id: string | null;
 }
 
 export interface Visit {

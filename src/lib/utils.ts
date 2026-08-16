@@ -94,6 +94,59 @@ export function placeDescriptor(
 }
 
 /**
+ * Word-overlap similarity between two names, 0 (nothing shared) to 1
+ * (identical word sets) — lowercased, punctuation stripped, split on
+ * whitespace, compared as sets rather than as strings so word order and
+ * repeats don't matter ("Two Men Bagel House" vs "Two Men Bagel House
+ * (Enggor St)" scores the same as an exact match). Deliberately simple: this
+ * only has to clear a confidence bar for a Google Places match
+ * (CHANGES_20260814.md §2), not rank close alternatives against each other.
+ */
+export function nameSimilarity(a: string, b: string): number {
+  const tokenize = (s: string) =>
+    new Set(
+      s
+        .toLowerCase()
+        .replace(/[^\p{L}\p{N}\s]/gu, " ")
+        .split(/\s+/)
+        .filter(Boolean)
+    );
+
+  const setA = tokenize(a);
+  const setB = tokenize(b);
+  if (setA.size === 0 || setB.size === 0) return 0;
+
+  let shared = 0;
+  for (const word of setA) if (setB.has(word)) shared += 1;
+
+  return shared / new Set([...setA, ...setB]).size;
+}
+
+/**
+ * The Maps link rendered on a place's page (CHANGES_20260814.md §2). With a
+ * resolved `google_place_id` (migration 049), this opens the restaurant's
+ * actual listing — name, photos, reviews — rather than a bare pin; Google's
+ * documented `query_place_id` pattern keeps `query` as a text fallback in
+ * case the id ever stops resolving. Without one, it falls back to today's
+ * coordinate-only link, unchanged.
+ */
+export function googleMapsPlaceUrl(place: {
+  name: string;
+  lat: number;
+  lng: number;
+  google_place_id?: string | null;
+}): string {
+  if (place.google_place_id) {
+    return (
+      `https://www.google.com/maps/search/?api=1` +
+      `&query=${encodeURIComponent(place.name)}` +
+      `&query_place_id=${encodeURIComponent(place.google_place_id)}`
+    );
+  }
+  return `https://www.google.com/maps/search/?api=1&query=${place.lat},${place.lng}`;
+}
+
+/**
  * True when the app should use the in-memory demo store.
  * Kept as a standalone function because both server and client code read it.
  */
