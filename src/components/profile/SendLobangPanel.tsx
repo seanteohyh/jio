@@ -12,8 +12,9 @@ import {
   SkeletonRows,
   inputClass,
 } from "../ui";
+import ShareLink from "../ShareLink";
 import { fetcher, mutateJson } from "@/lib/fetcher";
-import type { Kaki, Place, ScoredPlace, TeamUser } from "@/types";
+import type { Kaki, Lobang, Place, ScoredPlace, TeamUser } from "@/types";
 
 interface SuggestResponse {
   suggestions: (ScoredPlace & { why: string })[];
@@ -23,32 +24,39 @@ interface SearchResponse {
   places: Place[];
 }
 
-type RecipientMode = "users" | "kaki";
+type RecipientMode = "users" | "kaki" | "public";
 
 interface SendLobangPanelProps {
   selfId: string;
   eventId?: string;
   defaultPlaceId?: string | null;
   defaultPlaceName?: string | null;
-  onSent: () => void;
+  /** `wasPublic` is true only after the "Anyone (get a link)" path
+   *  actually finished (the "Done" button, not the moment the link is
+   *  generated — that click is the visitor's cue they're finished copying
+   *  or sharing it, not the panel's). */
+  onSent: (wasPublic?: boolean) => void;
   onCancel: () => void;
 }
 
 /**
- * The "send lobang" composer.
+ * The "Share this lobang" composer — CHANGES_20260816.md §4 widened this
+ * from "send lobang" to a third path, "Anyone (get a link)", alongside
+ * teammates and a whole Kaki.
  *
- * Recipients are either a multi-select of specific teammates, or a single
- * Kaki you're a member of (every current member gets it, minus yourself) —
- * the two modes aren't combinable in one send, to keep duplicate-handling
- * unambiguous. Any registered place is fair game, not just places either
- * person has
- * actually been to — a lobang is often "saw this online, thought of you."
- * The originating Jio's winner is pinned at the top, personalized "quick
- * picks" sit just below it as a shortcut, and a real search box covers
- * everything else. If the place genuinely isn't registered yet, "Can't find
- * it? Add it here" opens a minimal add-place form inline, so composing a
- * lobang never means losing your note and recipient to a trip to
- * /places/new and back.
+ * Recipients are a multi-select of specific teammates, a single Kaki you're
+ * a member of (every current member gets it, minus yourself), or nobody in
+ * particular — a public link anyone can open, signed in or not, resolved
+ * later through `/l/[token]`. The three modes aren't combinable in one
+ * send. Any registered place is fair game, not just places either person
+ * has actually been to — a lobang is often "saw this online, thought of
+ * you." The originating Jio's winner is pinned at the top, personalized
+ * "quick picks" sit just below it as a shortcut (teammates/Kaki modes
+ * only — there's no one specific person to personalize a public link for),
+ * and a real search box covers everything else. If the place genuinely
+ * isn't registered yet, "Can't find it? Add it here" opens a minimal
+ * add-place form inline, so composing a lobang never means losing your
+ * note and recipient to a trip to /places/new and back.
  */
 export default function SendLobangPanel({
   selfId,
@@ -74,6 +82,7 @@ export default function SendLobangPanel({
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [publicUrl, setPublicUrl] = useState<string | null>(null);
 
   const [search, setSearch] = useState("");
 
@@ -92,8 +101,14 @@ export default function SendLobangPanel({
 
   const teammates = (usersData?.users ?? []).filter((u) => u.user_id !== selfId);
   const kakis = kakisData?.kakis ?? [];
+  // "public" needs no recipient selection at all — picking that mode is
+  // itself the whole choice, so the place picker below opens immediately.
   const hasRecipient =
-    mode === "users" ? toUserIds.length > 0 : Boolean(kakiId);
+    mode === "users"
+      ? toUserIds.length > 0
+      : mode === "kaki"
+        ? Boolean(kakiId)
+        : true;
   // Personalized "quick picks" only make sense against one specific person.
   const singleUserId =
     mode === "users" && toUserIds.length === 1 ? toUserIds[0] : undefined;
@@ -126,6 +141,7 @@ export default function SendLobangPanel({
     setMode(next);
     setToUserIds([]);
     setKakiId("");
+    setPublicUrl(null);
   };
 
   const choosePlace = (id: string, name: string) => {
@@ -138,14 +154,27 @@ export default function SendLobangPanel({
     setBusy(true);
     setError(null);
     try {
-      await mutateJson("/api/lobangs", "POST", {
-        to_user_ids: mode === "users" ? toUserIds : undefined,
-        kaki_id: mode === "kaki" ? kakiId : undefined,
-        place_id: placeId,
-        note: note.trim() || undefined,
-        event_id: eventId ?? null,
-      });
-      onSent();
+      const result = await mutateJson<{ lobang: Lobang; url?: string }>(
+        "/api/lobangs",
+        "POST",
+        {
+          to_user_ids: mode === "users" ? toUserIds : undefined,
+          kaki_id: mode === "kaki" ? kakiId : undefined,
+          public: mode === "public" ? true : undefined,
+          place_id: placeId,
+          note: note.trim() || undefined,
+          event_id: eventId ?? null,
+        }
+      );
+      // Public mode isn't "done" the moment the link exists — it needs to
+      // actually be copied or shared, so this shows the link instead of
+      // closing the panel; teammates/Kaki modes still close immediately,
+      // unchanged from before this path existed.
+      if (mode === "public" && result.url) {
+        setPublicUrl(result.url);
+      } else {
+        onSent();
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not send that");
     } finally {
@@ -235,6 +264,41 @@ export default function SendLobangPanel({
     );
   };
 
+  // The public path isn't "done" until the link is actually copied or
+  // shared — so once it exists, this replaces the whole composer with
+  // just the result, rather than closing the panel out from under it.
+  if (publicUrl) {
+    return (
+      <Card className="animate-fade-in space-y-3">
+        <p className="text-sm">
+          Link ready for{" "}
+          <span className="font-medium">
+            {selectedPlaceName || "this place"}
+          </span>
+          .
+        </p>
+        <ShareLink
+          url={publicUrl}
+          label="Share this lobang"
+          shareText={`Check out ${selectedPlaceName || "this place"} — via Jio`}
+        />
+        <div className="flex items-center gap-2">
+          <Button size="sm" onClick={() => onSent(true)}>
+            Done
+          </Button>
+          {placeId && (
+            <Link
+              href={`/places/${placeId}`}
+              className="text-ember ml-auto text-xs underline"
+            >
+              View place
+            </Link>
+          )}
+        </div>
+      </Card>
+    );
+  }
+
   return (
     <Card className="animate-fade-in space-y-3">
       <Field label="Send lobang to">
@@ -247,9 +311,12 @@ export default function SendLobangPanel({
               A whole Kaki
             </Chip>
           )}
+          <Chip active={mode === "public"} onClick={() => switchMode("public")}>
+            Anyone (get a link)
+          </Chip>
         </div>
 
-        {mode === "users" ? (
+        {mode === "users" && (
           <div className="mt-2 flex flex-wrap gap-1.5">
             {teammates.map((t) => (
               <Chip
@@ -261,7 +328,9 @@ export default function SendLobangPanel({
               </Chip>
             ))}
           </div>
-        ) : (
+        )}
+
+        {mode === "kaki" && (
           <select
             value={kakiId}
             onChange={(e) => setKakiId(e.target.value)}
@@ -274,6 +343,13 @@ export default function SendLobangPanel({
               </option>
             ))}
           </select>
+        )}
+
+        {mode === "public" && (
+          <p className="text-stone mt-2 text-xs">
+            Anyone with the link can open it — not just people already on
+            Jio. It won&apos;t appear in your Lobangs feed or send a push.
+          </p>
         )}
       </Field>
 
@@ -485,7 +561,13 @@ export default function SendLobangPanel({
           disabled={busy || !hasRecipient || !placeId}
           size="sm"
         >
-          {busy ? "Sending…" : "Send lobang"}
+          {mode === "public"
+            ? busy
+              ? "Getting link…"
+              : "Get link"
+            : busy
+              ? "Sending…"
+              : "Send lobang"}
         </Button>
         <Button variant="ghost" size="sm" onClick={onCancel} disabled={busy}>
           Cancel

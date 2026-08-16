@@ -75,6 +75,7 @@ export default function PlaceDetailPage({
   const [reportSent, setReportSent] = useState(false);
   const [sendingLobang, setSendingLobang] = useState(false);
   const [lobangSent, setLobangSent] = useState(false);
+  const [lobangSentPublic, setLobangSentPublic] = useState(false);
   const [likingId, setLikingId] = useState<string | null>(null);
 
   if (isLoading) return <SkeletonDetail />;
@@ -271,13 +272,35 @@ export default function PlaceDetailPage({
         )}
       </header>
 
-      {place.status === "active" && (
-        <ShareLink
-          url={placeShareUrl(place.id)}
-          label="Share this place"
-          shareText={`Check out ${place.name} on ${config.appName}`}
-        />
-      )}
+      {/*
+        CHANGES_20260816.md §4 — one entry point, three paths, replacing
+        both the old standalone "Share this place" card and the separate
+        "Send lobang" button that used to sit in the tier-2 row below.
+        Teammates/Kaki are unchanged; "Anyone (get a link)" is the new
+        path, producing an attributed /l/[token] link instead of the old
+        plain, anonymous /p/[id] one. Falls back to the plain ShareLink
+        when lobangs is off (or before `me` has loaded) so a place can
+        still be shared even without the feature that now backs the
+        richer path.
+      */}
+      {place.status === "active" &&
+        (features.lobangs && !!me?.user ? (
+          <Button
+            variant="secondary"
+            onClick={() => {
+              setLobangSent(false);
+              setSendingLobang((v) => !v);
+            }}
+          >
+            {sendingLobang ? "Never mind" : "Share this lobang"}
+          </Button>
+        ) : (
+          <ShareLink
+            url={placeShareUrl(place.id)}
+            label="Share this place"
+            shareText={`Check out ${place.name} on ${config.appName}`}
+          />
+        ))}
 
       {place.status === "needs_review" && (
         <Card className="border-amber/40 bg-amber-tint/60 space-y-3">
@@ -369,26 +392,6 @@ export default function PlaceDetailPage({
           >
             View on Google Maps
           </LinkButton>
-          {/* CHANGES_20260807c.md §1 — previously only reachable from a closed
-              Jio in "You → Past Jios." Most of the time the reason to send one
-              is just browsing Places and thinking of someone, not having a
-              decided Jio that happened to land here — so both entry points
-              stay, side by side, rather than one replacing the other.
-              Kept at the same visual weight as Maps rather than folded into
-              the quiet tier below — CHANGES_20260816.md §1 follow-up: lobang
-              is a distinctive feature of this app, not an editing/moderation
-              afterthought like the two below it. */}
-          {features.lobangs && !!me?.user && (
-            <Button
-              variant="secondary"
-              onClick={() => {
-                setLobangSent(false);
-                setSendingLobang((v) => !v);
-              }}
-            >
-              {sendingLobang ? "Never mind" : "Send lobang"}
-            </Button>
-          )}
         </div>
 
         <div className="flex flex-wrap gap-2">
@@ -426,7 +429,9 @@ export default function PlaceDetailPage({
       </div>
 
       {lobangSent && (
-        <p className="text-sage text-xs">Lobang sent.</p>
+        <p className="text-sage text-xs">
+          {lobangSentPublic ? "Link created." : "Lobang sent."}
+        </p>
       )}
 
       {reportSent && (
@@ -501,9 +506,10 @@ export default function PlaceDetailPage({
           selfId={me.user.id}
           defaultPlaceId={place.id}
           defaultPlaceName={place.name}
-          onSent={() => {
+          onSent={(wasPublic) => {
             setSendingLobang(false);
             setLobangSent(true);
+            setLobangSentPublic(!!wasPublic);
           }}
           onCancel={() => setSendingLobang(false)}
         />

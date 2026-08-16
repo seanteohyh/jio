@@ -449,6 +449,15 @@ export interface Lobang {
   /** Set only for a group send. Display provenance only — the actual
    *  recipient list always lives in `lobang_recipients`. */
   kaki_id?: string | null;
+  /**
+   * Set only for a public send (CHANGES_20260816.md §4) — an unguessable
+   * token `/l/[token]` resolves through `get_public_lobang()`, same
+   * SECURITY DEFINER shape as `get_public_place`. No `lobang_recipients`
+   * rows exist for a public send (there's no specific person), so this is
+   * how one is told apart from a targeted send: `listLobangsSent`/
+   * `listLobangsReceived` both exclude rows where this is set.
+   */
+  public_token?: string | null;
   created_at?: string;
 
   /** Derived. Populated only on a `listLobangsReceived` row, or a
@@ -468,10 +477,31 @@ export interface Lobang {
   event_title?: string | null;
 }
 
-/** Who a lobang is being sent to — specific teammates, or a whole Kaki. */
+/**
+ * Who a lobang is being sent to — specific teammates, a whole Kaki, or
+ * `"public"` (CHANGES_20260816.md §4) for a link anyone can open, signed
+ * in or not, with no `lobang_recipients` fan-out at all.
+ */
 export type LobangTarget =
   | { type: "users"; userIds: string[] }
-  | { type: "kaki"; kakiId: string };
+  | { type: "kaki"; kakiId: string }
+  | { type: "public" };
+
+/**
+ * The subset of a public lobang send safe to show an anonymous visitor —
+ * CHANGES_20260816.md §4, the same "unguessable token, SECURITY DEFINER
+ * resolver, narrow column list" shape as `PublicPlace`/`get_public_place`.
+ * `from_display_name` is safe to show precisely because it's resolved
+ * server-side from the token, not read from anything the visitor's own
+ * browser supplied — never a client-editable URL parameter claiming to be
+ * from someone.
+ */
+export interface PublicLobang {
+  place: PublicPlace;
+  from_display_name: string;
+  note: string | null;
+  created_at: string;
+}
 
 /**
  * One block or unblock event. "Removing" a place always means flipping its

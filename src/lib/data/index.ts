@@ -17,6 +17,7 @@ import type {
   Place,
   PlaceFlag,
   PlacesPage,
+  PublicLobang,
   PublicPlace,
   PlacesPagination,
   Profile,
@@ -412,15 +413,19 @@ export interface Repo {
     addedBy: string
   ): Promise<void>;
 
-  // ---- Lobangs (personalized tip-offs sent to a teammate or a Kaki) ----
+  // ---- Lobangs (personalized tip-offs sent to a teammate, a Kaki, or the public) ----
   /**
-   * Sends a lobang to either a list of specific teammates or every current
-   * member of a Kaki (snapshotted into `lobang_recipients` at send time —
-   * a later membership change never alters who a past lobang went to).
-   * The sender is always excluded from the recipient list, even if they are
-   * a member of the target Kaki. A `{ type: "kaki" }` target is rejected
-   * unless `fromUserId` is currently a member of that Kaki. Throws if the
-   * resulting recipient list is empty.
+   * Sends a lobang to a list of specific teammates, every current member
+   * of a Kaki (snapshotted into `lobang_recipients` at send time — a later
+   * membership change never alters who a past lobang went to), or
+   * publicly (CHANGES_20260816.md §4, `{ type: "public" }`) — a token-only
+   * send with no recipient rows at all, resolved later through
+   * `getPublicLobang`. The sender is always excluded from a teammates/Kaki
+   * recipient list, even if they are a member of the target Kaki. A
+   * `{ type: "kaki" }` target is rejected unless `fromUserId` is currently
+   * a member of that Kaki. Throws if a teammates/Kaki send resolves to an
+   * empty recipient list; a public send has no such check, since it never
+   * had one to begin with.
    */
   sendLobang(
     fromUserId: string,
@@ -429,10 +434,23 @@ export interface Repo {
     note?: string | null,
     eventId?: string | null
   ): Promise<Lobang>;
+  /** Never includes a public send (`public_token is not null`) — nobody
+   *  "received" it, so it belongs in neither inbox. */
   listLobangsReceived(userId: string, limit?: number): Promise<Lobang[]>;
+  /** Excludes a public send the same way `listLobangsReceived` does —
+   *  neither list is where "will not be saved" is meant to be checkable. */
   listLobangsSent(userId: string, limit?: number): Promise<Lobang[]>;
   markLobangSeen(userId: string, lobangId: string): Promise<void>;
   dismissLobang(userId: string, lobangId: string): Promise<void>;
+  /**
+   * Resolves a public lobang's token to the same narrow, privacy-safe
+   * shape `getPublicPlace` uses — `null` for an unknown token or one whose
+   * place is no longer `active`. `SECURITY DEFINER` live (migration 051):
+   * `lobangs_select` (050) is `authenticated`-only, and `from_display_name`
+   * has to be resolved server-side from the token to be safe to show an
+   * anonymous visitor — never a client-supplied name.
+   */
+  getPublicLobang(token: string): Promise<PublicLobang | null>;
   /**
    * Places ranked for `toUserId`, computed from signals the caller is
    * already allowed to see under RLS (the target's *public* visits) — never
@@ -617,6 +635,7 @@ export const REPO_METHODS = [
   "listLobangsSent",
   "markLobangSeen",
   "dismissLobang",
+  "getPublicLobang",
   "suggestPlacesForFriend",
   "isAdmin",
   "listAdminIds",
