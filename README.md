@@ -40,7 +40,7 @@ When you are ready to make it real, see [Going live](#going-live).
 | **Jios** | Create a lunch outing, everyone ranks the options, a Borda count decides. RSVP, live vote updates, a roulette wheel for when the group genuinely cannot choose, and a month calendar with Hosting / Invited / Past filters for browsing. Anyone can edit a place, any signed-in user may edit any place's details, and the host can cancel a Jio outright — it stays visible, marked cancelled, rather than vanishing. Once a Jio is decided, its result — place, time, final points — can be copied or shared as a PNG, generated client-side, for pasting straight into a chat instead of a link. A host can also start a Jio with votes hidden: nobody, host included, sees the running standing until it closes — only the ballot count shows. Each option in the Standing and Your ranking lists shows a compact cuisine descriptor beneath its name, so a placeless or unfamiliar option still says something about what it is before anyone clicks in. |
 | **Vote on a place that isn't listed yet** | Typing a name the search doesn't find logs it as a vote option immediately, no place record required. A non-blocking prompt afterward offers to add it to the pool; declining leaves it exactly as a text-only choice, permanently. |
 | **Kakis** | Lunch groups with a shareable invite link and shared stats — group favourites, who eats out most, who is most adventurous. Any current member can also add someone directly by searching their name, without a link changing hands first — same trust level as the invite link itself, just faster for someone already sitting across the table. |
-| **Lobangs** | "Saw this online, thought of you" — send any registered place to specific teammates or a whole Kaki, with an optional note and personalized "quick pick" suggestions. Two entry points side by side: from a closed Jio in "You → Past Jios" (the winning place pinned as a default), and directly from a place's own page (`/places/[id]`) for the more common case of just browsing and thinking of someone. A dedicated `/lobangs` page (linked from "See all" on the profile inbox) shows everything sent and received as one reverse-chronological, message-bubble feed — your own sends right-aligned, a group send showing the Kaki's name as the recipient. Browse only, deliberately: a lobang is a one-way tip, not a two-way conversation, so there's no reply. |
+| **Lobangs** | "Saw this online, thought of you" — send any registered place to specific teammates, a whole Kaki, or — one tap over — anyone at all, with an optional note and personalized "quick pick" suggestions for a teammate/Kaki send. "Share this lobang" is the one entry point on a place's own page (`/places/[id]`), same composer either way; a past Jio's "You → Past Jios" is the other, with the winning place pinned as a default. A teammate/Kaki send is tracked, shows up in the recipient's `/lobangs` feed, and push-notifies them; the "Anyone" path instead mints an attributed `/l/[token]` link — the sender's real name and note, resolved server-side so nobody can forge one — that anyone can open, signed in or not, and never appears in anyone's Lobangs feed or triggers a push. A dedicated `/lobangs` page (linked from "See all" on the profile inbox) shows every *targeted* send, received and sent, as one reverse-chronological, message-bubble feed — your own sends right-aligned, a group send showing the Kaki's name as the recipient. Browse only, deliberately: a lobang is a one-way tip, not a two-way conversation, so there's no reply. |
 | **Places** | Searchable list with cuisine, budget, walk-time and rating filters, sortable by nearest, highest-rated, or rated by your Kaki group — plus a "Kaki favourites only" chip that actually narrows the list, not just reorders it, and a badge on the card itself once at least 2 Kaki-member visits back a place's rating, so a lone review doesn't read as group consensus. Add places by hand (address or postal code — a postal code found anywhere in a pasted-in address, e.g. one copied straight from Google Maps, is tried first, since OneMap's road/block index can choke on a business-name prefix or unit number that a bare postal code sidesteps), import candidate names from a food blog, or let the daily cron find them on OpenStreetMap. Cuisine tagging covers a fixed, scored list (now including Modern and Traditional) plus free-text "Other" tags that show on the place but never affect recommendations. A place's own page has a "View on Google Maps" link next to Directions. Without a Google Places API key configured it's a plain coordinate pin, computed client-side, no backend call — that's still the default. With one configured, the app resolves each place to its actual Google listing, best-effort, server-side, at create/edit time (gated on the result actually looking like the same place — name similarity plus a distance check — not just Google's own top result), and the link opens that instead: the restaurant's real page, photos and reviews included, with the coordinate link as an automatic fallback if the match ever stops resolving. Every active place also has a public preview page (`/p/[id]`, linked from a Share button on the full page) — the app's only page that needs no sign-in, showing name, cuisine, address, best dishes, aggregate rating and the same Maps link (real listing or pin, same rule) to anyone with the link, with a "Join to see more" prompt into `/login` for everything past that, including the named review list. |
 | **Map** | Leaflet map of everything in walking distance, with real walking routes when OneMap is configured. A Kaki-favourite place gets an amber ring on its marker, layered independently of the existing selected/not-selected fill color. |
 | **Reviews** | Log a visit privately, or share it as a review. Each visit is its own entry, editable and deletable later — including un-sharing a review back to private. Each shared review can be liked — a bare count plus your own toggle state, no "liked by" list — which nudges the reviewer with a throttled push (at most one per review per ~10 minutes) and feeds into a weekly recap push for anyone whose reviews got at least one like that week. |
@@ -282,7 +282,7 @@ Roughly 30 minutes end to end. Everything below stays on a free tier.
    `service_role` key. The last one is a secret; it bypasses all access
    control.
 3. **SQL Editor** — run every file in `supabase/migrations/` in numeric order,
-   001 through 050. They are idempotent, so re-running is harmless.
+   001 through 051. They are idempotent, so re-running is harmless.
 4. **Authentication → Providers → Anonymous sign-ins** — turn this on. It is
    what makes name-only sign-in work.
 5. **Authentication → URL Configuration** — set the Site URL to your deployed
@@ -857,12 +857,34 @@ remembering as a standing rule for any future pair of RLS-protected tables
 that reference each other: at most one side may hold a plain subquery into
 the other; the other side needs a `SECURITY DEFINER` function instead.
 
+**A public lobang link resolves an unguessable token server-side, never a
+name typed into the URL — that distinction is the whole reason it's safe
+to combine "public" and "attributed" at all.** `get_public_lobang`
+(migration 051) is `SECURITY DEFINER`, callable by `anon`, same shape as
+`get_public_place`: `lobangs_select` (050) is `authenticated`-only, so a
+signed-out visitor has no table privileges on `lobangs` to begin with, and
+`from_display_name` is resolved from `lobangs.public_token` — an
+unguessable column set only by the app server at send time — never from a
+query parameter a visitor's own browser could hand-edit. That's the
+concrete difference between this and the spoofing risk raised (and
+rejected) earlier in the design: a `?from=Sean&note=...` URL would have let
+anyone claim to be anyone; a token resolved through this function can't,
+since the token is the only thing the URL carries and everything it
+resolves to comes from the row the sender actually created. A public send
+is a `lobangs` row with `public_token` set and no `lobang_recipients` rows
+at all — there's no specific person, so there's nothing to fan out —
+which is also how `listLobangsSent`/`listLobangsReceived` (both filter on
+`public_token is not null`, or simply have no recipient row to match
+against) keep a public send out of the sender's own history and off
+everyone's `/lobangs` feed, exactly as decided: "will not be saved"
+anywhere but its own link.
+
 ---
 
 ## Tests
 
 ```bash
-npm test          # 406 tests across 34 files
+npm test          # 411 tests across 34 files
 npm run typecheck
 npm run lint
 ```
@@ -884,7 +906,7 @@ npm run lint
 | `visitEdit.test.ts` | Editing and deleting your own visits: ownership, and which fields an edit may touch |
 | `moderation.test.ts` | Block, unblock, and the admin allowlist |
 | `placeFlags.test.ts` | Flagging a place and resolving the queue |
-| `lobang.test.ts` | Targeted sends, group-send member snapshotting |
+| `lobang.test.ts` | Targeted sends, group-send member snapshotting; public sends — no recipient rows created, excluded from the sender's own Sent list, resolve through `getPublicLobang` with the real sender name and note, `null` for an unknown token or once the place is no longer active |
 | `flexiJio.test.ts` | Availability voting and host confirmation |
 | `suggestCommittee.test.ts` | The three-pick suggestion and re-roll rules |
 | `onboarding.test.ts` | The one-time welcome gate |

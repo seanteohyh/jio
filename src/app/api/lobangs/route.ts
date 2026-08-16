@@ -3,16 +3,20 @@ import { requireUser } from "@/lib/auth";
 import { getRepoAsync } from "@/lib/data/repo";
 import { badRequest, errorResponse, json, numberParam, readJson } from "@/lib/api";
 import { featureGate } from "@/lib/config";
+import { lobangShareUrl } from "@/lib/shareUrl";
 
 /**
- * Lobangs: a personalized recommendation sent to specific teammates or to a
- * whole Kaki at once, usually kicked off from a past Jio on the sender's
- * profile.
+ * Lobangs: a personalized recommendation sent to specific teammates, a
+ * whole Kaki, or — CHANGES_20260816.md §4 — publicly, as an attributed
+ * link anyone can open. Usually kicked off from a past Jio on the
+ * sender's profile, or "Share this lobang" on a place's own page.
  *
  * `?direction=received` (default) is the sender's inbox; `?direction=sent`
  * is their own outgoing history. Both are scoped to the signed-in user —
  * nobody else's lobangs are reachable through this route, and RLS backs
- * that up in live mode.
+ * that up in live mode. Neither ever includes a public send: there's no
+ * recipient to receive it, and it isn't meant to clutter the sender's own
+ * history either — its one home is its own `/l/[token]` link.
  */
 export async function GET(request: NextRequest) {
   const blocked = featureGate("lobangs");
@@ -38,10 +42,10 @@ export async function GET(request: NextRequest) {
 }
 
 interface SendLobangBody {
-  /** Either this... */
+  /** Any one of these three, never more than one. */
   to_user_ids?: string[];
-  /** ...or this — never both. */
   kaki_id?: string;
+  public?: boolean;
   place_id?: string;
   note?: string;
   event_id?: string | null;
@@ -57,16 +61,24 @@ export async function POST(request: NextRequest) {
     const body = await readJson<SendLobangBody>(request);
 
     if (!body?.place_id) return badRequest("Which place?");
-    if (!body.kaki_id && (!body.to_user_ids || body.to_user_ids.length === 0)) {
-      return badRequest("Who is this for?");
-    }
-    if (body.kaki_id && body.to_user_ids && body.to_user_ids.length > 0) {
-      return badRequest("Pick either teammates or a Kaki, not both");
+
+    const hasUsers = !!body.to_user_ids && body.to_user_ids.length > 0;
+    const targetCount = [hasUsers, !!body.kaki_id, !!body.public].filter(
+      Boolean
+    ).length;
+
+    if (targetCount === 0) return badRequest("Who is this for?");
+    if (targetCount > 1) {
+      return badRequest(
+        "Pick one — teammates, a Kaki, or a public link, not more than one"
+      );
     }
 
-    const target = body.kaki_id
-      ? ({ type: "kaki", kakiId: body.kaki_id } as const)
-      : ({ type: "users", userIds: body.to_user_ids! } as const);
+    const target = body.public
+      ? ({ type: "public" } as const)
+      : body.kaki_id
+        ? ({ type: "kaki", kakiId: body.kaki_id } as const)
+        : ({ type: "users", userIds: body.to_user_ids! } as const);
 
     const lobang = await repo.sendLobang(
       user.id,
@@ -76,7 +88,11 @@ export async function POST(request: NextRequest) {
       body.event_id ?? null
     );
 
-    return json({ lobang }, 201);
+    const url = lobang.public_token
+      ? lobangShareUrl(lobang.public_token)
+      : undefined;
+
+    return json({ lobang, url }, 201);
   } catch (error) {
     return errorResponse(error);
   }

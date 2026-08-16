@@ -1704,10 +1704,13 @@ export const demoRepo: Repo = {
 
   async sendLobang(fromUserId, target, placeId, note, eventId) {
     const s = store();
-    let recipientIds: string[];
+    let recipientIds: string[] = [];
     let kakiId: string | null = null;
+    let publicToken: string | null = null;
 
-    if (target.type === "kaki") {
+    if (target.type === "public") {
+      publicToken = generateToken();
+    } else if (target.type === "kaki") {
       const kaki = s.kakis.find((k) => k.id === target.kakiId);
       if (!kaki) throw new Error("That Kaki does not exist");
       const isMember = s.kakiMembers.some(
@@ -1731,7 +1734,8 @@ export const demoRepo: Repo = {
     recipientIds = Array.from(new Set(recipientIds)).filter(
       (id) => id !== fromUserId
     );
-    if (recipientIds.length === 0) {
+    // A public send has no recipient list to be empty in the first place.
+    if (target.type !== "public" && recipientIds.length === 0) {
       throw new Error("At least one recipient is required");
     }
 
@@ -1742,6 +1746,7 @@ export const demoRepo: Repo = {
       note: note ?? null,
       event_id: eventId ?? null,
       kaki_id: kakiId,
+      public_token: publicToken,
       created_at: new Date().toISOString(),
     };
     s.lobangs.push(lobang);
@@ -1768,7 +1773,7 @@ export const demoRepo: Repo = {
 
   async listLobangsSent(userId, limit = 20) {
     return store()
-      .lobangs.filter((l) => l.from_user_id === userId)
+      .lobangs.filter((l) => l.from_user_id === userId && !l.public_token)
       .sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? ""))
       .slice(0, limit)
       .map(hydrateSentLobang);
@@ -1801,6 +1806,38 @@ export const demoRepo: Repo = {
     s.lobangRecipients = s.lobangRecipients.filter(
       (r) => !(r.lobang_id === lobangId && r.user_id === userId)
     );
+  },
+
+  async getPublicLobang(token) {
+    const s = store();
+    const lobang = s.lobangs.find((l) => l.public_token === token);
+    if (!lobang) return null;
+
+    const place = s.places.find(
+      (p) => p.id === lobang.place_id && p.status === "active"
+    );
+    if (!place) return null;
+
+    const enriched = enrich(place);
+    return {
+      place: {
+        id: enriched.id,
+        name: enriched.name,
+        address: enriched.address ?? null,
+        cuisine: enriched.cuisine,
+        custom_cuisine_tags: enriched.custom_cuisine_tags,
+        budget_tier: enriched.budget_tier,
+        best_dishes: enriched.best_dishes,
+        avg_rating: enriched.avg_rating ?? null,
+        visit_count: enriched.visit_count ?? 0,
+        lat: enriched.lat,
+        lng: enriched.lng,
+        google_place_id: enriched.google_place_id ?? null,
+      },
+      from_display_name: displayNameFor(lobang.from_user_id),
+      note: lobang.note ?? null,
+      created_at: lobang.created_at ?? new Date().toISOString(),
+    };
   },
 
   async suggestPlacesForFriend(toUserId, limit = 5) {

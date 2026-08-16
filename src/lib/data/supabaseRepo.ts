@@ -2419,10 +2419,13 @@ export const supabaseRepo: Repo = {
   async sendLobang(fromUserId, target, placeId, note, eventId) {
     const client = await db();
 
-    let recipientIds: string[];
+    let recipientIds: string[] = [];
     let kakiId: string | null = null;
+    let publicToken: string | null = null;
 
-    if (target.type === "kaki") {
+    if (target.type === "public") {
+      publicToken = generateToken();
+    } else if (target.type === "kaki") {
       const { data: memberRows, error: memberError } = await client
         .from("kaki_members")
         .select("user_id")
@@ -2446,7 +2449,8 @@ export const supabaseRepo: Repo = {
     recipientIds = Array.from(new Set(recipientIds)).filter(
       (id) => id !== fromUserId
     );
-    if (recipientIds.length === 0) {
+    // A public send has no recipient list to be empty in the first place.
+    if (target.type !== "public" && recipientIds.length === 0) {
       throw new Error("At least one recipient is required");
     }
 
@@ -2458,6 +2462,7 @@ export const supabaseRepo: Repo = {
         note: note ?? null,
         event_id: eventId ?? null,
         kaki_id: kakiId,
+        public_token: publicToken,
       })
       .select()
       .single();
@@ -2465,10 +2470,12 @@ export const supabaseRepo: Repo = {
     if (error) fail("Could not send that lobang", error);
     const lobang = data as Lobang;
 
-    const { error: recipientsError } = await client
-      .from("lobang_recipients")
-      .insert(recipientIds.map((userId) => ({ lobang_id: lobang.id, user_id: userId })));
-    if (recipientsError) fail("Could not add the recipients", recipientsError);
+    if (recipientIds.length > 0) {
+      const { error: recipientsError } = await client
+        .from("lobang_recipients")
+        .insert(recipientIds.map((userId) => ({ lobang_id: lobang.id, user_id: userId })));
+      if (recipientsError) fail("Could not add the recipients", recipientsError);
+    }
 
     const hydrated = await hydrateSentLobangs(client, [lobang]);
     return hydrated[0];
@@ -2504,6 +2511,9 @@ export const supabaseRepo: Repo = {
       .from("lobangs")
       .select("*")
       .eq("from_user_id", userId)
+      // A public send has nobody to appear as "sent to" here — it belongs
+      // only at its own /l/[token], never in this history.
+      .is("public_token", null)
       .order("created_at", { ascending: false })
       .limit(limit);
 
@@ -2549,6 +2559,37 @@ export const supabaseRepo: Repo = {
       .eq("user_id", userId);
 
     if (error) fail("Could not remove that lobang", error);
+  },
+
+  async getPublicLobang(token) {
+    const client = await db();
+    const { data, error } = await client.rpc("get_public_lobang", {
+      p_token: token,
+    });
+
+    if (error) fail("Could not load that lobang", error);
+    const row = data?.[0];
+    if (!row) return null;
+
+    return {
+      place: {
+        id: row.place_id,
+        name: row.name,
+        address: row.address ?? null,
+        cuisine: row.cuisine ?? [],
+        custom_cuisine_tags: row.custom_cuisine_tags ?? [],
+        budget_tier: row.budget_tier,
+        best_dishes: row.best_dishes ?? [],
+        avg_rating: row.avg_rating ?? null,
+        visit_count: row.visit_count ?? 0,
+        lat: row.lat,
+        lng: row.lng,
+        google_place_id: row.google_place_id ?? null,
+      },
+      from_display_name: row.from_display_name ?? "A teammate",
+      note: row.note ?? null,
+      created_at: row.created_at,
+    };
   },
 
   async suggestPlacesForFriend(toUserId, limit = 5) {

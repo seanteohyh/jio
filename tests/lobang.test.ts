@@ -207,4 +207,68 @@ describe("lobangs", () => {
     expect(publiclyVisited).toBeDefined();
     expect(publiclyVisited!.breakdown.varietyBonus).toBeLessThanOrEqual(0);
   });
+
+  // CHANGES_20260816.md §4 — "Share this lobang"'s third path: a public
+  // send has no recipient rows at all, is resolved only through its own
+  // token, and never appears in either the sender's or anyone's lists.
+  describe("public sends", () => {
+    it("creates no lobang_recipients rows and needs no recipient to succeed", async () => {
+      const lobang = await demoRepo.sendLobang(
+        DEMO_TEAMMATE_A,
+        { type: "public" },
+        "demo-place-12",
+        "Try the hor fun"
+      );
+
+      expect(lobang.public_token).toBeTruthy();
+
+      const forSelf = await demoRepo.listLobangsReceived(DEMO_TEAMMATE_A);
+      const forOthers = await demoRepo.listLobangsReceived(DEMO_USER_ID);
+      expect(forSelf.map((l) => l.id)).not.toContain(lobang.id);
+      expect(forOthers.map((l) => l.id)).not.toContain(lobang.id);
+    });
+
+    it("never appears in the sender's own Sent list", async () => {
+      const lobang = await demoRepo.sendLobang(
+        DEMO_TEAMMATE_A,
+        { type: "public" },
+        "demo-place-12"
+      );
+
+      const sent = await demoRepo.listLobangsSent(DEMO_TEAMMATE_A);
+      expect(sent.map((l) => l.id)).not.toContain(lobang.id);
+    });
+
+    it("resolves through getPublicLobang with the sender's real name and the note", async () => {
+      const lobang = await demoRepo.sendLobang(
+        DEMO_TEAMMATE_A,
+        { type: "public" },
+        "demo-place-12",
+        "Try the hor fun"
+      );
+
+      const resolved = await demoRepo.getPublicLobang(lobang.public_token!);
+      expect(resolved?.place.id).toBe("demo-place-12");
+      expect(resolved?.note).toBe("Try the hor fun");
+      expect(resolved?.from_display_name).toBeTruthy();
+    });
+
+    it("returns null for an unknown token", async () => {
+      expect(await demoRepo.getPublicLobang("not-a-real-token")).toBeNull();
+    });
+
+    it("returns null once the place is no longer active", async () => {
+      const lobang = await demoRepo.sendLobang(
+        DEMO_TEAMMATE_A,
+        { type: "public" },
+        "demo-place-12"
+      );
+
+      // DEMO_USER_ID is the demo "admin" — any signed-in creator/admin can
+      // block a place; who blocks it isn't what this test is about.
+      await demoRepo.blockPlace(DEMO_USER_ID, "demo-place-12", "closed");
+
+      expect(await demoRepo.getPublicLobang(lobang.public_token!)).toBeNull();
+    });
+  });
 });

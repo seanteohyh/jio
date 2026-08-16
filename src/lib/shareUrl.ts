@@ -53,3 +53,15 @@ export function kakiInviteUrl(token: string): string {
 export function placeShareUrl(placeId: string): string {
   return absoluteUrl(`/p/${placeId}`);
 }
+
+/**
+ * Shareable link for a public lobang — CHANGES_20260816.md §4, "Share this
+ * lobang"'s third path. Token-keyed like the invite links above, not
+ * id-keyed like `placeShareUrl`: a lobang has no natural unguessable
+ * identifier of its own the way a place's UUID doubles as one, so
+ * `lobangs.public_token` fills that role and `get_public_lobang()`
+ * resolves it the same way `get_public_place()` resolves a place id.
+ */
+export function lobangShareUrl(token: string): string {
+  return absoluteUrl(`/l/${token}`);
+}
