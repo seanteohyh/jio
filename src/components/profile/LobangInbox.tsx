@@ -53,7 +53,15 @@ export default function LobangInbox() {
     <section className="space-y-4">
       {inbox.length > 0 && (
         <div>
-          <SectionHeading>Lobangs for you</SectionHeading>
+          <SectionHeading
+            action={
+              <Link href="/lobangs" className="text-ember text-xs underline">
+                See all
+              </Link>
+            }
+          >
+            Lobangs for you
+          </SectionHeading>
           <ul className="space-y-2">
             {inbox.map((l) => (
               <li key={l.id}>
@@ -113,7 +121,17 @@ export default function LobangInbox() {
 
       {history.length > 0 && (
         <div>
-          <SectionHeading>Lobangs you sent</SectionHeading>
+          <SectionHeading
+            action={
+              !inbox.length ? (
+                <Link href="/lobangs" className="text-ember text-xs underline">
+                  See all
+                </Link>
+              ) : undefined
+            }
+          >
+            Lobangs you sent
+          </SectionHeading>
           <ul className="space-y-1.5">
             {history.map((l) => (
               <li
