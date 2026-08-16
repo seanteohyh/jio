@@ -25,7 +25,13 @@ import RecoveryLinkPanel from "@/components/profile/RecoveryLinkPanel";
 import { fetcher, mutateJson } from "@/lib/fetcher";
 import { config, features } from "@/lib/config";
 import { BUDGET_TIERS, CUISINES } from "@/lib/constants";
-import { formatCuisine, formatDate, formatMonthKey, groupBy } from "@/lib/utils";
+import {
+  cycleCuisinePreference,
+  formatCuisine,
+  formatDate,
+  formatMonthKey,
+  groupBy,
+} from "@/lib/utils";
 import type {
   AuthUser,
   BudgetTier,
@@ -35,6 +41,22 @@ import type {
   Visit,
   WishlistEntry,
 } from "@/types";
+
+/**
+ * Small-caps eyebrow marking where one of the three zones below starts —
+ * CHANGES_20260816.md §3. Not `SectionHeading`: that's for a sub-section
+ * title ("Profile," "Your numbers"), this is one level up, grouping several
+ * of those under one named zone. Kept local rather than added to `ui.tsx`
+ * since nothing else needs it yet — same "no new components" approach as
+ * the place page's button tiering.
+ */
+function ZoneLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="text-stone text-xs font-semibold tracking-wide uppercase">
+      {children}
+    </p>
+  );
+}
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -87,21 +109,10 @@ export default function ProfilePage() {
     setOfficeId(prefs.default_office_id ?? "");
   }, [prefsData]);
 
-  const toggle = (
-    value: string,
-    list: string[],
-    setter: (next: string[]) => void,
-    other: string[],
-    otherSetter: (next: string[]) => void
-  ) => {
-    if (list.includes(value)) {
-      setter(list.filter((v) => v !== value));
-      return;
-    }
-    // Liking something you had marked as disliked should clear the dislike,
-    // rather than leaving the recommender with contradictory instructions.
-    if (other.includes(value)) otherSetter(other.filter((v) => v !== value));
-    setter([...list, value]);
+  const cycleCuisine = (cuisine: string) => {
+    const next = cycleCuisinePreference(cuisine, likes, dislikes);
+    setLikes(next.likes);
+    setDislikes(next.dislikes);
   };
 
   const save = async () => {
@@ -140,6 +151,14 @@ export default function ProfilePage() {
   const byMonth = groupBy(visits, (v) => v.visited_at.slice(0, 7));
   const months = Array.from(byMonth.keys()).sort((a, b) => b.localeCompare(a));
 
+  const hasActivity =
+    (features.metrics && !!metricsData?.user) ||
+    (features.wishlist && (wishlistData?.wishlist.length ?? 0) > 0) ||
+    visits.length > 0 ||
+    (features.events && !!me?.user?.id) ||
+    (features.lobangs && !!me?.user?.id) ||
+    !!me?.user?.id;
+
   return (
     <div className="space-y-6">
       <header>
@@ -151,279 +170,314 @@ export default function ProfilePage() {
         </p>
       </header>
 
-      <Card className="space-y-4">
-        <SectionHeading>Profile</SectionHeading>
+      {/* Zone 1 — Settings: everything you edit, one card, one Save. */}
+      <div className="space-y-3">
+        <ZoneLabel>Settings</ZoneLabel>
+        <Card className="space-y-5">
+          <div className="space-y-4">
+            <SectionHeading>Profile</SectionHeading>
 
-        <Field
-          label="Display name"
-          hint="What teammates see next to your votes and reviews."
-        >
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className={inputClass}
-            placeholder="Your name"
-          />
-        </Field>
-
-        {features.offices && officeData?.offices && (
-          <Field label="Office" hint="Walking times are measured from here.">
-            <select
-              value={officeId}
-              onChange={(e) => setOfficeId(e.target.value)}
-              className={inputClass}
+            <Field
+              label="Display name"
+              hint="What teammates see next to your votes and reviews."
             >
-              <option value="">Default</option>
-              {officeData.offices.map((office) => (
-                <option key={office.id} value={office.id}>
-                  {office.name}
-                </option>
-              ))}
-            </select>
-          </Field>
-        )}
-      </Card>
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className={inputClass}
+                placeholder="Your name"
+              />
+            </Field>
 
-      <Card className="space-y-4">
-        <SectionHeading>Taste</SectionHeading>
-        <p className="text-stone text-xs">
-          Jio learns from what you rate, but these give it a head start.
-          Anything you dislike across the board gets excluded entirely.
-        </p>
-
-        <div>
-          <p className="text-ink mb-2 text-sm font-medium">Like</p>
-          <div className="flex flex-wrap gap-1.5">
-            {CUISINES.map((c) => (
-              <Chip
-                key={c}
-                active={likes.includes(c)}
-                onClick={() =>
-                  toggle(c, likes, setLikes, dislikes, setDislikes)
-                }
-              >
-                {formatCuisine(c)}
-              </Chip>
-            ))}
+            {features.offices && officeData?.offices && (
+              <Field label="Office" hint="Walking times are measured from here.">
+                <select
+                  value={officeId}
+                  onChange={(e) => setOfficeId(e.target.value)}
+                  className={inputClass}
+                >
+                  <option value="">Default</option>
+                  {officeData.offices.map((office) => (
+                    <option key={office.id} value={office.id}>
+                      {office.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            )}
           </div>
-        </div>
 
-        <div>
-          <p className="text-ink mb-2 text-sm font-medium">
-            Rather not
-          </p>
-          <div className="flex flex-wrap gap-1.5">
-            {CUISINES.map((c) => (
-              <Chip
-                key={c}
-                active={dislikes.includes(c)}
-                onClick={() =>
-                  toggle(c, dislikes, setDislikes, likes, setLikes)
-                }
-              >
-                {formatCuisine(c)}
-              </Chip>
-            ))}
+          <div className="border-line space-y-4 border-t pt-5">
+            <SectionHeading>Taste</SectionHeading>
+            <p className="text-stone text-xs">
+              Jio learns from what you rate, but these give it a head start.
+              Anything you dislike across the board gets excluded entirely.
+              Tap a cuisine to cycle through neutral, like and dislike.
+            </p>
+
+            <div>
+              <div className="text-stone mb-2 flex items-center gap-3 text-xs">
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="bg-sage-tint h-2.5 w-2.5 rounded-full" />
+                  Like
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="bg-ember-tint h-2.5 w-2.5 rounded-full" />
+                  Dislike
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {CUISINES.map((c) => {
+                  const tone = likes.includes(c)
+                    ? ("like" as const)
+                    : dislikes.includes(c)
+                      ? ("dislike" as const)
+                      : undefined;
+                  return (
+                    <Chip
+                      key={c}
+                      active={!!tone}
+                      tone={tone}
+                      onClick={() => cycleCuisine(c)}
+                    >
+                      {formatCuisine(c)}
+                    </Chip>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Cheapest">
+                <select
+                  value={budgetMin}
+                  onChange={(e) =>
+                    setBudgetMin(Number(e.target.value) as BudgetTier)
+                  }
+                  className={inputClass}
+                >
+                  {BUDGET_TIERS.map((t) => (
+                    <option key={t.tier} value={t.tier}>
+                      {t.label} ({t.description})
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Priciest">
+                <select
+                  value={budgetMax}
+                  onChange={(e) =>
+                    setBudgetMax(Number(e.target.value) as BudgetTier)
+                  }
+                  className={inputClass}
+                >
+                  {BUDGET_TIERS.map((t) => (
+                    <option key={t.tier} value={t.tier}>
+                      {t.label} ({t.description})
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            </div>
           </div>
-        </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Cheapest">
-            <select
-              value={budgetMin}
-              onChange={(e) => setBudgetMin(Number(e.target.value) as BudgetTier)}
-              className={inputClass}
-            >
-              {BUDGET_TIERS.map((t) => (
-                <option key={t.tier} value={t.tier}>
-                  {t.label} ({t.description})
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Priciest">
-            <select
-              value={budgetMax}
-              onChange={(e) => setBudgetMax(Number(e.target.value) as BudgetTier)}
-              className={inputClass}
-            >
-              {BUDGET_TIERS.map((t) => (
-                <option key={t.tier} value={t.tier}>
-                  {t.label} ({t.description})
-                </option>
-              ))}
-            </select>
-          </Field>
-        </div>
-      </Card>
-
-      {error && <ErrorNote>{error}</ErrorNote>}
-
-      <div className="flex items-center gap-3">
-        <Button onClick={save} disabled={busy}>
-          {busy ? "Saving…" : "Save"}
-        </Button>
-        {saved && (
-          <span className="text-sage text-sm" role="status">
-            Saved
-          </span>
-        )}
+          <div className="border-line space-y-3 border-t pt-4">
+            {error && <ErrorNote>{error}</ErrorNote>}
+            <div className="flex items-center gap-3">
+              <Button onClick={save} disabled={busy}>
+                {busy ? "Saving…" : "Save"}
+              </Button>
+              {saved && (
+                <span className="text-sage text-sm" role="status">
+                  Saved
+                </span>
+              )}
+            </div>
+          </div>
+        </Card>
       </div>
 
-      {features.metrics && metricsData?.user && (
-        <section>
-          <SectionHeading>Your numbers</SectionHeading>
-          <UserMetricsCharts metrics={metricsData.user} />
-        </section>
-      )}
+      {/* Zone 2 — Your activity: everything you browse, read-only. Each
+          section keeps exactly the container style it already had (bare
+          SectionHeading, no card) — only the zone label is new. */}
+      {hasActivity && (
+        <div className="space-y-5">
+          <ZoneLabel>Your activity</ZoneLabel>
 
-      {features.wishlist &&
-        wishlistData?.wishlist &&
-        wishlistData.wishlist.length > 0 && (
-          <section>
-            <SectionHeading>Want to try</SectionHeading>
-            <ul className="space-y-1.5">
-              {wishlistData.wishlist.map((entry) => (
-                <li key={entry.place_id}>
-                  <Link
-                    href={`/places/${entry.place_id}`}
-                    className="border-line bg-cream/60 flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm"
-                  >
-                    <span className="truncate">
-                      {entry.place?.name ?? "A place"}
-                    </span>
-                    {typeof entry.place?.walk_minutes === "number" && (
-                      <span className="text-stone shrink-0 text-xs">
-                        {entry.place.walk_minutes} min
-                      </span>
-                    )}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
+          {features.metrics && metricsData?.user && (
+            <section>
+              <SectionHeading>Your numbers</SectionHeading>
+              <UserMetricsCharts metrics={metricsData.user} />
+            </section>
+          )}
 
-      {visits.length > 0 && (
-        <section>
-          <SectionHeading>History</SectionHeading>
-          <div className="space-y-4">
-            {months.slice(0, 6).map((month) => (
-              <div key={month}>
-                <p className="text-stone mb-1.5 text-xs font-medium">
-                  {formatMonthKey(month)}
-                </p>
-                <ul className="space-y-1">
-                  {(byMonth.get(month) ?? []).map((visit) => (
-                    <li
-                      key={visit.id}
-                      className="flex items-center justify-between gap-3 text-sm"
-                    >
+          {features.wishlist &&
+            wishlistData?.wishlist &&
+            wishlistData.wishlist.length > 0 && (
+              <section>
+                <SectionHeading>Want to try</SectionHeading>
+                <ul className="space-y-1.5">
+                  {wishlistData.wishlist.map((entry) => (
+                    <li key={entry.place_id}>
                       <Link
-                        href={`/places/${visit.place_id}`}
-                        className="truncate hover:underline"
+                        href={`/places/${entry.place_id}`}
+                        className="border-line bg-cream/60 flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm"
                       >
-                        {visit.place_name ?? "A place"}
-                      </Link>
-                      <span className="flex shrink-0 items-center gap-2">
-                        <Stars rating={visit.rating} />
-                        <span className="text-stone text-xs">
-                          {formatDate(visit.visited_at)}
+                        <span className="truncate">
+                          {entry.place?.name ?? "A place"}
                         </span>
-                      </span>
+                        {typeof entry.place?.walk_minutes === "number" && (
+                          <span className="text-stone shrink-0 text-xs">
+                            {entry.place.walk_minutes} min
+                          </span>
+                        )}
+                      </Link>
                     </li>
                   ))}
                 </ul>
+              </section>
+            )}
+
+          {visits.length > 0 && (
+            <section>
+              <SectionHeading>History</SectionHeading>
+              <div className="space-y-4">
+                {months.slice(0, 6).map((month) => (
+                  <div key={month}>
+                    <p className="text-stone mb-1.5 text-xs font-medium">
+                      {formatMonthKey(month)}
+                    </p>
+                    <ul className="space-y-1">
+                      {(byMonth.get(month) ?? []).map((visit) => (
+                        <li
+                          key={visit.id}
+                          className="flex items-center justify-between gap-3 text-sm"
+                        >
+                          <Link
+                            href={`/places/${visit.place_id}`}
+                            className="truncate hover:underline"
+                          >
+                            {visit.place_name ?? "A place"}
+                          </Link>
+                          <span className="flex shrink-0 items-center gap-2">
+                            <Stars rating={visit.rating} />
+                            <span className="text-stone text-xs">
+                              {formatDate(visit.visited_at)}
+                            </span>
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
               </div>
-            ))}
+            </section>
+          )}
+
+          {features.events && me?.user?.id && (
+            <PastJios selfId={me.user.id} />
+          )}
+
+          {features.lobangs && me?.user?.id && <LobangInbox />}
+
+          {me?.user?.id && <MyFlagsList />}
+        </div>
+      )}
+
+      {/* Zone 3 — Account: personal settings, admin tools (visually
+          separated, admins only), then sign out standing alone. */}
+      <div className="space-y-3">
+        <ZoneLabel>Account</ZoneLabel>
+
+        <Card className="divide-line divide-y">
+          {features.kakis && (
+            <div className="py-3 first:pt-0 last:pb-0">
+              <Link href="/kakis" className="text-ember block text-sm underline">
+                Your kaki groups
+              </Link>
+            </div>
+          )}
+
+          <div className="py-3 first:pt-0 last:pb-0">
+            <AddToHomeScreenCard />
           </div>
-        </section>
-      )}
 
-      {features.events && me?.user?.id && (
-        <PastJios selfId={me.user.id} />
-      )}
+          <div className="py-3 first:pt-0 last:pb-0">
+            <PushNotificationToggle />
+          </div>
 
-      {features.lobangs && me?.user?.id && <LobangInbox />}
+          {config.authAdapter === "name" && !config.isDemo && (
+            <div className="py-3 first:pt-0 last:pb-0">
+              <RecoveryLinkPanel />
+            </div>
+          )}
 
-      {me?.user?.id && <MyFlagsList />}
-
-      <AddToHomeScreenCard />
-
-      <Card>
-        <PushNotificationToggle />
-      </Card>
-
-      {config.authAdapter === "name" && !config.isDemo && (
-        <Card>
-          <RecoveryLinkPanel />
-        </Card>
-      )}
-
-      <Card className="space-y-3">
-        <SectionHeading>Account</SectionHeading>
-        {features.kakis && (
-          <Link href="/kakis" className="text-ember block text-sm underline">
-            Your kaki groups
-          </Link>
-        )}
-        {me?.user?.is_admin && (
-          <Link
-            href="/admin/moderation"
-            className="text-ember block text-sm underline"
-          >
-            Moderation
-          </Link>
-        )}
-        {me?.user?.is_admin && (
-          <Link
-            href="/admin/analytics"
-            className="text-ember block text-sm underline"
-          >
-            Analytics
-          </Link>
-        )}
-        {me?.user?.is_admin && (
-          <Link
-            href="/admin/accounts"
-            className="text-ember block text-sm underline"
-          >
-            Accounts
-          </Link>
-        )}
-        {me?.user?.is_admin && features.offices && (
-          <Link
-            href="/admin/offices"
-            className="text-ember block text-sm underline"
-          >
-            Offices
-          </Link>
-        )}
-
-        {config.authAdapter === "name" && !config.isDemo && (
-          <>
-            {emailAttached ? (
-              <p className="text-sage text-sm">
-                Email attached — you can sign back in from any device.
-              </p>
+          {config.authAdapter === "name" &&
+            !config.isDemo &&
+            (emailAttached ? (
+              <div className="py-3 first:pt-0 last:pb-0">
+                <p className="text-sage text-sm">
+                  Email attached — you can sign back in from any device.
+                </p>
+              </div>
             ) : me?.user && !me.user.email ? (
-              <AttachEmailPanel
-                onAttached={() => {
-                  setEmailAttached(true);
-                  mutateMe();
-                }}
-              />
-            ) : null}
-          </>
+              <div className="py-3 first:pt-0 last:pb-0">
+                <AttachEmailPanel
+                  onAttached={() => {
+                    setEmailAttached(true);
+                    mutateMe();
+                  }}
+                />
+              </div>
+            ) : null)}
+        </Card>
+
+        {me?.user?.is_admin && (
+          <div className="border-line space-y-2 rounded-2xl border border-dashed p-4">
+            <p className="text-stone text-xs font-semibold tracking-wide uppercase">
+              Admin tools
+            </p>
+            <div className="space-y-1.5">
+              <Link
+                href="/admin/moderation"
+                className="text-ember block text-sm underline"
+              >
+                Moderation
+              </Link>
+              <Link
+                href="/admin/analytics"
+                className="text-ember block text-sm underline"
+              >
+                Analytics
+              </Link>
+              <Link
+                href="/admin/accounts"
+                className="text-ember block text-sm underline"
+              >
+                Accounts
+              </Link>
+              {features.offices && (
+                <Link
+                  href="/admin/offices"
+                  className="text-ember block text-sm underline"
+                >
+                  Offices
+                </Link>
+              )}
+            </div>
+          </div>
         )}
 
         {/* In name-only mode there is no way back in: the identity lives in
             this browser's session and nothing else. Signing out is closer to
             "delete me" than to "log out", so it says so and is not styled as
             the friendly option. Changing your name is what people actually
-            want, and that is the field at the top of this page. */}
+            want, and that is the field at the top of this page. Standing
+            alone below a divider rather than inside a card — it is already
+            the one thing on this page correctly signaled as high-stakes,
+            and grouping it with either card above would soften that. */}
         {config.authAdapter === "name" && !config.isDemo && (
-          <>
+          <div className="border-line space-y-3 border-t pt-4">
             <p className="text-stone text-xs">
               You are signed in on this browser only. Signing out gives you a
               blank slate — your ratings, wishlist and history stay with the old
@@ -443,15 +497,17 @@ export default function ProfilePage() {
             >
               Sign out and start over
             </Button>
-          </>
+          </div>
         )}
 
         {config.authAdapter === "email" && (
-          <Button variant="secondary" onClick={signOut}>
-            Sign out
-          </Button>
+          <div className="border-line border-t pt-4">
+            <Button variant="secondary" onClick={signOut}>
+              Sign out
+            </Button>
+          </div>
         )}
-      </Card>
+      </div>
     </div>
   );
 }

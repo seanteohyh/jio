@@ -82,6 +82,31 @@ export function mergeLobangFeed(
   ].sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? ""));
 }
 
+/**
+ * One tap cycles a cuisine preference neutral -> like -> dislike -> neutral
+ * (CHANGES_20260816.md §3) — replaces the profile page's old two
+ * independent chip grids, which doubled both the space and the scanning
+ * needed for what's conceptually a single 3-state choice per cuisine. The
+ * wire format is unchanged, still two arrays; pure so the transition table
+ * is testable without a component.
+ */
+export function cycleCuisinePreference(
+  cuisine: string,
+  likes: string[],
+  dislikes: string[]
+): { likes: string[]; dislikes: string[] } {
+  if (likes.includes(cuisine)) {
+    return {
+      likes: likes.filter((v) => v !== cuisine),
+      dislikes: [...dislikes, cuisine],
+    };
+  }
+  if (dislikes.includes(cuisine)) {
+    return { likes, dislikes: dislikes.filter((v) => v !== cuisine) };
+  }
+  return { likes: [...likes, cuisine], dislikes };
+}
+
 /** Tiny className joiner. Falsy values are dropped. */
 export function cn(...classes: (string | false | null | undefined)[]): string {
   return classes.filter(Boolean).join(" ");

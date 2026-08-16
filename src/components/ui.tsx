@@ -105,11 +105,16 @@ export function LinkButton({
 export function Chip({
   children,
   active,
+  tone,
   onClick,
   className,
 }: {
   children: React.ReactNode;
   active?: boolean;
+  /** Overrides the active-state color — the profile page's 3-state cuisine
+   *  chips (CHANGES_20260816.md §3) use this to tell "like" from "dislike";
+   *  a plain highlight can't. Omitted everywhere else, unchanged ember/white. */
+  tone?: "like" | "dislike";
   onClick?: () => void;
   className?: string;
 }) {
@@ -120,9 +125,10 @@ export function Chip({
       type={onClick ? "button" : undefined}
       className={cn(
         "inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-xs transition-colors",
-        active
-          ? "bg-ember text-white"
-          : "border-line bg-paper text-stone border",
+        active && tone === "like" && "bg-sage-tint text-sage-tint-text",
+        active && tone === "dislike" && "bg-ember-tint text-ember-tint-text",
+        active && !tone && "bg-ember text-white",
+        !active && "border-line bg-paper text-stone border",
         onClick && !active && "hover:border-ember hover:text-ink",
         className
       )}

@@ -862,7 +862,7 @@ the other; the other side needs a `SECURITY DEFINER` function instead.
 ## Tests
 
 ```bash
-npm test          # 400 tests across 33 files
+npm test          # 406 tests across 34 files
 npm run typecheck
 npm run lint
 ```
@@ -902,6 +902,7 @@ npm run lint
 | `reviewLikes.test.ts` | Toggling a like on/off, independent counts across multiple likers, `liked_by_me` populated only for a known viewer, the like-push throttle window (claims once, refuses within the window, claims again after), and `listReviewLikesSince`'s cutoff filtering |
 | `googlePlaces.test.ts` | The Google Maps link confidence gate (`nameSimilarity` — exact/reordered/partial/unrelated/punctuation/empty-input matches) and the link builder (`googleMapsPlaceUrl` — real listing when a place id is present, coordinate fallback otherwise) |
 | `lobangFeed.test.ts` | `mergeLobangFeed`'s tag-and-sort: direction tagging, newest-first ordering across both lists, either list empty, and that it doesn't mutate its inputs |
+| `cuisinePreference.test.ts` | `cycleCuisinePreference`'s neutral → like → dislike → neutral transition table, a full cycle returning to the start, other cuisines left untouched, no input mutation |
 
 **`npm test` does not typecheck.** Vitest transforms TypeScript with esbuild,
 which strips annotations without checking them, and the suite is all pure
