@@ -273,34 +273,21 @@ export default function PlaceDetailPage({
       </header>
 
       {/*
-        CHANGES_20260816.md §4 — one entry point, three paths, replacing
-        both the old standalone "Share this place" card and the separate
-        "Send lobang" button that used to sit in the tier-2 row below.
-        Teammates/Kaki are unchanged; "Anyone (get a link)" is the new
-        path, producing an attributed /l/[token] link instead of the old
-        plain, anonymous /p/[id] one. Falls back to the plain ShareLink
-        when lobangs is off (or before `me` has loaded) so a place can
-        still be shared even without the feature that now backs the
-        richer path.
+        CHANGES_20260816.md §4 follow-up — the "Share this lobang" trigger
+        itself moved down into the tier-2 button row (with "View on Google
+        Maps"), rather than standing alone above "What to order" the way
+        the old ShareLink card used to. Falls back to the plain ShareLink
+        here, in its original spot, when lobangs is off (or before `me`
+        has loaded) — that path has no button to fold into a row that only
+        renders for signed-in lobang users.
       */}
-      {place.status === "active" &&
-        (features.lobangs && !!me?.user ? (
-          <Button
-            variant="secondary"
-            onClick={() => {
-              setLobangSent(false);
-              setSendingLobang((v) => !v);
-            }}
-          >
-            {sendingLobang ? "Never mind" : "Share this lobang"}
-          </Button>
-        ) : (
-          <ShareLink
-            url={placeShareUrl(place.id)}
-            label="Share this place"
-            shareText={`Check out ${place.name} on ${config.appName}`}
-          />
-        ))}
+      {place.status === "active" && !(features.lobangs && !!me?.user) && (
+        <ShareLink
+          url={placeShareUrl(place.id)}
+          label="Share this place"
+          shareText={`Check out ${place.name} on ${config.appName}`}
+        />
+      )}
 
       {place.status === "needs_review" && (
         <Card className="border-amber/40 bg-amber-tint/60 space-y-3">
@@ -392,6 +379,17 @@ export default function PlaceDetailPage({
           >
             View on Google Maps
           </LinkButton>
+          {place.status === "active" && features.lobangs && !!me?.user && (
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setLobangSent(false);
+                setSendingLobang((v) => !v);
+              }}
+            >
+              {sendingLobang ? "Never mind" : "Share this lobang"}
+            </Button>
+          )}
         </div>
 
         <div className="flex flex-wrap gap-2">

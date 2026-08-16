@@ -302,18 +302,51 @@ export default function SendLobangPanel({
   return (
     <Card className="animate-fade-in space-y-3">
       <Field label="Send lobang to">
-        <div className="flex gap-2">
-          <Chip active={mode === "users"} onClick={() => switchMode("users")}>
+        {/*
+          Tabs, not Chips — the mode picker and the actual multi-select
+          list right below it were both rendering as identical rounded
+          pills, which read as one long list of equally-weighted options
+          rather than "pick a mode, then pick from within it." An
+          underline style borrowed from nowhere else in this file on
+          purpose: it only needs to look unmistakably different from the
+          Chip rows above and below it, not match an existing pattern.
+        */}
+        <div className="border-line flex flex-wrap gap-4 border-b">
+          <button
+            type="button"
+            onClick={() => switchMode("users")}
+            className={`-mb-px border-b-2 px-0.5 pb-2 text-sm font-medium transition-colors ${
+              mode === "users"
+                ? "border-ember text-ink"
+                : "text-stone hover:text-ink border-transparent"
+            }`}
+          >
             Teammates
-          </Chip>
+          </button>
           {kakis.length > 0 && (
-            <Chip active={mode === "kaki"} onClick={() => switchMode("kaki")}>
+            <button
+              type="button"
+              onClick={() => switchMode("kaki")}
+              className={`-mb-px border-b-2 px-0.5 pb-2 text-sm font-medium transition-colors ${
+                mode === "kaki"
+                  ? "border-ember text-ink"
+                  : "text-stone hover:text-ink border-transparent"
+              }`}
+            >
               A whole Kaki
-            </Chip>
+            </button>
           )}
-          <Chip active={mode === "public"} onClick={() => switchMode("public")}>
+          <button
+            type="button"
+            onClick={() => switchMode("public")}
+            className={`-mb-px border-b-2 px-0.5 pb-2 text-sm font-medium transition-colors ${
+              mode === "public"
+                ? "border-ember text-ink"
+                : "text-stone hover:text-ink border-transparent"
+            }`}
+          >
             Anyone (get a link)
-          </Chip>
+          </button>
         </div>
 
         {mode === "users" && (
