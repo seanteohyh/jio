@@ -167,6 +167,25 @@ export function nameSimilarity(a: string, b: string): number {
 }
 
 /**
+ * Normalizes a typed cuisine label into its stored slug — CHANGES_20260818.md
+ * §6. Same "lowercase, trimmed" discipline as `nameAuth`'s name matching,
+ * plus collapsing whitespace to underscores so a multi-word cuisine slugs
+ * the same way the original 18 do ("fast_food", "food_court") — the same
+ * convention `formatCuisine()` below already assumes when it reverses this
+ * exact transform for display. Catches exact duplicates ("Korean BBQ" /
+ * "korean bbq") for free; near-duplicates ("KBBQ") are a known, accepted
+ * gap the doc decided not to guard against at entry, cleaned up later
+ * instead via the admin combine tool.
+ */
+export function slugifyCuisine(label: string): string {
+  return label
+    .trim()
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, "")
+    .replace(/\s+/g, "_");
+}
+
+/**
  * The Maps link rendered on a place's page (CHANGES_20260814.md §2). With a
  * resolved `google_place_id` (migration 049), this opens the restaurant's
  * actual listing — name, photos, reviews — rather than a bare pin; Google's
@@ -216,6 +235,7 @@ export function formatDate(input: string | Date): string {
     weekday: "short",
     day: "numeric",
     month: "short",
+    timeZone: "Asia/Singapore",
   });
 }
 
@@ -226,6 +246,7 @@ export function formatTime(input: string | Date): string {
     hour: "numeric",
     minute: "2-digit",
     hour12: true,
+    timeZone: "Asia/Singapore",
   });
 }
 
@@ -241,18 +262,45 @@ export function formatMonthKey(key: string): string {
   return d.toLocaleDateString("en-SG", { month: "long", year: "numeric" });
 }
 
+/**
+ * Resolves an instant onto Singapore's calendar day, independent of
+ * whatever timezone the *runtime* evaluating it happens to be in — the
+ * exact gap CHANGES_20260818.md §4 traced: Home's Server Component runs
+ * during SSR on Vercel's UTC clock, not the visitor's phone, so any
+ * "today"/"same day" comparison done with the runtime's own
+ * `getFullYear()`/`getMonth()`/`getDate()` silently uses the server's
+ * calendar day instead. Singapore has no DST, so a fixed +8h shift is
+ * exact, not an approximation.
+ *
+ * Canonical home for this and `isSameSgtDay` — originally added for the
+ * §13 admin analytics dashboard (`adminAnalytics.ts`, which re-exports both
+ * for its existing callers), moved here now that a core page needs it too.
+ */
+const SGT_OFFSET_MS = 8 * 60 * 60 * 1000;
+
+/** ISO "YYYY-MM-DD" for the Asia/Singapore calendar day a timestamp falls on. */
+export function sgtDateKey(input: string | Date): string {
+  const d = typeof input === "string" ? new Date(input) : input;
+  return new Date(d.getTime() + SGT_OFFSET_MS).toISOString().slice(0, 10);
+}
+
+/** True when `iso` falls on the same Asia/Singapore calendar day as `reference`. */
+export function isSameSgtDay(iso: string | Date, reference: Date): boolean {
+  return sgtDateKey(iso) === sgtDateKey(reference);
+}
+
 /** Relative day label used in event lists. */
 export function relativeDayLabel(input: string | Date, now = new Date()): string {
   const d = typeof input === "string" ? new Date(input) : input;
   if (Number.isNaN(d.getTime())) return "—";
-  const startOf = (x: Date) =>
-    new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
-  const diffDays = Math.round((startOf(d) - startOf(now)) / 86400000);
+  const diffDays = Math.round(
+    (Date.parse(sgtDateKey(d)) - Date.parse(sgtDateKey(now))) / 86400000
+  );
   if (diffDays === 0) return "Today";
   if (diffDays === 1) return "Tomorrow";
   if (diffDays === -1) return "Yesterday";
   if (diffDays > 1 && diffDays < 7) {
-    return d.toLocaleDateString("en-SG", { weekday: "long" });
+    return d.toLocaleDateString("en-SG", { weekday: "long", timeZone: "Asia/Singapore" });
   }
   return formatDate(d);
 }

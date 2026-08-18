@@ -1,21 +1,19 @@
 import type { DateCount } from "@/types";
+import { sgtDateKey, isSameSgtDay } from "./utils";
 
 /**
  * Pure aggregation helpers behind the §13 admin analytics dashboard.
  *
  * Day/week bucketing uses Asia/Singapore as the day boundary (§13c) — the
  * app's evident timezone, not UTC. Singapore has no DST, so a fixed +8h
- * offset is exact, not an approximation.
+ * offset is exact, not an approximation. `sgtDateKey`/`isSameSgtDay`
+ * themselves now live in `utils.ts` (CHANGES_20260818.md §4 needed them
+ * outside the admin dashboard too) — re-exported here so this module's
+ * existing callers don't need to change their import path.
  */
+export { sgtDateKey, isSameSgtDay };
 
 const SGT_OFFSET_MS = 8 * 60 * 60 * 1000;
-
-/** ISO "YYYY-MM-DD" for the Asia/Singapore calendar day a timestamp falls on. */
-export function sgtDateKey(iso: string): string {
-  return new Date(new Date(iso).getTime() + SGT_OFFSET_MS)
-    .toISOString()
-    .slice(0, 10);
-}
 
 /** ISO date of the Monday starting the Asia/Singapore week a timestamp falls in. */
 export function sgtWeekKey(iso: string): string {
@@ -43,11 +41,6 @@ export function bucketByDay(timestamps: string[]): DateCount[] {
 
 export function bucketByWeek(timestamps: string[]): DateCount[] {
   return bucketBy(timestamps, sgtWeekKey);
-}
-
-/** True when `iso` falls on the same Asia/Singapore calendar day as `reference`. */
-export function isSameSgtDay(iso: string, reference: Date): boolean {
-  return sgtDateKey(iso) === sgtDateKey(reference.toISOString());
 }
 
 /** Median of a numeric array. `null` for empty input — a median of "no

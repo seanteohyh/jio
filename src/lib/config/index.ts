@@ -110,6 +110,16 @@ export const config = {
    */
   nameClaimEnabled: process.env.JIO_NAME_CLAIM_ENABLED !== "false",
 
+  /**
+   * When false, only an admin may promote a custom cuisine tag into the
+   * shared `cuisines` list — CHANGES_20260818.md §6, decided "open to
+   * anyone, not just admins... may become admin-gated later." Same shape
+   * as `nameClaimEnabled`: a single flag the API route checks rather than
+   * a hardcoded "any signed-in user" baked into the UI, so flipping this
+   * later is a config change, not a rewrite. Defaults open.
+   */
+  cuisineAddOpenToAnyone: process.env.JIO_CUISINE_ADD_OPEN !== "false",
+
   overpassUrl:
     process.env.OVERPASS_API_URL || "https://overpass-api.de/api/interpreter",
 

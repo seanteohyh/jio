@@ -10,26 +10,6 @@
 // Primitives
 // ---------------------------------------------------------------------------
 
-export type Cuisine =
-  | "chinese"
-  | "malay"
-  | "indian"
-  | "japanese"
-  | "korean"
-  | "thai"
-  | "vietnamese"
-  | "western"
-  | "italian"
-  | "local"
-  | "halal"
-  | "vegetarian"
-  | "cafe"
-  | "fast_food"
-  | "food_court"
-  | "dessert"
-  | "modern"
-  | "traditional";
-
 /** 1 = under $8, 2 = $8-15, 3 = $15-30, 4 = over $30. */
 export type BudgetTier = 1 | 2 | 3 | 4;
 
@@ -226,6 +206,46 @@ export interface AccountMergePreview {
   user_id: string;
   display_name: string;
   counts: Record<string, number>;
+}
+
+/**
+ * What `/u/[token]` resolves a personal invite link to — CHANGES_20260818.md
+ * §3 / docs/user-discovery.md §4.3. Deliberately minimal, same "return the
+ * minimum field set" rule (§6 of that doc) as `PublicPlace`/`PublicLobang`:
+ * just enough to render the profile card and drive "Start a Jio with them"
+ * / "Add them to a Kaki" — never email, office, or anything else.
+ */
+export interface PersonalInvite {
+  user_id: string;
+  display_name: string;
+}
+
+/**
+ * A cuisine everyone can use — CHANGES_20260818.md §6. Replaces the old
+ * hardcoded `Cuisine` TS union, which could never grow past its 18
+ * compile-time values; this is the runtime-extensible list it grows into.
+ * `slug` is what's actually stored on `places.cuisine`/
+ * `user_prefs.cuisine_likes`/`cuisine_dislikes` (all plain `string[]`, never
+ * restricted to this list at the database level); `label` is what was
+ * actually typed, kept for the admin combine tool's own readability —
+ * every UI chip still runs a slug through `formatCuisine()` for display,
+ * same as any other cuisine slug already does.
+ */
+export interface CuisineOption {
+  slug: string;
+  label: string;
+  added_by?: string | null;
+  created_at?: string;
+}
+
+/** Places + profile-preference reference counts for one candidate cuisine
+ *  slug, shown before an admin combine commits — same "preview what will
+ *  move" shape as `AccountMergePreview`. */
+export interface CuisineMergePreview {
+  slug: string;
+  label: string;
+  place_count: number;
+  profile_count: number;
 }
 
 // ---------------------------------------------------------------------------

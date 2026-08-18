@@ -134,6 +134,18 @@ export const nameAuth: AuthAdapter = {
         };
       }
 
+      // CHANGES_20260818.md §2 — "no, different person" used to still write
+      // this session's profile under the same name, producing exactly the
+      // two-accounts-one-name clash the confirmation prompt exists to catch.
+      // Stop here instead: nothing above this point wrote anything (the
+      // anonymous session created earlier, if any, is left as an unnamed
+      // placeholder — harmless, and reclaimed the next time this browser
+      // signs in under a name that doesn't collide), so there's nothing to
+      // unwind.
+      if (match && confirmClaim === false) {
+        return { ok: false, nameTaken: true, matchedName: match.display_name };
+      }
+
       if (match && confirmClaim) {
         const repo = await getRepoAsync();
         await repo.mergeUserAccounts(userId, userId, match.user_id);
@@ -179,10 +191,7 @@ export const nameAuth: AuthAdapter = {
 
       if (profileError) return { ok: false, error: profileError.message };
 
-      return {
-        ok: true,
-        duplicateConfirmed: Boolean(match) && confirmClaim === false,
-      };
+      return { ok: true };
     } catch (error) {
       return {
         ok: false,

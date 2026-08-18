@@ -1,10 +1,12 @@
 "use client";
 
+import useSWR from "swr";
 import { Chip, inputClass } from "./ui";
-import { CUISINES, BUDGET_TIERS } from "@/lib/constants";
+import { BUDGET_TIERS } from "@/lib/constants";
 import { formatCuisine } from "@/lib/utils";
+import { fetcher } from "@/lib/fetcher";
 import { features } from "@/lib/config";
-import type { BudgetTier } from "@/types";
+import type { BudgetTier, CuisineOption } from "@/types";
 
 export interface FilterState {
   search: string;
@@ -49,6 +51,12 @@ export default function FilterBar({
    *  be there but do nothing. */
   showSort?: boolean;
 }) {
+  const { data: cuisinesData } = useSWR<{ cuisines: CuisineOption[] }>(
+    "/api/cuisines",
+    fetcher
+  );
+  const cuisines = cuisinesData?.cuisines ?? [];
+
   const toggleCuisine = (cuisine: string) => {
     const next = value.cuisines.includes(cuisine)
       ? value.cuisines.filter((c) => c !== cuisine)
@@ -70,13 +78,13 @@ export default function FilterBar({
       )}
 
       <div className="no-scrollbar -mx-4 flex gap-1.5 overflow-x-auto px-4">
-        {CUISINES.map((cuisine) => (
+        {cuisines.map((cuisine) => (
           <Chip
-            key={cuisine}
-            active={value.cuisines.includes(cuisine)}
-            onClick={() => toggleCuisine(cuisine)}
+            key={cuisine.slug}
+            active={value.cuisines.includes(cuisine.slug)}
+            onClick={() => toggleCuisine(cuisine.slug)}
           >
-            {formatCuisine(cuisine)}
+            {formatCuisine(cuisine.slug)}
           </Chip>
         ))}
       </div>

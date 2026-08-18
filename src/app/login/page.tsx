@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button, Card, ErrorNote, Field, inputClass } from "@/components/ui";
 import { config } from "@/lib/config";
@@ -19,6 +19,7 @@ import JioLockup from "@/components/brand/JioLockup";
  */
 function NameForm({ next }: { next: string }) {
   const router = useRouter();
+  const nameInputRef = useRef<HTMLInputElement>(null);
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -42,6 +43,24 @@ function NameForm({ next }: { next: string }) {
       if (payload.needs_confirmation) {
         setPendingMatch(payload.matched_name ?? name);
         setBusy(false);
+        return;
+      }
+
+      if (payload.name_taken) {
+        // CHANGES_20260818.md §2 — "No, different person" no longer signs
+        // in under a name someone else already has. Drop back to the plain
+        // field rather than the confirm prompt, keep what they typed (the
+        // collision itself is the useful context here), and say why.
+        setPendingMatch(null);
+        setError(
+          `"${payload.matched_name ?? name}" is already in use — try a ` +
+            "different name so your teammates can tell you apart."
+        );
+        setBusy(false);
+        // The name field isn't mounted yet — it's still showing the confirm
+        // prompt this click came from — so focus has to wait for that state
+        // flip to actually render before the node exists to focus.
+        setTimeout(() => nameInputRef.current?.focus(), 0);
         return;
       }
 
@@ -123,6 +142,7 @@ function NameForm({ next }: { next: string }) {
         hint="This is what shows up next to your votes and reviews."
       >
         <input
+          ref={nameInputRef}
           required
           value={name}
           onChange={(e) => setName(e.target.value)}

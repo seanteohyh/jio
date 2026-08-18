@@ -1,6 +1,8 @@
 import type {
   AccountMergePreview,
   AdminAnalytics,
+  CuisineMergePreview,
+  CuisineOption,
   DuplicateProfileGroup,
   EventDetail,
   EventOption,
@@ -19,6 +21,7 @@ import type {
   PlacesPage,
   PublicLobang,
   PublicPlace,
+  PersonalInvite,
   PlacesPagination,
   Profile,
   PushSubscriptionInput,
@@ -180,18 +183,40 @@ export interface Repo {
    */
   getPushTargets(userIds: string[]): Promise<PushTarget[]>;
   /**
-   * Powers the invite picker. Filtering happens here, not in the route —
-   * see docs/user-discovery.md §4.1: a client-side or route-level filter
-   * over "every user" keeps working while quietly getting heavier as the
-   * team grows, with no point at which it obviously breaks.
+   * Powers every teammate picker (invite, add-to-Kaki, lobang recipients).
+   * Filtering happens here, not in the route — see docs/user-discovery.md
+   * §4.1: a client-side or route-level filter over "every user" keeps
+   * working while quietly getting heavier as the team grows, with no point
+   * at which it obviously breaks.
    *
    * `officeId` scopes results to that office, resolved from the caller's
    * own `user_prefs.default_office_id` (falling back to the default office)
    * — the only per-user office reference the schema has today. Office is a
    * hard boundary for discovery per §6 of that doc, so this is not optional
    * when the offices feature is on.
+   *
+   * Ordered by co-attendance, not alphabetically — §4.2 / CHANGES_20260818.md
+   * §3. Tier 1: people `callerId` has shared a Jio with (host or invitee,
+   * either side), ranked by frequency × recency decay
+   * (`discoveryConfig.ts`). Tier 2: `callerId`'s Kaki co-members not
+   * already in tier 1, by Kaki name then display name. Tier 3: everyone
+   * else in the office — included only when `query` is non-empty ("search
+   * only, not listed by default"), so the default (no-query) result is
+   * the *suggested* list, not the full roster.
+   *
+   * `includeIds` force-includes specific users regardless of tier or
+   * query match — for a multi-select picker to keep resolving the display
+   * name of something already picked even after the search text that
+   * originally surfaced it changes or clears. Without this, a tier-3
+   * person found by searching, then selected, would silently lose their
+   * name off the "selected" chips the moment the search box is cleared.
    */
-  listAllUsers(query?: string, officeId?: string): Promise<TeamUser[]>;
+  listAllUsers(
+    callerId: string,
+    query?: string,
+    officeId?: string,
+    includeIds?: string[]
+  ): Promise<TeamUser[]>;
   /**
    * Completes the one-time /welcome screen: sets the display name and stamps
    * `onboarded_at`, atomically. Distinct from `upsertProfile` (used for a
@@ -564,6 +589,57 @@ export interface Repo {
    * `mergeUserAccounts` as the merge side.
    */
   resolveRecoveryToken(token: string): Promise<string | null>;
+
+  // ---- Cuisines (CHANGES_20260818.md §6) ----
+  /** Every cuisine currently available app-wide — the runtime-extensible
+   *  replacement for the old hardcoded `CUISINES` constant. Alphabetical
+   *  by label, for a stable picker order. */
+  listCuisines(): Promise<CuisineOption[]>;
+  /**
+   * Adds a new permanent cuisine, normalizing `label` into a lowercase,
+   * underscore-separated slug — same discipline as `nameAuth`'s name
+   * matching. Idempotent on an exact slug collision: returns the existing
+   * row rather than throwing, since two people racing to add the same
+   * cuisine is a near-duplicate, not a conflict. Whether a non-admin may
+   * call this at all is `config.cuisineAddOpenToAnyone`, checked by the API
+   * route — this method itself stays config-agnostic, same reasoning
+   * `nameClaimEnabled` is checked in `nameAuth.ts` rather than any `Repo`
+   * method.
+   */
+  addCuisine(userId: string, label: string): Promise<CuisineOption>;
+  /** Places + profile-preference reference counts for each candidate slug
+   *  — shown before an admin combine commits. Admin only. */
+  previewCuisineMerge(slugs: string[]): Promise<CuisineMergePreview[]>;
+  /**
+   * Folds `mergeSlug` into `keepSlug` everywhere it's referenced (places'
+   * `cuisine` arrays, profiles' `cuisine_likes`/`cuisine_dislikes`),
+   * deduping, then retires the merged-away row. Admin only — mirrors
+   * `mergeUserAccounts`'s "keeper absorbs, loser retires" shape.
+   */
+  mergeCuisines(
+    callerId: string,
+    keepSlug: string,
+    mergeSlug: string
+  ): Promise<void>;
+
+  // ---- Personal invite links (CHANGES_20260818.md §3 / docs/user-discovery.md §4.3) ----
+  /**
+   * Self or admin. Regenerating overwrites and retires any previous token
+   * for that account — same "no way to list or recover an old one, only
+   * mint a fresh one" shape as `generateRecoveryToken`, just a different
+   * threat model: this one is meant to be handed out, not kept secret.
+   */
+  generatePersonalInviteToken(
+    callerId: string,
+    userId: string
+  ): Promise<string>;
+  /**
+   * Resolves a personal invite token to the minimum needed to render
+   * `/u/[token]` — `null` if unknown. No authorization check by design,
+   * same "possession of the token is the invite" reasoning as every other
+   * token in this schema.
+   */
+  resolvePersonalInvite(token: string): Promise<PersonalInvite | null>;
 }
 
 /** Method names the conformance test walks. Keep in sync with the interface. */
@@ -653,6 +729,12 @@ export const REPO_METHODS = [
   "mergeUserAccounts",
   "generateRecoveryToken",
   "resolveRecoveryToken",
+  "listCuisines",
+  "addCuisine",
+  "previewCuisineMerge",
+  "mergeCuisines",
+  "generatePersonalInviteToken",
+  "resolvePersonalInvite",
 ] as const;
 
 export type RepoMethod = (typeof REPO_METHODS)[number];

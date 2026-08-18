@@ -20,6 +20,11 @@ function NewEventBody() {
   // prefills; still lands on the ordinary form for a look-over before it's
   // real, same spirit as the blog importer prefilling a place's name.
   const repeatFrom = params.get("repeatFrom");
+  // "Start a Jio with them" from a personal invite link (CHANGES_20260818.md
+  // §3 / docs/user-discovery.md §4.3) — pre-selects one invitee, nothing
+  // else. Ignored if repeatFrom is also present; repeating an old Jio
+  // already carries its own invitee list.
+  const inviteUserId = params.get("invite");
 
   const { data, isLoading } = useSWR<{ event: EventDetail }>(
     repeatFrom ? `/api/events/${repeatFrom}` : null,
@@ -47,7 +52,9 @@ function NewEventBody() {
         userIds: source.invitees.map((i) => i.user_id),
         kakiIds: source.kaki_id ? [source.kaki_id] : [],
       }
-    : undefined;
+    : inviteUserId
+      ? { userIds: [inviteUserId], kakiIds: [] }
+      : undefined;
 
   return (
     <div className="space-y-5">

@@ -71,14 +71,25 @@ export default function SendLobangPanel({
   onSent,
   onCancel,
 }: SendLobangPanelProps) {
+  const [mode, setMode] = useState<RecipientMode>("users");
+  const [toUserIds, setToUserIds] = useState<string[]>([]);
+  const [teammateSearch, setTeammateSearch] = useState("");
+
+  // Ranked, not alphabetical — docs/user-discovery.md §4.2. `teammateSearch`
+  // goes to the server so its tiering applies (shared-Jio people, then
+  // Kaki co-members, shown with no search at all; everyone else in the
+  // office only once actually searched for). `toUserIds` is sent as
+  // includeIds so a pick keeps resolving its name even after the search
+  // that surfaced it changes or clears — same reasoning as InvitePicker.
+  const teammateParams = new URLSearchParams();
+  const teammateNeedle = teammateSearch.trim();
+  if (teammateNeedle) teammateParams.set("q", teammateNeedle);
+  for (const id of toUserIds) teammateParams.append("include_id", id);
   const { data: usersData } = useSWR<{ users: TeamUser[] }>(
-    "/api/users",
+    `/api/users?${teammateParams.toString()}`,
     fetcher
   );
   const { data: kakisData } = useSWR<{ kakis: Kaki[] }>("/api/kakis", fetcher);
-
-  const [mode, setMode] = useState<RecipientMode>("users");
-  const [toUserIds, setToUserIds] = useState<string[]>([]);
   const [kakiId, setKakiId] = useState("");
   const [placeId, setPlaceId] = useState(defaultPlaceId ?? "");
   const [selectedPlaceName, setSelectedPlaceName] = useState(
@@ -145,6 +156,7 @@ export default function SendLobangPanel({
   const switchMode = (next: RecipientMode) => {
     setMode(next);
     setToUserIds([]);
+    setTeammateSearch("");
     setKakiId("");
     setPublicUrl(null);
     // A public link is a single-purpose "share this exact place," not a
@@ -362,16 +374,32 @@ export default function SendLobangPanel({
         </div>
 
         {mode === "users" && (
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {teammates.map((t) => (
-              <Chip
-                key={t.user_id}
-                active={toUserIds.includes(t.user_id)}
-                onClick={() => toggleUser(t.user_id)}
-              >
-                {t.display_name}
-              </Chip>
-            ))}
+          <div className="mt-2 space-y-2">
+            <input
+              value={teammateSearch}
+              onChange={(e) => setTeammateSearch(e.target.value)}
+              className={inputClass}
+              placeholder="Search a name…"
+              autoComplete="off"
+            />
+            <div className="flex flex-wrap gap-1.5">
+              {teammates.length === 0 && (
+                <p className="text-stone text-xs">
+                  {teammateNeedle
+                    ? `Nobody matching “${teammateSearch}”.`
+                    : "Nobody to suggest yet — try searching."}
+                </p>
+              )}
+              {teammates.map((t) => (
+                <Chip
+                  key={t.user_id}
+                  active={toUserIds.includes(t.user_id)}
+                  onClick={() => toggleUser(t.user_id)}
+                >
+                  {t.display_name}
+                </Chip>
+              ))}
+            </div>
           </div>
         )}
 

@@ -1,4 +1,4 @@
-import type { BudgetTier, Cuisine, Office } from "@/types";
+import type { BudgetTier, CuisineOption, Office } from "@/types";
 
 /**
  * The anchor office. Overridable through env so a fork can point at a
@@ -12,25 +12,35 @@ export const DEFAULT_OFFICE: Office = {
   lng: Number(process.env.NEXT_PUBLIC_JIO_OFFICE_LNG || 103.85012),
 };
 
-export const CUISINES: Cuisine[] = [
-  "chinese",
-  "malay",
-  "indian",
-  "japanese",
-  "korean",
-  "thai",
-  "vietnamese",
-  "western",
-  "italian",
-  "local",
-  "halal",
-  "vegetarian",
-  "cafe",
-  "fast_food",
-  "food_court",
-  "dessert",
-  "modern",
-  "traditional",
+/**
+ * The 18 cuisines Jio has always shipped with — no longer the whole list.
+ * CHANGES_20260818.md §6 replaced the old hardcoded `CUISINES` constant
+ * with a runtime-extensible `cuisines` table (052_cuisines.sql, seeded with
+ * exactly these); this is only what `demoRepo`'s in-memory store seeds
+ * itself with, matching the migration's seed data one-for-one so demo mode
+ * shows the same starting list as a fresh live deployment. Every other
+ * caller now fetches the live list via `repo.listCuisines()` instead of
+ * importing this directly.
+ */
+export const DEFAULT_CUISINE_SEED: Omit<CuisineOption, "added_by" | "created_at">[] = [
+  { slug: "chinese", label: "Chinese" },
+  { slug: "malay", label: "Malay" },
+  { slug: "indian", label: "Indian" },
+  { slug: "japanese", label: "Japanese" },
+  { slug: "korean", label: "Korean" },
+  { slug: "thai", label: "Thai" },
+  { slug: "vietnamese", label: "Vietnamese" },
+  { slug: "western", label: "Western" },
+  { slug: "italian", label: "Italian" },
+  { slug: "local", label: "Local" },
+  { slug: "halal", label: "Halal" },
+  { slug: "vegetarian", label: "Vegetarian" },
+  { slug: "cafe", label: "Cafe" },
+  { slug: "fast_food", label: "Fast Food" },
+  { slug: "food_court", label: "Food Court" },
+  { slug: "dessert", label: "Dessert" },
+  { slug: "modern", label: "Modern" },
+  { slug: "traditional", label: "Traditional" },
 ];
 
 export const BUDGET_TIERS: {

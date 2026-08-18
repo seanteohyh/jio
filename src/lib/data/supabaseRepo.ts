@@ -5,16 +5,20 @@ import {
   generateToken,
   haversine,
   nextOccurrence,
+  slugifyCuisine,
   sortPlacesForList,
   uuid,
 } from "@/lib/utils";
 import { computeWinner } from "@/lib/voting";
 import { rankPlaces } from "@/lib/recommend";
 import { pickCommitteeSuggestions } from "@/lib/suggestCommittee";
+import { DISCOVERY_CONFIG } from "@/lib/discoveryConfig";
 import { createAuthServerClient } from "@/lib/supabase/serverAuth";
 import type { Repo } from "./index";
 import type {
   AdminAnalytics,
+  CuisineMergePreview,
+  CuisineOption,
   EventCandidateDate,
   EventDateVote,
   EventDetail,
@@ -948,27 +952,43 @@ export const supabaseRepo: Repo = {
     }));
   },
 
-  async listAllUsers(query, officeId) {
+  async listAllUsers(callerId, query, officeId, includeIds) {
     const client = await db();
     let builder = client
       .from("profiles")
       .select("user_id, display_name")
-      .order("display_name");
+      .neq("user_id", callerId);
 
     const q = query?.trim();
     if (q) builder = builder.ilike("display_name", `%${q}%`);
 
     const { data, error } = await builder;
     if (error) fail("Could not load the team list", error);
-    let users = (data ?? []) as TeamUser[];
+    let candidates = (data ?? []) as TeamUser[];
 
-    if (officeId && users.length > 0) {
+    // Force-include anything the caller already has selected, even if it
+    // doesn't match the current search text or would otherwise sit in the
+    // hidden-by-default tier 3 — see the interface doc comment.
+    const includeSet = new Set(includeIds ?? []);
+    const toInclude = (includeIds ?? []).filter(
+      (id) => id !== callerId && !candidates.some((c) => c.user_id === id)
+    );
+    if (toInclude.length > 0) {
+      const { data: extra, error: extraError } = await client
+        .from("profiles")
+        .select("user_id, display_name")
+        .in("user_id", toInclude);
+      if (extraError) fail("Could not load the team list", extraError);
+      candidates = [...candidates, ...((extra ?? []) as TeamUser[])];
+    }
+
+    if (officeId && candidates.length > 0) {
       const { data: prefsRows } = await client
         .from("user_prefs")
         .select("user_id, default_office_id")
         .in(
           "user_id",
-          users.map((u) => u.user_id)
+          candidates.map((u) => u.user_id)
         );
       const officeByUser = new Map(
         (
@@ -978,12 +998,97 @@ export const supabaseRepo: Repo = {
           }[]
         ).map((p) => [p.user_id, p.default_office_id])
       );
-      users = users.filter(
-        (u) => (officeByUser.get(u.user_id) ?? DEFAULT_OFFICE.id) === officeId
+      // Force-included ids stay exempt from office scoping — they're
+      // already-selected, not a fresh discovery result.
+      candidates = candidates.filter(
+        (u) =>
+          includeSet.has(u.user_id) ||
+          (officeByUser.get(u.user_id) ?? DEFAULT_OFFICE.id) === officeId
       );
     }
 
-    return users;
+    // §4.2's three tiers — see 054_co_attendance.sql for why tier 1 needs
+    // its own SECURITY DEFINER function rather than a plain query.
+    const { data: scoreRows, error: scoreError } = await client.rpc(
+      "get_co_attendance_scores",
+      {
+        p_user_id: callerId,
+        p_half_life_days: DISCOVERY_CONFIG.coAttendance.halfLifeDays,
+      }
+    );
+    if (scoreError) fail("Could not rank teammates", scoreError);
+    const scores = new Map(
+      ((scoreRows ?? []) as { user_id: string; score: number }[]).map((r) => [
+        r.user_id,
+        Number(r.score),
+      ])
+    );
+
+    const { data: myKakiRows } = await client
+      .from("kaki_members")
+      .select("kaki_id")
+      .eq("user_id", callerId);
+    const callerKakiIds = new Set(
+      ((myKakiRows ?? []) as { kaki_id: string }[]).map((r) => r.kaki_id)
+    );
+
+    const tier2KakiName = new Map<string, string>();
+    if (callerKakiIds.size > 0) {
+      const { data: kakiRows } = await client
+        .from("kakis")
+        .select("id, name")
+        .in("id", Array.from(callerKakiIds));
+      const kakiNames = new Map(
+        ((kakiRows ?? []) as { id: string; name: string }[]).map((k) => [
+          k.id,
+          k.name,
+        ])
+      );
+
+      const { data: coMemberRows } = await client
+        .from("kaki_members")
+        .select("kaki_id, user_id")
+        .in("kaki_id", Array.from(callerKakiIds))
+        .neq("user_id", callerId);
+      for (const m of (coMemberRows ?? []) as {
+        kaki_id: string;
+        user_id: string;
+      }[]) {
+        if ((scores.get(m.user_id) ?? 0) > 0) continue;
+        const name = kakiNames.get(m.kaki_id);
+        if (!name) continue;
+        const existing = tier2KakiName.get(m.user_id);
+        if (!existing || name.localeCompare(existing) < 0) {
+          tier2KakiName.set(m.user_id, name);
+        }
+      }
+    }
+
+    const tierOf = (userId: string): 1 | 2 | 3 => {
+      if ((scores.get(userId) ?? 0) > 0) return 1;
+      if (tier2KakiName.has(userId)) return 2;
+      return 3;
+    };
+
+    const visible = q
+      ? candidates
+      : candidates.filter(
+          (c) => tierOf(c.user_id) !== 3 || includeSet.has(c.user_id)
+        );
+
+    return visible.sort((a, b) => {
+      const ta = tierOf(a.user_id);
+      const tb = tierOf(b.user_id);
+      if (ta !== tb) return ta - tb;
+      if (ta === 1) return (scores.get(b.user_id) ?? 0) - (scores.get(a.user_id) ?? 0);
+      if (ta === 2) {
+        const byKaki = (tier2KakiName.get(a.user_id) ?? "").localeCompare(
+          tier2KakiName.get(b.user_id) ?? ""
+        );
+        if (byKaki !== 0) return byKaki;
+      }
+      return a.display_name.localeCompare(b.display_name);
+    });
   },
 
   // ---- Lunch events ----
@@ -2959,6 +3064,114 @@ export const supabaseRepo: Repo = {
     });
     if (error) fail("Could not check that recovery link", error);
     return (data as string | null) ?? null;
+  },
+
+  async listCuisines() {
+    const client = await db();
+    const { data, error } = await client
+      .from("cuisines")
+      .select("slug, label, added_by, created_at")
+      .order("label");
+    if (error) fail("Could not load cuisines", error);
+    return (data ?? []) as CuisineOption[];
+  },
+
+  async addCuisine(userId, label) {
+    // Whether a non-admin may call this at all is `config.cuisineAddOpenToAnyone`,
+    // checked by the API route — repos stay config-agnostic, same reasoning
+    // `nameClaimEnabled` is checked in `nameAuth.ts` rather than here.
+    const trimmed = label.trim();
+    if (!trimmed) throw new Error("Put in a cuisine name");
+
+    const slug = slugifyCuisine(trimmed);
+    if (!slug) throw new Error("Put in a cuisine name");
+
+    const client = await db();
+
+    // Upsert-and-reselect rather than a plain insert: two people racing to
+    // add the same cuisine should both end up pointing at the one row that
+    // won, not have the loser's request throw a unique-violation error.
+    const { error: upsertError } = await client
+      .from("cuisines")
+      .upsert(
+        { slug, label: trimmed, added_by: userId },
+        { onConflict: "slug", ignoreDuplicates: true }
+      );
+    if (upsertError) fail("Could not add that cuisine", upsertError);
+
+    const { data, error } = await client
+      .from("cuisines")
+      .select("slug, label, added_by, created_at")
+      .eq("slug", slug)
+      .single();
+    if (error) fail("Could not add that cuisine", error);
+    return data as CuisineOption;
+  },
+
+  async previewCuisineMerge(slugs) {
+    const client = await db();
+
+    return Promise.all(
+      slugs.map(async (slug): Promise<CuisineMergePreview> => {
+        const { data: cuisineRow } = await client
+          .from("cuisines")
+          .select("label")
+          .eq("slug", slug)
+          .maybeSingle();
+
+        // user_prefs_select (007_rls.sql) is strictly self-only, so this
+        // has to go through the SECURITY DEFINER counting function rather
+        // than a plain query — see 052_cuisines.sql.
+        const { data: counts, error } = await client
+          .rpc("count_cuisine_references", { p_slug: slug })
+          .single();
+        if (error) fail("Could not count references", error);
+        const row = counts as { place_count: number; profile_count: number } | null;
+
+        return {
+          slug,
+          label: cuisineRow?.label ?? slug,
+          place_count: Number(row?.place_count ?? 0),
+          profile_count: Number(row?.profile_count ?? 0),
+        };
+      })
+    );
+  },
+
+  async mergeCuisines(callerId, keepSlug, mergeSlug) {
+    if (keepSlug === mergeSlug) {
+      throw new Error("Cannot merge a cuisine into itself");
+    }
+
+    const isAdmin = await supabaseRepo.isAdmin(callerId);
+    if (!isAdmin) throw new Error("Admins only");
+
+    const client = await db();
+    const { error } = await client.rpc("merge_cuisines", {
+      p_keep_slug: keepSlug,
+      p_merge_slug: mergeSlug,
+    });
+    if (error) fail("Could not merge those cuisines", error);
+  },
+
+  async generatePersonalInviteToken(_callerId, userId) {
+    const client = await db();
+    const { data, error } = await client.rpc("generate_discovery_token", {
+      p_user_id: userId,
+    });
+    if (error) fail("Could not create a personal invite link", error);
+    return data as string;
+  },
+
+  async resolvePersonalInvite(token) {
+    const client = await db();
+    const { data, error } = await client
+      .rpc("resolve_discovery_token", { p_token: token })
+      .maybeSingle();
+    if (error) fail("Could not check that invite link", error);
+    if (!data) return null;
+    const row = data as { user_id: string; display_name: string };
+    return { user_id: row.user_id, display_name: row.display_name };
   },
 };
 
