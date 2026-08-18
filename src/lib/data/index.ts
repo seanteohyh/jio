@@ -1,6 +1,8 @@
 import type {
   AccountMergePreview,
   AdminAnalytics,
+  CuisineMergePreview,
+  CuisineOption,
   DuplicateProfileGroup,
   EventDetail,
   EventOption,
@@ -564,6 +566,38 @@ export interface Repo {
    * `mergeUserAccounts` as the merge side.
    */
   resolveRecoveryToken(token: string): Promise<string | null>;
+
+  // ---- Cuisines (CHANGES_20260818.md §6) ----
+  /** Every cuisine currently available app-wide — the runtime-extensible
+   *  replacement for the old hardcoded `CUISINES` constant. Alphabetical
+   *  by label, for a stable picker order. */
+  listCuisines(): Promise<CuisineOption[]>;
+  /**
+   * Adds a new permanent cuisine, normalizing `label` into a lowercase,
+   * underscore-separated slug — same discipline as `nameAuth`'s name
+   * matching. Idempotent on an exact slug collision: returns the existing
+   * row rather than throwing, since two people racing to add the same
+   * cuisine is a near-duplicate, not a conflict. Whether a non-admin may
+   * call this at all is `config.cuisineAddOpenToAnyone`, checked by the API
+   * route — this method itself stays config-agnostic, same reasoning
+   * `nameClaimEnabled` is checked in `nameAuth.ts` rather than any `Repo`
+   * method.
+   */
+  addCuisine(userId: string, label: string): Promise<CuisineOption>;
+  /** Places + profile-preference reference counts for each candidate slug
+   *  — shown before an admin combine commits. Admin only. */
+  previewCuisineMerge(slugs: string[]): Promise<CuisineMergePreview[]>;
+  /**
+   * Folds `mergeSlug` into `keepSlug` everywhere it's referenced (places'
+   * `cuisine` arrays, profiles' `cuisine_likes`/`cuisine_dislikes`),
+   * deduping, then retires the merged-away row. Admin only — mirrors
+   * `mergeUserAccounts`'s "keeper absorbs, loser retires" shape.
+   */
+  mergeCuisines(
+    callerId: string,
+    keepSlug: string,
+    mergeSlug: string
+  ): Promise<void>;
 }
 
 /** Method names the conformance test walks. Keep in sync with the interface. */
@@ -653,6 +687,10 @@ export const REPO_METHODS = [
   "mergeUserAccounts",
   "generateRecoveryToken",
   "resolveRecoveryToken",
+  "listCuisines",
+  "addCuisine",
+  "previewCuisineMerge",
+  "mergeCuisines",
 ] as const;
 
 export type RepoMethod = (typeof REPO_METHODS)[number];

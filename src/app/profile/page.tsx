@@ -24,7 +24,7 @@ import AddToHomeScreenCard from "@/components/profile/AddToHomeScreenCard";
 import RecoveryLinkPanel from "@/components/profile/RecoveryLinkPanel";
 import { fetcher, mutateJson } from "@/lib/fetcher";
 import { config, features } from "@/lib/config";
-import { BUDGET_TIERS, CUISINES } from "@/lib/constants";
+import { BUDGET_TIERS } from "@/lib/constants";
 import {
   cycleCuisinePreference,
   formatCuisine,
@@ -35,6 +35,7 @@ import {
 import type {
   AuthUser,
   BudgetTier,
+  CuisineOption,
   Office,
   UserMetrics,
   UserPrefs,
@@ -82,6 +83,10 @@ export default function ProfilePage() {
   );
   const { data: officeData } = useSWR<{ offices: Office[] }>(
     "/api/offices",
+    fetcher
+  );
+  const { data: cuisinesData } = useSWR<{ cuisines: CuisineOption[] }>(
+    "/api/cuisines",
     fetcher
   );
 
@@ -227,20 +232,20 @@ export default function ProfilePage() {
                 </span>
               </div>
               <div className="flex flex-wrap gap-1.5">
-                {CUISINES.map((c) => {
-                  const tone = likes.includes(c)
+                {(cuisinesData?.cuisines ?? []).map((c) => {
+                  const tone = likes.includes(c.slug)
                     ? ("like" as const)
-                    : dislikes.includes(c)
+                    : dislikes.includes(c.slug)
                       ? ("dislike" as const)
                       : undefined;
                   return (
                     <Chip
-                      key={c}
+                      key={c.slug}
                       active={!!tone}
                       tone={tone}
-                      onClick={() => cycleCuisine(c)}
+                      onClick={() => cycleCuisine(c.slug)}
                     >
-                      {formatCuisine(c)}
+                      {formatCuisine(c.slug)}
                     </Chip>
                   );
                 })}
@@ -455,6 +460,12 @@ export default function ProfilePage() {
                 className="text-ember block text-sm underline"
               >
                 Accounts
+              </Link>
+              <Link
+                href="/admin/cuisines"
+                className="text-ember block text-sm underline"
+              >
+                Cuisines
               </Link>
               {features.offices && (
                 <Link

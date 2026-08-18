@@ -167,6 +167,25 @@ export function nameSimilarity(a: string, b: string): number {
 }
 
 /**
+ * Normalizes a typed cuisine label into its stored slug — CHANGES_20260818.md
+ * §6. Same "lowercase, trimmed" discipline as `nameAuth`'s name matching,
+ * plus collapsing whitespace to underscores so a multi-word cuisine slugs
+ * the same way the original 18 do ("fast_food", "food_court") — the same
+ * convention `formatCuisine()` below already assumes when it reverses this
+ * exact transform for display. Catches exact duplicates ("Korean BBQ" /
+ * "korean bbq") for free; near-duplicates ("KBBQ") are a known, accepted
+ * gap the doc decided not to guard against at entry, cleaned up later
+ * instead via the admin combine tool.
+ */
+export function slugifyCuisine(label: string): string {
+  return label
+    .trim()
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, "")
+    .replace(/\s+/g, "_");
+}
+
+/**
  * The Maps link rendered on a place's page (CHANGES_20260814.md §2). With a
  * resolved `google_place_id` (migration 049), this opens the restaurant's
  * actual listing — name, photos, reviews — rather than a bare pin; Google's

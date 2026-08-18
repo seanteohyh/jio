@@ -1,4 +1,5 @@
 import {
+  DEFAULT_CUISINE_SEED,
   DEFAULT_OFFICE,
   DEMO_USER_ID,
   RECURRING_LOOKAHEAD_DAYS,
@@ -9,6 +10,7 @@ import {
   generateToken,
   haversine,
   nextOccurrence,
+  slugifyCuisine,
   sortPlacesForList,
   uuid,
 } from "@/lib/utils";
@@ -42,6 +44,8 @@ import {
 } from "./demoData";
 import type { Repo } from "./index";
 import type {
+  CuisineMergePreview,
+  CuisineOption,
   EventCandidateDate,
   EventDateVote,
   EventDetail,
@@ -119,6 +123,7 @@ interface DemoStore {
    *  from the client-readable column grant in live mode (041) — this is
    *  never something a client should be able to read off a profile. */
   recoveryTokens: { user_id: string; token: string }[];
+  cuisines: CuisineOption[];
 }
 
 const globalStore = globalThis as typeof globalThis & {
@@ -151,6 +156,7 @@ function seed(): DemoStore {
     recurringSeries: [],
     pushSubscriptions: [],
     recoveryTokens: [],
+    cuisines: DEFAULT_CUISINE_SEED.map((c) => ({ ...c })),
   };
 }
 
@@ -2471,6 +2477,81 @@ export const demoRepo: Repo = {
   async resolveRecoveryToken(token) {
     const s = store();
     return s.recoveryTokens.find((t) => t.token === token)?.user_id ?? null;
+  },
+
+  async listCuisines() {
+    const s = store();
+    return [...s.cuisines].sort((a, b) => a.label.localeCompare(b.label));
+  },
+
+  async addCuisine(userId, label) {
+    // Whether a non-admin may call this at all is `config.cuisineAddOpenToAnyone`,
+    // checked by the API route — repos stay config-agnostic, same reasoning
+    // `nameClaimEnabled` is checked in `nameAuth.ts` rather than here.
+    const trimmed = label.trim();
+    if (!trimmed) throw new Error("Put in a cuisine name");
+
+    const slug = slugifyCuisine(trimmed);
+    if (!slug) throw new Error("Put in a cuisine name");
+
+    const s = store();
+    const existing = s.cuisines.find((c) => c.slug === slug);
+    if (existing) return existing;
+
+    const created: CuisineOption = {
+      slug,
+      label: trimmed,
+      added_by: userId,
+      created_at: new Date().toISOString(),
+    };
+    s.cuisines.push(created);
+    return created;
+  },
+
+  async previewCuisineMerge(slugs) {
+    const s = store();
+    return slugs.map((slug) => {
+      const cuisine = s.cuisines.find((c) => c.slug === slug);
+      return {
+        slug,
+        label: cuisine?.label ?? slug,
+        place_count: s.places.filter((p) => p.cuisine.includes(slug)).length,
+        profile_count: s.prefs.filter(
+          (p) =>
+            p.cuisine_likes.includes(slug) || p.cuisine_dislikes.includes(slug)
+        ).length,
+      };
+    });
+  },
+
+  async mergeCuisines(callerId, keepSlug, mergeSlug) {
+    if (keepSlug === mergeSlug) {
+      throw new Error("Cannot merge a cuisine into itself");
+    }
+
+    const isAdmin = await demoRepo.isAdmin(callerId);
+    if (!isAdmin) throw new Error("Admins only");
+
+    const s = store();
+    const dedupeReplace = (tags: string[]) =>
+      Array.from(
+        new Set(tags.map((t) => (t === mergeSlug ? keepSlug : t)))
+      );
+
+    for (const place of s.places) {
+      if (place.cuisine.includes(mergeSlug)) {
+        place.cuisine = dedupeReplace(place.cuisine);
+      }
+    }
+    for (const pref of s.prefs) {
+      if (pref.cuisine_likes.includes(mergeSlug)) {
+        pref.cuisine_likes = dedupeReplace(pref.cuisine_likes);
+      }
+      if (pref.cuisine_dislikes.includes(mergeSlug)) {
+        pref.cuisine_dislikes = dedupeReplace(pref.cuisine_dislikes);
+      }
+    }
+    s.cuisines = s.cuisines.filter((c) => c.slug !== mergeSlug);
   },
 };
 

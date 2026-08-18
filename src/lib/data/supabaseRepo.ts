@@ -5,6 +5,7 @@ import {
   generateToken,
   haversine,
   nextOccurrence,
+  slugifyCuisine,
   sortPlacesForList,
   uuid,
 } from "@/lib/utils";
@@ -15,6 +16,8 @@ import { createAuthServerClient } from "@/lib/supabase/serverAuth";
 import type { Repo } from "./index";
 import type {
   AdminAnalytics,
+  CuisineMergePreview,
+  CuisineOption,
   EventCandidateDate,
   EventDateVote,
   EventDetail,
@@ -2959,6 +2962,94 @@ export const supabaseRepo: Repo = {
     });
     if (error) fail("Could not check that recovery link", error);
     return (data as string | null) ?? null;
+  },
+
+  async listCuisines() {
+    const client = await db();
+    const { data, error } = await client
+      .from("cuisines")
+      .select("slug, label, added_by, created_at")
+      .order("label");
+    if (error) fail("Could not load cuisines", error);
+    return (data ?? []) as CuisineOption[];
+  },
+
+  async addCuisine(userId, label) {
+    // Whether a non-admin may call this at all is `config.cuisineAddOpenToAnyone`,
+    // checked by the API route — repos stay config-agnostic, same reasoning
+    // `nameClaimEnabled` is checked in `nameAuth.ts` rather than here.
+    const trimmed = label.trim();
+    if (!trimmed) throw new Error("Put in a cuisine name");
+
+    const slug = slugifyCuisine(trimmed);
+    if (!slug) throw new Error("Put in a cuisine name");
+
+    const client = await db();
+
+    // Upsert-and-reselect rather than a plain insert: two people racing to
+    // add the same cuisine should both end up pointing at the one row that
+    // won, not have the loser's request throw a unique-violation error.
+    const { error: upsertError } = await client
+      .from("cuisines")
+      .upsert(
+        { slug, label: trimmed, added_by: userId },
+        { onConflict: "slug", ignoreDuplicates: true }
+      );
+    if (upsertError) fail("Could not add that cuisine", upsertError);
+
+    const { data, error } = await client
+      .from("cuisines")
+      .select("slug, label, added_by, created_at")
+      .eq("slug", slug)
+      .single();
+    if (error) fail("Could not add that cuisine", error);
+    return data as CuisineOption;
+  },
+
+  async previewCuisineMerge(slugs) {
+    const client = await db();
+
+    return Promise.all(
+      slugs.map(async (slug): Promise<CuisineMergePreview> => {
+        const { data: cuisineRow } = await client
+          .from("cuisines")
+          .select("label")
+          .eq("slug", slug)
+          .maybeSingle();
+
+        // user_prefs_select (007_rls.sql) is strictly self-only, so this
+        // has to go through the SECURITY DEFINER counting function rather
+        // than a plain query — see 052_cuisines.sql.
+        const { data: counts, error } = await client
+          .rpc("count_cuisine_references", { p_slug: slug })
+          .single();
+        if (error) fail("Could not count references", error);
+        const row = counts as { place_count: number; profile_count: number } | null;
+
+        return {
+          slug,
+          label: cuisineRow?.label ?? slug,
+          place_count: Number(row?.place_count ?? 0),
+          profile_count: Number(row?.profile_count ?? 0),
+        };
+      })
+    );
+  },
+
+  async mergeCuisines(callerId, keepSlug, mergeSlug) {
+    if (keepSlug === mergeSlug) {
+      throw new Error("Cannot merge a cuisine into itself");
+    }
+
+    const isAdmin = await supabaseRepo.isAdmin(callerId);
+    if (!isAdmin) throw new Error("Admins only");
+
+    const client = await db();
+    const { error } = await client.rpc("merge_cuisines", {
+      p_keep_slug: keepSlug,
+      p_merge_slug: mergeSlug,
+    });
+    if (error) fail("Could not merge those cuisines", error);
   },
 };
 

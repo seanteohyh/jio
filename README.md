@@ -41,7 +41,7 @@ When you are ready to make it real, see [Going live](#going-live).
 | **Vote on a place that isn't listed yet** | Typing a name the search doesn't find logs it as a vote option immediately, no place record required. A non-blocking prompt afterward offers to add it to the pool; declining leaves it exactly as a text-only choice, permanently. |
 | **Kakis** | Lunch groups with a shareable invite link and shared stats — group favourites, who eats out most, who is most adventurous. Any current member can also add someone directly by searching their name, without a link changing hands first — same trust level as the invite link itself, just faster for someone already sitting across the table. |
 | **Lobangs** | "Saw this online, thought of you" — send any registered place to specific teammates, a whole Kaki, or — one tap over — anyone at all, with an optional note and personalized "quick pick" suggestions for a teammate/Kaki send. "Share this lobang" is the one entry point on a place's own page (`/places/[id]`), same composer either way; a past Jio's "You → Past Jios" is the other, with the winning place pinned as a default. A teammate/Kaki send is tracked, shows up in the recipient's `/lobangs` feed, and push-notifies them; the "Anyone" path instead mints an attributed `/l/[token]` link — the sender's real name and note, resolved server-side so nobody can forge one — that anyone can open, signed in or not, and never appears in anyone's Lobangs feed or triggers a push. A dedicated `/lobangs` page (linked from "See all" on the profile inbox) shows every *targeted* send, received and sent, as one reverse-chronological, message-bubble feed — your own sends right-aligned, a group send showing the Kaki's name as the recipient. Browse only, deliberately: a lobang is a one-way tip, not a two-way conversation, so there's no reply. |
-| **Places** | Searchable list with cuisine, budget, walk-time and rating filters, sortable by nearest, highest-rated, or rated by your Kaki group — plus a "Kaki favourites only" chip that actually narrows the list, not just reorders it, and a badge on the card itself once at least 2 Kaki-member visits back a place's rating, so a lone review doesn't read as group consensus. Add places by hand (address or postal code — a postal code found anywhere in a pasted-in address, e.g. one copied straight from Google Maps, is tried first, since OneMap's road/block index can choke on a business-name prefix or unit number that a bare postal code sidesteps), import candidate names from a food blog, or let the daily cron find them on OpenStreetMap. Cuisine tagging covers a fixed, scored list (now including Modern and Traditional) plus free-text "Other" tags that show on the place but never affect recommendations. A place's own page has a "View on Google Maps" link next to Directions. Without a Google Places API key configured it's a plain coordinate pin, computed client-side, no backend call — that's still the default. With one configured, the app resolves each place to its actual Google listing, best-effort, server-side, at create/edit time (gated on the result actually looking like the same place — name similarity plus a distance check — not just Google's own top result), and the link opens that instead: the restaurant's real page, photos and reviews included, with the coordinate link as an automatic fallback if the match ever stops resolving. Every active place also has a public preview page (`/p/[id]`, linked from a Share button on the full page) — the app's only page that needs no sign-in, showing name, cuisine, address, best dishes, aggregate rating and the same Maps link (real listing or pin, same rule) to anyone with the link, with a "Join to see more" prompt into `/login` for everything past that, including the named review list. |
+| **Places** | Searchable list with cuisine, budget, walk-time and rating filters, sortable by nearest, highest-rated, or rated by your Kaki group — plus a "Kaki favourites only" chip that actually narrows the list, not just reorders it, and a badge on the card itself once at least 2 Kaki-member visits back a place's rating, so a lone review doesn't read as group consensus. Add places by hand (address or postal code — a postal code found anywhere in a pasted-in address, e.g. one copied straight from Google Maps, is tried first, since OneMap's road/block index can choke on a business-name prefix or unit number that a bare postal code sidesteps), import candidate names from a food blog, or let the daily cron find them on OpenStreetMap. Cuisine tagging draws from a shared, runtime-extensible list (a `cuisines` table, not a fixed set — see Security notes) rather than free-text alone: typing something new under "Other" that doesn't match an existing cuisine offers to add it permanently, visible to every place and every profile's Taste preferences from then on ("No" keeps today's behaviour, a one-off tag on that place only). An admin combine tool (`/admin/cuisines`) folds near-duplicates ("Korean BBQ" / "korean bbq" / "KBBQ") together after the fact, since normalizing on write only catches exact ones. A place's own page has a "View on Google Maps" link next to Directions. Without a Google Places API key configured it's a plain coordinate pin, computed client-side, no backend call — that's still the default. With one configured, the app resolves each place to its actual Google listing, best-effort, server-side, at create/edit time (gated on the result actually looking like the same place — name similarity plus a distance check — not just Google's own top result), and the link opens that instead: the restaurant's real page, photos and reviews included, with the coordinate link as an automatic fallback if the match ever stops resolving. Every active place also has a public preview page (`/p/[id]`, linked from a Share button on the full page) — the app's only page that needs no sign-in, showing name, cuisine, address, best dishes, aggregate rating and the same Maps link (real listing or pin, same rule) to anyone with the link, with a "Join to see more" prompt into `/login` for everything past that, including the named review list. |
 | **Map** | Leaflet map of everything in walking distance, with real walking routes when OneMap is configured. A Kaki-favourite place gets an amber ring on its marker, layered independently of the existing selected/not-selected fill color. |
 | **Reviews** | Log a visit privately, or share it as a review. Each visit is its own entry, editable and deletable later — including un-sharing a review back to private. Each shared review can be liked — a bare count plus your own toggle state, no "liked by" list — which nudges the reviewer with a throttled push (at most one per review per ~10 minutes) and feeds into a weekly recap push for anyone whose reviews got at least one like that week. |
 | **Saved places** | Bookmark anywhere from any list. `/places` has an All / Saved split, and saving nudges a place up your own suggestions. |
@@ -289,7 +289,7 @@ Roughly 30 minutes end to end. Everything below stays on a free tier.
    `service_role` key. The last one is a secret; it bypasses all access
    control.
 3. **SQL Editor** — run every file in `supabase/migrations/` in numeric order,
-   001 through 051. They are idempotent, so re-running is harmless.
+   001 through 052. They are idempotent, so re-running is harmless.
 4. **Authentication → Providers → Anonymous sign-ins** — turn this on. It is
    what makes name-only sign-in work.
 5. **Authentication → URL Configuration** — set the Site URL to your deployed
@@ -354,6 +354,7 @@ the environment variables. Vercel detects Next.js with no configuration.
 | `GOOGLE_PLACES_API_KEY` | Optional, from step 4 |
 | `VAPID_PUBLIC_KEY` / `NEXT_PUBLIC_VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` | Optional — push notifications. Generate with `npx web-push generate-vapid-keys`; the public key goes in **both** variables (server and client need it under different names), same value. Without these, push silently no-ops rather than breaking anything. |
 | `JIO_NAME_CLAIM_ENABLED` | Optional, defaults to `true`. Set to `false` once names genuinely aren't unique across the team anymore — typing an existing name then always signs in as (or renames) the current session rather than offering to merge. Only meaningful in `name` mode; recovery links and the admin merge tool at `/admin/accounts` both keep working unaffected either way. |
+| `JIO_CUISINE_ADD_OPEN` | Optional, defaults to `true`. Set to `false` to require an admin to promote a custom cuisine tag into the shared list — everyone can still browse/pick from the existing list, and the admin combine tool at `/admin/cuisines` is unaffected either way. |
 
 Then go back to Supabase and set the Site URL to your live URL.
 
@@ -886,12 +887,28 @@ against) keep a public send out of the sender's own history and off
 everyone's `/lobangs` feed, exactly as decided: "will not be saved"
 anywhere but its own link.
 
+**The cuisine-combine preview needed its own `SECURITY DEFINER` function for
+a reason distinct from every other one in this file.** `user_prefs_select`
+(007_rls.sql) is strictly self-only — "nobody else's business what you
+refuse to eat" — which is exactly right for a normal user, but means a
+plain client-side count of "how many people like this cuisine" would only
+ever see the *admin's own* row, silently undercounting everyone else's.
+`count_cuisine_references` (052_cuisines.sql) bypasses that the same way
+`get_push_targets` and friends bypass RLS elsewhere, but it's worth being
+precise about why this one is still safe to grant broadly (`authenticated`,
+no admin check inside the function itself): it returns aggregate counts
+only, never row contents or user identities — there is nothing in its
+response a stranger's taste preferences could leak through. The actual
+combine (`merge_cuisines`) is gated at the API route (`isAdmin`), same
+split as `mergeUserAccounts`/`supabaseRepo.ts` — the SQL function itself
+does the reassignment, not the authorization check.
+
 ---
 
 ## Tests
 
 ```bash
-npm test          # 427 tests across 36 files
+npm test          # 435 tests across 37 files
 npm run typecheck
 npm run lint
 ```
@@ -934,6 +951,7 @@ npm run lint
 | `cuisinePreference.test.ts` | `cycleCuisinePreference`'s neutral → like → dislike → neutral transition table, a full cycle returning to the start, other cuisines left untouched, no input mutation |
 | `utils.test.ts` | `formatTime`/`formatDate` render in Singapore time regardless of the runtime's own timezone; `relativeDayLabel` agrees with the Singapore calendar rather than UTC's right at the UTC day boundary |
 | `calendar.test.ts` | `.ics`/Google Calendar link generation converts straight to UTC regardless of runtime timezone, RFC 5545 text escaping, `isFullyDecided`'s gate (closed, a real winner — place or free-text label — and a non-polling date) |
+| `cuisines.test.ts` | Normalizing a typed label into its slug, idempotent on an exact slug collision, preview counts across places and taste preferences, admin-only and no-self-merge guards on combine, and a combine actually reaching and deduping every reference before retiring the merged-away slug |
 
 **`npm test` does not typecheck.** Vitest transforms TypeScript with esbuild,
 which strips annotations without checking them, and the suite is all pure

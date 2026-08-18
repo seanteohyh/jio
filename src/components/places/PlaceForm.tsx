@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import useSWR from "swr";
 import {
   Button,
   Card,
@@ -10,10 +11,10 @@ import {
   Field,
   inputClass,
 } from "@/components/ui";
-import { BUDGET_TIERS, CUISINES } from "@/lib/constants";
-import { formatCuisine } from "@/lib/utils";
+import { BUDGET_TIERS } from "@/lib/constants";
+import { formatCuisine, slugifyCuisine } from "@/lib/utils";
 import { fetcher, mutateJson } from "@/lib/fetcher";
-import type { BudgetTier, Place } from "@/types";
+import type { BudgetTier, CuisineOption, Place } from "@/types";
 
 /**
  * Add or correct a place. One form, two modes.
@@ -62,6 +63,20 @@ export default function PlaceForm({
   const [geocoding, setGeocoding] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const { data: cuisinesData, mutate: mutateCuisines } = useSWR<{
+    cuisines: CuisineOption[];
+  }>("/api/cuisines", fetcher);
+  const cuisines = cuisinesData?.cuisines ?? [];
+
+  // CHANGES_20260818.md §6 — set once "Other" is typed and normalized to a
+  // slug nothing in the live list already matches, holding the exact typed
+  // label until the prompt below resolves.
+  const [pendingCuisineLabel, setPendingCuisineLabel] = useState<string | null>(
+    null
+  );
+  const [addingCuisine, setAddingCuisine] = useState(false);
+  const [addCuisineError, setAddCuisineError] = useState<string | null>(null);
+
   const toggleCuisine = (value: string) =>
     setCuisine((prev) =>
       prev.includes(value) ? prev.filter((c) => c !== value) : [...prev, value]
@@ -70,10 +85,56 @@ export default function PlaceForm({
   const addCustomCuisineTag = () => {
     const trimmed = otherInput.trim();
     if (!trimmed) return;
-    setCustomCuisineTags((prev) =>
-      prev.includes(trimmed) ? prev : [...prev, trimmed]
-    );
-    setOtherInput("");
+
+    // Already a real cuisine under a different typed casing/spacing
+    // ("korean bbq" vs. an existing "Korean BBQ")? Select it like any other
+    // picker chip rather than prompting to add a near-duplicate.
+    const slug = slugifyCuisine(trimmed);
+    if (cuisines.some((c) => c.slug === slug)) {
+      setCuisine((prev) => (prev.includes(slug) ? prev : [...prev, slug]));
+      setOtherInput("");
+      return;
+    }
+
+    setAddCuisineError(null);
+    setPendingCuisineLabel(trimmed);
+  };
+
+  const resolvePendingCuisine = async (makeShared: boolean) => {
+    const label = pendingCuisineLabel;
+    if (!label) return;
+
+    if (!makeShared) {
+      // Exactly today's behaviour: a one-off entry on this place only.
+      setCustomCuisineTags((prev) =>
+        prev.includes(label) ? prev : [...prev, label]
+      );
+      setPendingCuisineLabel(null);
+      setOtherInput("");
+      return;
+    }
+
+    setAddingCuisine(true);
+    setAddCuisineError(null);
+    try {
+      const { cuisine: created } = await mutateJson<{ cuisine: CuisineOption }>(
+        "/api/cuisines",
+        "POST",
+        { label }
+      );
+      await mutateCuisines();
+      setCuisine((prev) =>
+        prev.includes(created.slug) ? prev : [...prev, created.slug]
+      );
+      setPendingCuisineLabel(null);
+      setOtherInput("");
+    } catch (err) {
+      setAddCuisineError(
+        err instanceof Error ? err.message : "Could not add that cuisine"
+      );
+    } finally {
+      setAddingCuisine(false);
+    }
   };
 
   const removeCustomCuisineTag = (value: string) =>
@@ -238,13 +299,13 @@ export default function PlaceForm({
         <div>
           <p className="text-ink mb-2 text-sm font-medium">Cuisine</p>
           <div className="flex flex-wrap gap-1.5">
-            {CUISINES.map((c) => (
+            {cuisines.map((c) => (
               <Chip
-                key={c}
-                active={cuisine.includes(c)}
-                onClick={() => toggleCuisine(c)}
+                key={c.slug}
+                active={cuisine.includes(c.slug)}
+                onClick={() => toggleCuisine(c.slug)}
               >
-                {formatCuisine(c)}
+                {formatCuisine(c.slug)}
               </Chip>
             ))}
             <Chip
@@ -272,6 +333,35 @@ export default function PlaceForm({
               <Button type="button" variant="secondary" size="sm" onClick={addCustomCuisineTag}>
                 Add
               </Button>
+            </div>
+          )}
+
+          {pendingCuisineLabel && (
+            <div className="border-line bg-paper mt-2 space-y-2 rounded-lg border p-2.5">
+              <p className="text-ink text-xs">
+                Add &ldquo;{pendingCuisineLabel}&rdquo; as a cuisine everyone
+                can use?
+              </p>
+              {addCuisineError && <ErrorNote>{addCuisineError}</ErrorNote>}
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={addingCuisine}
+                  onClick={() => resolvePendingCuisine(true)}
+                >
+                  {addingCuisine ? "Adding…" : "Yes, add it"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  disabled={addingCuisine}
+                  onClick={() => resolvePendingCuisine(false)}
+                >
+                  No, just this place
+                </Button>
+              </div>
             </div>
           )}
 
