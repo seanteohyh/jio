@@ -41,7 +41,7 @@ export default function NewRecurringSeriesPage() {
 
   const [title, setTitle] = useState("Lunch");
   const [weekday, setWeekday] = useState(3);
-  const [time, setTime] = useState("12:15");
+  const [time, setTime] = useState("12:00");
   const [mode, setMode] = useState<Mode>("fixed");
   const [fixedPlaceId, setFixedPlaceId] = useState<string | null>(null);
   const [votePlaceIds, setVotePlaceIds] = useState<string[]>([]);
