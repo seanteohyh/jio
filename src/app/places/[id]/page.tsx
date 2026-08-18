@@ -1,7 +1,7 @@
 "use client";
 
-import { use, useState } from "react";
-import { useRouter } from "next/navigation";
+import { use, useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import useSWR from "swr";
 import {
   Avatar,
@@ -50,6 +50,11 @@ export default function PlaceDetailPage({
 }) {
   const { id } = use(params);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  // CHANGES_20260818.md §1 — the profile History list's "Edit" link has no
+  // form of its own; it lands here with the visit id to edit, since this
+  // page already has the one "How was it?" form both create and edit reuse.
+  const editVisitParam = searchParams.get("editVisit");
 
   const { data, error, isLoading, mutate } = useSWR<PlaceResponse>(
     `/api/places/${id}`,
@@ -59,8 +64,18 @@ export default function PlaceDetailPage({
     wishlist: { place_id: string }[];
   }>(features.wishlist ? "/api/wishlist" : null, fetcher);
   const { data: me } = useSWR<MeResponse>("/api/me", fetcher);
+  // Own visits to this place, including private ones — only fetched while
+  // actually resolving an ?editVisit= link, since the place page's own
+  // `reviews` list is public-only and a private visit (History's whole
+  // reason for existing) would never be found there.
+  const { data: myVisitsData } = useSWR<{ visits: Visit[] }>(
+    editVisitParam ? `/api/visits?placeId=${id}` : null,
+    fetcher
+  );
 
+  const logFormRef = useRef<HTMLDivElement>(null);
   const [logging, setLogging] = useState(false);
+  const [editingVisitId, setEditingVisitId] = useState<string | null>(null);
   const [rating, setRating] = useState(4);
   const [notes, setNotes] = useState("");
   const [dishes, setDishes] = useState("");
@@ -77,6 +92,26 @@ export default function PlaceDetailPage({
   const [lobangSent, setLobangSent] = useState(false);
   const [lobangSentPublic, setLobangSentPublic] = useState(false);
   const [likingId, setLikingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!editVisitParam || !myVisitsData) return;
+    const target = myVisitsData.visits.find((v) => v.id === editVisitParam);
+    if (!target) return;
+    setEditingVisitId(target.id);
+    setRating(target.rating);
+    setDishes(target.best_dishes.join(", "));
+    setNotes(target.notes ?? "");
+    setIsPublic(target.is_public);
+    setLogging(true);
+    setTimeout(
+      () => logFormRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }),
+      0
+    );
+    // Strip the query param once consumed — re-visiting or refreshing
+    // shouldn't keep re-opening the form from a stale link.
+    router.replace(`/places/${id}`, { scroll: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editVisitParam, myVisitsData]);
 
   if (isLoading) return <SkeletonDetail />;
   if (error) return <ErrorNote>{error.message}</ErrorNote>;
@@ -122,14 +157,16 @@ export default function PlaceDetailPage({
     }
   };
 
-  const logVisit = async (event: React.FormEvent) => {
+  // Logs a new visit, or amends one you already logged — CHANGES_20260818.md
+  // §1 reuses this exact form for both rather than building a second one;
+  // only which endpoint it calls differs.
+  const submitVisit = async (event: React.FormEvent) => {
     event.preventDefault();
     setBusy(true);
     setActionError(null);
 
     try {
-      await mutateJson("/api/visits", "POST", {
-        place_id: place.id,
+      const body = {
         rating,
         notes: notes.trim() || null,
         best_dishes: dishes
@@ -137,8 +174,14 @@ export default function PlaceDetailPage({
           .map((d) => d.trim())
           .filter(Boolean),
         is_public: isPublic,
-      });
+      };
+      if (editingVisitId) {
+        await mutateJson(`/api/visits/${editingVisitId}`, "PATCH", body);
+      } else {
+        await mutateJson("/api/visits", "POST", { place_id: place.id, ...body });
+      }
       setLogging(false);
+      setEditingVisitId(null);
       setNotes("");
       setDishes("");
       mutate();
@@ -147,6 +190,40 @@ export default function PlaceDetailPage({
     } finally {
       setBusy(false);
     }
+  };
+
+  // "I ate here" always starts a fresh, blank log — closing the form (if
+  // open) resets any edit in progress rather than leaving stale values
+  // behind for next time it opens.
+  const toggleLogging = () => {
+    if (logging) {
+      setLogging(false);
+      setEditingVisitId(null);
+      return;
+    }
+    setEditingVisitId(null);
+    setRating(4);
+    setDishes("");
+    setNotes("");
+    setIsPublic(true);
+    setActionError(null);
+    setLogging(true);
+  };
+
+  const startEdit = (review: Visit) => {
+    setEditingVisitId(review.id);
+    setRating(review.rating);
+    setDishes(review.best_dishes.join(", "));
+    setNotes(review.notes ?? "");
+    setIsPublic(review.is_public);
+    setActionError(null);
+    setLogging(true);
+    // The form sits above the Reviews list it's reachable from here, so a
+    // click deep in a long list needs to actually bring it into view.
+    setTimeout(
+      () => logFormRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }),
+      0
+    );
   };
 
   const approve = async () => {
@@ -353,7 +430,7 @@ export default function PlaceDetailPage({
         <div>
           <p className="text-stone mb-1.5 text-xs font-medium">Your visit</p>
           <div className="flex flex-wrap gap-2">
-            <Button onClick={() => setLogging((v) => !v)}>
+            <Button onClick={toggleLogging}>
               {logging ? "Never mind" : "I ate here"}
             </Button>
             {features.wishlist && (
@@ -514,64 +591,66 @@ export default function PlaceDetailPage({
       )}
 
       {logging && (
-        <Card className="animate-fade-in">
-          <form onSubmit={logVisit} className="space-y-3">
-            <div>
-              <p className="text-ink mb-1.5 text-sm font-medium">
-                How was it?
-              </p>
-              <div className="flex gap-1">
-                {[1, 2, 3, 4, 5].map((n) => (
-                  <button
-                    key={n}
-                    type="button"
-                    onClick={() => setRating(n)}
-                    aria-label={`${n} star${n === 1 ? "" : "s"}`}
-                    className={
-                      n <= rating
-                        ? "text-amber text-2xl"
-                        : "text-line text-2xl"
-                    }
-                  >
-                    ★
-                  </button>
-                ))}
+        <div ref={logFormRef}>
+          <Card className="animate-fade-in">
+            <form onSubmit={submitVisit} className="space-y-3">
+              <div>
+                <p className="text-ink mb-1.5 text-sm font-medium">
+                  {editingVisitId ? "Edit your review" : "How was it?"}
+                </p>
+                <div className="flex gap-1">
+                  {[1, 2, 3, 4, 5].map((n) => (
+                    <button
+                      key={n}
+                      type="button"
+                      onClick={() => setRating(n)}
+                      aria-label={`${n} star${n === 1 ? "" : "s"}`}
+                      className={
+                        n <= rating
+                          ? "text-amber text-2xl"
+                          : "text-line text-2xl"
+                      }
+                    >
+                      ★
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
 
-            <Field label="What did you have?" hint="Comma separated.">
-              <input
-                value={dishes}
-                onChange={(e) => setDishes(e.target.value)}
-                className={inputClass}
-                placeholder="Bak chor mee"
-              />
-            </Field>
+              <Field label="What did you have?" hint="Comma separated.">
+                <input
+                  value={dishes}
+                  onChange={(e) => setDishes(e.target.value)}
+                  className={inputClass}
+                  placeholder="Bak chor mee"
+                />
+              </Field>
 
-            <Field label="Notes">
-              <textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                className={`${inputClass} min-h-16`}
-                placeholder="Queue was 20 minutes. Worth it."
-              />
-            </Field>
+              <Field label="Notes">
+                <textarea
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  className={`${inputClass} min-h-16`}
+                  placeholder="Queue was 20 minutes. Worth it."
+                />
+              </Field>
 
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={isPublic}
-                onChange={(e) => setIsPublic(e.target.checked)}
-                className="accent-ember"
-              />
-              <span>Share this as a review the team can read</span>
-            </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={isPublic}
+                  onChange={(e) => setIsPublic(e.target.checked)}
+                  className="accent-ember"
+                />
+                <span>Share this as a review the team can read</span>
+              </label>
 
-            <Button type="submit" disabled={busy}>
-              {busy ? "Saving…" : "Save"}
-            </Button>
-          </form>
-        </Card>
+              <Button type="submit" disabled={busy}>
+                {busy ? "Saving…" : editingVisitId ? "Save changes" : "Save"}
+              </Button>
+            </form>
+          </Card>
+        </div>
       )}
 
       {features.reviews && (
@@ -612,19 +691,34 @@ export default function PlaceDetailPage({
                           Had: {review.best_dishes.join(", ")}
                         </p>
                       )}
-                      <button
-                        type="button"
-                        onClick={() => toggleLike(review.id)}
-                        disabled={likingId === review.id}
-                        className={`mt-1.5 inline-flex items-center gap-1 text-xs font-medium ${
-                          review.liked_by_me
-                            ? "text-ember"
-                            : "text-stone hover:text-ink"
-                        }`}
-                      >
-                        {review.liked_by_me ? "♥" : "♡"}{" "}
-                        {review.like_count > 0 ? review.like_count : "Like"}
-                      </button>
+                      <div className="mt-1.5 flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => toggleLike(review.id)}
+                          disabled={likingId === review.id}
+                          className={`inline-flex items-center gap-1 text-xs font-medium ${
+                            review.liked_by_me
+                              ? "text-ember"
+                              : "text-stone hover:text-ink"
+                          }`}
+                        >
+                          {review.liked_by_me ? "♥" : "♡"}{" "}
+                          {review.like_count > 0 ? review.like_count : "Like"}
+                        </button>
+                        {/* CHANGES_20260818.md §1 — own reviews only; a
+                            teammate's review renders identically either
+                            way, so there's nowhere else on it an edit
+                            control could hang. */}
+                        {me?.user?.id === review.user_id && (
+                          <button
+                            type="button"
+                            onClick={() => startEdit(review)}
+                            className="text-stone hover:text-ink text-xs font-medium"
+                          >
+                            Edit
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </li>

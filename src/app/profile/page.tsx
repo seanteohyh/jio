@@ -370,6 +370,20 @@ export default function ProfilePage() {
                             <span className="text-stone text-xs">
                               {formatDate(visit.visited_at)}
                             </span>
+                            {/* CHANGES_20260818.md §1 — the only place a
+                                private (not shared) visit is reachable at
+                                all, so this is the one entry point that
+                                actually covers every review, not just
+                                shared ones. Reuses the place page's own
+                                "How was it?" form rather than building a
+                                second copy — the query param tells that
+                                page which visit to pre-fill and PATCH. */}
+                            <Link
+                              href={`/places/${visit.place_id}?editVisit=${visit.id}`}
+                              className="text-ember text-xs underline"
+                            >
+                              Edit
+                            </Link>
                           </span>
                         </li>
                       ))}
