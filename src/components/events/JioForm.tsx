@@ -19,11 +19,11 @@ import { fetcher, mutateJson } from "@/lib/fetcher";
 import type { Place, ScoredPlace } from "@/types";
 
 function defaultDateTime(): string {
-  // 12:15 today, or 12:15 tomorrow if that has already gone past.
+  // Noon today, or noon tomorrow if that has already gone past.
   const when = new Date();
   when.setSeconds(0, 0);
   if (when.getHours() >= 13) when.setDate(when.getDate() + 1);
-  when.setHours(12, 15, 0, 0);
+  when.setHours(12, 0, 0, 0);
 
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${when.getFullYear()}-${pad(when.getMonth() + 1)}-${pad(
