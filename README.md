@@ -165,10 +165,17 @@ CHANGES_20260807c.md §3 added a confirmation step first — "an account named
 'X' already exists, is this you?" — since the earlier silent version caught
 the deliberate-impersonation case fine but not the accidental one (a typo,
 or two different real people who happen to share a first name). Answering
-"no, different person" signs in as a distinct account under the same name
-and pushes a notification to every admin, since that's a confirmed real
-duplicate, not a maybe. Whether typing a name can auto-merge at all is a
-manual switch — `JIO_NAME_CLAIM_ENABLED=false` turns it off once names
+"no, different person" **refuses the name outright** rather than signing in
+under it (CHANGES_20260818.md §2) — two accounts sharing a display name is
+never actually correct, since nothing else in the app disambiguates them
+afterward (reviews, lobangs, vote lists all show only the name), so the
+earlier version's "sign in anyway and notify an admin" just let a real,
+user-visible clash happen and hoped someone would clean it up later. Now
+the collision is refused at its only real source instead: sent straight
+back to the name field with a plain reason ("'X' is already in use"), so
+the clash can't be created through this screen at all. Whether typing a
+name can auto-merge (or auto-refuse a collision) at all is a manual switch
+— `JIO_NAME_CLAIM_ENABLED=false` turns the whole check off once names
 genuinely aren't unique across the team anymore (decided to be a manual
 call, not an automatic team-size trigger — the confirmation step already
 catches the accidental case that made an automatic trigger feel urgent).

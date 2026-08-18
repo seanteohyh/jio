@@ -10,16 +10,20 @@ export interface AuthResult {
    */
   needsConfirmation?: boolean;
   /** The matched account's exact stored name, for the confirmation prompt's
-   *  copy (may differ in case/whitespace from what was typed). */
+   *  copy (may differ in case/whitespace from what was typed) — also reused
+   *  by `nameTaken` below for the same reason. */
   matchedName?: string;
   /**
-   * True when this call resolved `confirmClaim: false` on an actual match —
-   * i.e. two different real people, confirmed, now share a name. The caller
-   * (the sign-in route) uses this to notify admins, per §3 item 5; it isn't
-   * something `signInWithName` itself sends, since side effects like a push
-   * belong at the route layer, not the auth adapter.
+   * `signInWithName` only: true when `confirmClaim: false` ("no, different
+   * person") was sent for a name that's already someone else's account.
+   * CHANGES_20260818.md §2 — sign-in stops here rather than letting it
+   * through under a name someone else already has: nothing gets written,
+   * `ok` stays `false`, and the caller sends the person back to name
+   * themselves instead. Replaces the old `duplicateConfirmed` flag, which
+   * existed to notify admins *after* a same-name collision was allowed to
+   * complete — no longer possible once this can't happen in the first place.
    */
-  duplicateConfirmed?: boolean;
+  nameTaken?: boolean;
 }
 
 /**
@@ -60,9 +64,12 @@ export interface AuthAdapter {
    * `config.nameClaimEnabled`): omitted on the first attempt, and a match
    * returns `{ ok: false, needsConfirmation: true, matchedName }` without
    * changing anything. Call again with `confirmClaim: true` ("yes, that's
-   * me") to merge that account's data onto the current session, or `false`
-   * ("no, different person") to sign in as a distinct new account under the
-   * same name regardless. Ignored entirely when no match exists.
+   * me") to merge that account's data onto the current session. `false`
+   * ("no, different person") does *not* sign in under the colliding name —
+   * CHANGES_20260818.md §2 decided two accounts must never share a display
+   * name, so this returns `{ ok: false, nameTaken: true, matchedName }`
+   * instead, unchanged, for the caller to send the person back to naming
+   * themselves. Ignored entirely when no match exists.
    */
   signInWithName(
     displayName: string,
