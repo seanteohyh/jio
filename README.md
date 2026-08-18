@@ -290,7 +290,7 @@ Roughly 30 minutes end to end. Everything below stays on a free tier.
    `service_role` key. The last one is a secret; it bypasses all access
    control.
 3. **SQL Editor** — run every file in `supabase/migrations/` in numeric order,
-   001 through 053. They are idempotent, so re-running is harmless.
+   001 through 054. They are idempotent, so re-running is harmless.
 4. **Authentication → Providers → Anonymous sign-ins** — turn this on. It is
    what makes name-only sign-in work.
 5. **Authentication → URL Configuration** — set the Site URL to your deployed
@@ -779,6 +779,16 @@ secrecy expectation on account recovery or making the invite link
 regenerate (and thus quietly break) every time someone recovers their
 account, neither of which either feature should ever cause.
 
+**Ranking teammate pickers by co-attendance (`get_co_attendance_scores`,
+migration 054) needed its own `SECURITY DEFINER` function, for yet another
+distinct reason.** `event_invitees_select` (013_event_invitees.sql) only
+lets a session see its own invitee row, or every row on an event it hosts
+— exactly right for "can I see who's coming," and exactly wrong for
+"who else was at the Jios I've been to as a plain invitee, not the host,"
+which needs reading *other* people's invitee rows on events the caller
+didn't host. Same shape as `get_push_targets`/`is_lobang_recipient`
+bypassing RLS for one specific cross-row read, applied to a third table.
+
 **Adding someone to a Kaki directly needs the same `SECURITY DEFINER`
 escape hatch as the invite link's own join step.** `kaki_members_insert`'s
 RLS policy is `user_id = auth.uid()` — you may add yourself, no one else —
@@ -919,7 +929,7 @@ does the reassignment, not the authorization check.
 ## Tests
 
 ```bash
-npm test          # 441 tests across 38 files
+npm test          # 447 tests across 38 files
 npm run typecheck
 npm run lint
 ```
@@ -948,7 +958,7 @@ npm run lint
 | `placeEditing.test.ts` | Any signed-in user can edit a place; `status` cannot move through a plain edit |
 | `placelessVoteOptions.test.ts` | A free-text vote option with no place record: tallying, winning, and attaching a real place afterward without stranding existing votes |
 | `cancelEvent.test.ts` | Host-only cancellation, only from `open`, stays findable afterward |
-| `userDiscovery.test.ts` | Server-side name filtering and office scoping for the invite picker |
+| `userDiscovery.test.ts` | Server-side name filtering and office scoping for the teammate pickers; co-attendance ranking — a shared-event participant outranks a Kaki-only co-member, tier 1 ordered by score, tier 2 by Kaki name, a tier-3 stranger hidden by default but reachable by search, and `includeIds` force-including an already-picked person regardless of tier |
 | `recurringSeries.test.ts` | Recurring-series date math (lookahead window, no double-generation), fixed vs. voted occurrences, fresh kaki-membership expansion per occurrence |
 | `sortPlacesForList.test.ts` | `/places`'s nearest-first default vs. the highest-rated sort, unrated places sinking rather than sorting first, tie-breaking |
 | `hiddenVotes.test.ts` | A hidden-vote Jio's standing is blind only while open, reveals on close, and voter count is distinct voters not ballot rows |

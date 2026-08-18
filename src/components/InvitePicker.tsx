@@ -24,6 +24,14 @@ export interface InviteSelection {
  * `/api/events`. This component only reports *what* was picked; snapshotting is
  * the server's job, because the client has no business deciding who counts as a
  * member.
+ *
+ * The people list is ranked, not alphabetical, and isn't fetched-then-
+ * filtered client-side any more — docs/user-discovery.md §4.2. `query` is
+ * sent to `/api/users?q=` so the server can apply its own tiering (people
+ * you've shared a Jio with, then Kaki co-members, both shown with no query
+ * at all; everyone else in the office only once actually searched for).
+ * Kaki groups stay a client-side filter — there's no ranking concept for
+ * groups, just the existing short list.
  */
 export default function InvitePicker({
   value,
@@ -36,9 +44,18 @@ export default function InvitePicker({
   selfId?: string;
 }) {
   const [query, setQuery] = useState("");
+  const needle = query.trim();
 
+  // `value.userIds` is passed as includeIds so a selection made under an
+  // earlier search (or arrived via a personal invite link, CHANGES_20260818.md
+  // §3) keeps resolving its display name after the search text changes or
+  // clears — otherwise a tier-3 pick would silently lose its name the
+  // moment it's no longer the thing being searched for.
+  const params = new URLSearchParams();
+  if (needle) params.set("q", needle);
+  for (const id of value.userIds) params.append("include_id", id);
   const { data: userData } = useSWR<{ users: TeamUser[] }>(
-    "/api/users",
+    `/api/users?${params.toString()}`,
     fetcher
   );
   const { data: kakiData } = useSWR<{ kakis: Kaki[] }>(
@@ -46,19 +63,14 @@ export default function InvitePicker({
     fetcher
   );
 
-  const allUsers = useMemo(
+  const matchedUsers = useMemo(
     () => (userData?.users ?? []).filter((u) => u.user_id !== selfId),
     [userData, selfId]
   );
   const allKakis = kakiData?.kakis ?? [];
 
-  const needle = query.trim().toLowerCase();
-
-  const matchedUsers = needle
-    ? allUsers.filter((u) => u.display_name.toLowerCase().includes(needle))
-    : allUsers;
   const matchedKakis = needle
-    ? allKakis.filter((k) => k.name.toLowerCase().includes(needle))
+    ? allKakis.filter((k) => k.name.toLowerCase().includes(needle.toLowerCase()))
     : allKakis;
 
   const toggleUser = (id: string) =>
@@ -77,7 +89,9 @@ export default function InvitePicker({
         : [...value.kakiIds, id],
     });
 
-  const selectedUsers = allUsers.filter((u) => value.userIds.includes(u.user_id));
+  const selectedUsers = matchedUsers.filter((u) =>
+    value.userIds.includes(u.user_id)
+  );
   const selectedKakis = allKakis.filter((k) => value.kakiIds.includes(k.id));
   const nothingSelected =
     selectedUsers.length === 0 && selectedKakis.length === 0;

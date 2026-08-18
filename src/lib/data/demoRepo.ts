@@ -17,6 +17,7 @@ import {
 import { pickCommitteeSuggestions } from "@/lib/suggestCommittee";
 import { computeWinner } from "@/lib/voting";
 import { rankPlaces } from "@/lib/recommend";
+import { DISCOVERY_CONFIG } from "@/lib/discoveryConfig";
 import {
   bucketByDay,
   bucketByWeek,
@@ -230,6 +231,49 @@ function enrich(place: Place, officeId: string = DEFAULT_OFFICE.id): Place {
       (f) => f.place_id === place.id && f.status === "pending"
     ),
   };
+}
+
+/**
+ * Tier 1 scoring for `listAllUsers` — docs/user-discovery.md §4.2. Sum
+ * over every Jio `callerId` shared with someone (as host or invitee,
+ * either side) of `exp(-daysAgo / halfLife)`. A future-dated Jio (not yet
+ * happened) counts at full weight rather than a negative daysAgo blowing
+ * the exponential up.
+ */
+function coAttendanceScores(callerId: string): Map<string, number> {
+  const s = store();
+  const now = Date.now();
+  const halfLifeDays = DISCOVERY_CONFIG.coAttendance.halfLifeDays;
+  const scores = new Map<string, number>();
+
+  const myEventIds = new Set<string>();
+  for (const e of s.events) {
+    if (e.host_id === callerId) myEventIds.add(e.id);
+  }
+  for (const inv of s.invitees) {
+    if (inv.user_id === callerId) myEventIds.add(inv.event_id);
+  }
+
+  for (const eventId of myEventIds) {
+    const event = s.events.find((e) => e.id === eventId);
+    if (!event) continue;
+
+    const daysAgo = (now - new Date(event.scheduled_at).getTime()) / 86400000;
+    const weight = Math.exp(-Math.max(0, daysAgo) / halfLifeDays);
+
+    const participants = new Set<string>();
+    if (event.host_id !== callerId) participants.add(event.host_id);
+    for (const inv of s.invitees) {
+      if (inv.event_id === eventId && inv.user_id !== callerId) {
+        participants.add(inv.user_id);
+      }
+    }
+    for (const p of participants) {
+      scores.set(p, (scores.get(p) ?? 0) + weight);
+    }
+  }
+
+  return scores;
 }
 
 /** Hydrates a lobang for one specific recipient's view (their own seen_at). */
@@ -778,7 +822,7 @@ export const demoRepo: Repo = {
       }));
   },
 
-  async listAllUsers(query, officeId) {
+  async listAllUsers(callerId, query, officeId, includeIds) {
     const s = store();
     const ids = new Set<string>([
       DEMO_USER_ID,
@@ -786,26 +830,76 @@ export const demoRepo: Repo = {
       DEMO_TEAMMATE_B,
       ...s.profiles.map((p) => p.user_id),
     ]);
+    ids.delete(callerId);
 
-    let users: TeamUser[] = Array.from(ids).map((id) => ({
+    let candidates: TeamUser[] = Array.from(ids).map((id) => ({
       user_id: id,
       display_name: displayNameFor(id),
     }));
 
     if (officeId) {
-      users = users.filter((u) => {
+      candidates = candidates.filter((u) => {
         const prefsOffice = s.prefs.find((p) => p.user_id === u.user_id)
           ?.default_office_id;
         return (prefsOffice ?? DEFAULT_OFFICE.id) === officeId;
       });
     }
 
+    const includeSet = new Set(includeIds ?? []);
     const q = query?.trim().toLowerCase();
     if (q) {
-      users = users.filter((u) => u.display_name.toLowerCase().includes(q));
+      candidates = candidates.filter(
+        (u) => u.display_name.toLowerCase().includes(q) || includeSet.has(u.user_id)
+      );
     }
 
-    return users.sort((a, b) => a.display_name.localeCompare(b.display_name));
+    // §4.2's three tiers. Tier 1: co-attendance score > 0. Tier 2: a
+    // current Kaki co-member not already in tier 1, tagged with the
+    // earliest (alphabetically) shared Kaki's name for sort purposes.
+    // Tier 3: everyone else — included only while actually searching.
+    const scores = coAttendanceScores(callerId);
+    const callerKakiIds = new Set(
+      s.kakiMembers.filter((m) => m.user_id === callerId).map((m) => m.kaki_id)
+    );
+    const kakiNames = new Map(s.kakis.map((k) => [k.id, k.name] as const));
+    const tier2KakiName = new Map<string, string>();
+    for (const m of s.kakiMembers) {
+      if (m.user_id === callerId) continue;
+      if (!callerKakiIds.has(m.kaki_id)) continue;
+      if ((scores.get(m.user_id) ?? 0) > 0) continue;
+      const name = kakiNames.get(m.kaki_id);
+      if (!name) continue;
+      const existing = tier2KakiName.get(m.user_id);
+      if (!existing || name.localeCompare(existing) < 0) {
+        tier2KakiName.set(m.user_id, name);
+      }
+    }
+
+    const tierOf = (userId: string): 1 | 2 | 3 => {
+      if ((scores.get(userId) ?? 0) > 0) return 1;
+      if (tier2KakiName.has(userId)) return 2;
+      return 3;
+    };
+
+    const visible = q
+      ? candidates
+      : candidates.filter(
+          (c) => tierOf(c.user_id) !== 3 || includeSet.has(c.user_id)
+        );
+
+    return visible.sort((a, b) => {
+      const ta = tierOf(a.user_id);
+      const tb = tierOf(b.user_id);
+      if (ta !== tb) return ta - tb;
+      if (ta === 1) return (scores.get(b.user_id) ?? 0) - (scores.get(a.user_id) ?? 0);
+      if (ta === 2) {
+        const byKaki = (tier2KakiName.get(a.user_id) ?? "").localeCompare(
+          tier2KakiName.get(b.user_id) ?? ""
+        );
+        if (byKaki !== 0) return byKaki;
+      }
+      return a.display_name.localeCompare(b.display_name);
+    });
   },
 
   // ---- Lunch events ----

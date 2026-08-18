@@ -183,18 +183,40 @@ export interface Repo {
    */
   getPushTargets(userIds: string[]): Promise<PushTarget[]>;
   /**
-   * Powers the invite picker. Filtering happens here, not in the route —
-   * see docs/user-discovery.md §4.1: a client-side or route-level filter
-   * over "every user" keeps working while quietly getting heavier as the
-   * team grows, with no point at which it obviously breaks.
+   * Powers every teammate picker (invite, add-to-Kaki, lobang recipients).
+   * Filtering happens here, not in the route — see docs/user-discovery.md
+   * §4.1: a client-side or route-level filter over "every user" keeps
+   * working while quietly getting heavier as the team grows, with no point
+   * at which it obviously breaks.
    *
    * `officeId` scopes results to that office, resolved from the caller's
    * own `user_prefs.default_office_id` (falling back to the default office)
    * — the only per-user office reference the schema has today. Office is a
    * hard boundary for discovery per §6 of that doc, so this is not optional
    * when the offices feature is on.
+   *
+   * Ordered by co-attendance, not alphabetically — §4.2 / CHANGES_20260818.md
+   * §3. Tier 1: people `callerId` has shared a Jio with (host or invitee,
+   * either side), ranked by frequency × recency decay
+   * (`discoveryConfig.ts`). Tier 2: `callerId`'s Kaki co-members not
+   * already in tier 1, by Kaki name then display name. Tier 3: everyone
+   * else in the office — included only when `query` is non-empty ("search
+   * only, not listed by default"), so the default (no-query) result is
+   * the *suggested* list, not the full roster.
+   *
+   * `includeIds` force-includes specific users regardless of tier or
+   * query match — for a multi-select picker to keep resolving the display
+   * name of something already picked even after the search text that
+   * originally surfaced it changes or clears. Without this, a tier-3
+   * person found by searching, then selected, would silently lose their
+   * name off the "selected" chips the moment the search box is cleared.
    */
-  listAllUsers(query?: string, officeId?: string): Promise<TeamUser[]>;
+  listAllUsers(
+    callerId: string,
+    query?: string,
+    officeId?: string,
+    includeIds?: string[]
+  ): Promise<TeamUser[]>;
   /**
    * Completes the one-time /welcome screen: sets the display name and stamps
    * `onboarded_at`, atomically. Distinct from `upsertProfile` (used for a
