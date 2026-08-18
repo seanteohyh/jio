@@ -147,7 +147,7 @@ function NameForm({ next }: { next: string }) {
           value={name}
           onChange={(e) => setName(e.target.value)}
           className={inputClass}
-          placeholder="Wei Jie"
+          placeholder="Noah Tees"
           autoComplete="nickname"
           maxLength={40}
           autoFocus
