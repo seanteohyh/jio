@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildIcs, googleCalendarUrl, isFullyDecided } from "@/lib/calendar";
+import { buildIcs, googleCalendarUrl, canAddToCalendar } from "@/lib/calendar";
 
 /**
  * CHANGES_20260818.md §5 — "Add to calendar". Both the `.ics` file and the
@@ -66,69 +66,34 @@ describe("googleCalendarUrl", () => {
   });
 });
 
-describe("isFullyDecided", () => {
-  it("requires status closed, a real winner, and a non-polling date", () => {
-    const base = {
-      status: "closed",
-      date_phase: "confirmed" as string | null,
-      winner_place_name: "Din Tai Fung" as string | null,
-      winner_label: null as string | null,
-    };
-    expect(isFullyDecided(base)).toBe(true);
-  });
-
-  it("accepts a free-text winner_label with no place record", () => {
+describe("canAddToCalendar", () => {
+  it("is true while still open, with no winner yet, as long as the date isn't a poll", () => {
     expect(
-      isFullyDecided({
-        status: "closed",
-        date_phase: null,
-        winner_place_name: null,
-        winner_label: "That new bak kut teh place",
-      })
+      canAddToCalendar({ status: "open", date_phase: null })
     ).toBe(true);
   });
 
-  it("is false while still open, even with a provisional winner field", () => {
+  it("is true for a Flexi Jio once its date is confirmed, even while still open", () => {
     expect(
-      isFullyDecided({
-        status: "open",
-        date_phase: null,
-        winner_place_name: "Din Tai Fung",
-        winner_label: null,
-      })
-    ).toBe(false);
+      canAddToCalendar({ status: "open", date_phase: "confirmed" })
+    ).toBe(true);
+  });
+
+  it("is true once closed, winner or not", () => {
+    expect(canAddToCalendar({ status: "closed", date_phase: null })).toBe(
+      true
+    );
   });
 
   it("is false while the date is still a Flexi poll", () => {
     expect(
-      isFullyDecided({
-        status: "closed",
-        date_phase: "polling",
-        winner_place_name: "Din Tai Fung",
-        winner_label: null,
-      })
+      canAddToCalendar({ status: "open", date_phase: "polling" })
     ).toBe(false);
   });
 
-  it("is false when closed without any winner", () => {
+  it("is false when cancelled, even with a fixed date", () => {
     expect(
-      isFullyDecided({
-        status: "closed",
-        date_phase: null,
-        winner_place_name: null,
-        winner_label: null,
-      })
-    ).toBe(false);
-  });
-
-  it("is false when cancelled", () => {
-    expect(
-      isFullyDecided({
-        status: "cancelled",
-        date_phase: null,
-        winner_place_name: "Din Tai Fung",
-        winner_label: null,
-      })
+      canAddToCalendar({ status: "cancelled", date_phase: "confirmed" })
     ).toBe(false);
   });
 });
