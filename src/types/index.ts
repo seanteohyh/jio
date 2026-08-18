@@ -209,6 +209,18 @@ export interface AccountMergePreview {
 }
 
 /**
+ * What `/u/[token]` resolves a personal invite link to — CHANGES_20260818.md
+ * §3 / docs/user-discovery.md §4.3. Deliberately minimal, same "return the
+ * minimum field set" rule (§6 of that doc) as `PublicPlace`/`PublicLobang`:
+ * just enough to render the profile card and drive "Start a Jio with them"
+ * / "Add them to a Kaki" — never email, office, or anything else.
+ */
+export interface PersonalInvite {
+  user_id: string;
+  display_name: string;
+}
+
+/**
  * A cuisine everyone can use — CHANGES_20260818.md §6. Replaces the old
  * hardcoded `Cuisine` TS union, which could never grow past its 18
  * compile-time values; this is the runtime-extensible list it grows into.

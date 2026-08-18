@@ -40,6 +40,7 @@ When you are ready to make it real, see [Going live](#going-live).
 | **Jios** | Create a lunch outing, everyone ranks the options, a Borda count decides. RSVP, live vote updates, a roulette wheel for when the group genuinely cannot choose, and a month calendar with Hosting / Invited / Past filters for browsing. Anyone can edit a place, any signed-in user may edit any place's details, and the host can cancel a Jio outright — it stays visible, marked cancelled, rather than vanishing. Once a Jio is decided, its result — place, time, final points — can be copied or shared as a PNG, generated client-side, for pasting straight into a chat instead of a link. The same "fully decided" moment (closed, a winner, and — for a Flexi Jio — the date no longer a poll) also unlocks "Add to calendar": a one-tap Google Calendar link and a `.ics` download, both a one-time snapshot at a fixed 1-hour duration rather than a live sync — if the Jio's time or place changes afterward, an already-added calendar entry doesn't follow. A host can also start a Jio with votes hidden: nobody, host included, sees the running standing until it closes — only the ballot count shows. Each option in the Standing and Your ranking lists shows a compact cuisine descriptor beneath its name, so a placeless or unfamiliar option still says something about what it is before anyone clicks in. |
 | **Vote on a place that isn't listed yet** | Typing a name the search doesn't find logs it as a vote option immediately, no place record required. A non-blocking prompt afterward offers to add it to the pool; declining leaves it exactly as a text-only choice, permanently. |
 | **Kakis** | Lunch groups with a shareable invite link and shared stats — group favourites, who eats out most, who is most adventurous. Any current member can also add someone directly by searching their name, without a link changing hands first — same trust level as the invite link itself, just faster for someone already sitting across the table. |
+| **Finding people** | A personal invite link (`/u/[token]`, with a QR code on your own profile for the across-the-office case) opens straight to that person's profile card — "Start a Jio with them" / "Add them to a Kaki," no friend-edge created just by viewing it. Every teammate picker (starting a Jio, adding to a Kaki, sending a lobang) is ranked, not alphabetical: people you've actually shared a Jio with first (frequency × recency), your Kaki co-members next, everyone else in your office last and search-only. The personal link is the bootstrap, co-attendance is the sustain — share your link once, have one Jio together, and from then on you're near the top of each other's pickers automatically. |
 | **Lobangs** | "Saw this online, thought of you" — send any registered place to specific teammates, a whole Kaki, or — one tap over — anyone at all, with an optional note and personalized "quick pick" suggestions for a teammate/Kaki send. "Share this lobang" is the one entry point on a place's own page (`/places/[id]`), same composer either way; a past Jio's "You → Past Jios" is the other, with the winning place pinned as a default. A teammate/Kaki send is tracked, shows up in the recipient's `/lobangs` feed, and push-notifies them; the "Anyone" path instead mints an attributed `/l/[token]` link — the sender's real name and note, resolved server-side so nobody can forge one — that anyone can open, signed in or not, and never appears in anyone's Lobangs feed or triggers a push. A dedicated `/lobangs` page (linked from "See all" on the profile inbox) shows every *targeted* send, received and sent, as one reverse-chronological, message-bubble feed — your own sends right-aligned, a group send showing the Kaki's name as the recipient. Browse only, deliberately: a lobang is a one-way tip, not a two-way conversation, so there's no reply. |
 | **Places** | Searchable list with cuisine, budget, walk-time and rating filters, sortable by nearest, highest-rated, or rated by your Kaki group — plus a "Kaki favourites only" chip that actually narrows the list, not just reorders it, and a badge on the card itself once at least 2 Kaki-member visits back a place's rating, so a lone review doesn't read as group consensus. Add places by hand (address or postal code — a postal code found anywhere in a pasted-in address, e.g. one copied straight from Google Maps, is tried first, since OneMap's road/block index can choke on a business-name prefix or unit number that a bare postal code sidesteps), import candidate names from a food blog, or let the daily cron find them on OpenStreetMap. Cuisine tagging draws from a shared, runtime-extensible list (a `cuisines` table, not a fixed set — see Security notes) rather than free-text alone: typing something new under "Other" that doesn't match an existing cuisine offers to add it permanently, visible to every place and every profile's Taste preferences from then on ("No" keeps today's behaviour, a one-off tag on that place only). An admin combine tool (`/admin/cuisines`) folds near-duplicates ("Korean BBQ" / "korean bbq" / "KBBQ") together after the fact, since normalizing on write only catches exact ones. A place's own page has a "View on Google Maps" link next to Directions. Without a Google Places API key configured it's a plain coordinate pin, computed client-side, no backend call — that's still the default. With one configured, the app resolves each place to its actual Google listing, best-effort, server-side, at create/edit time (gated on the result actually looking like the same place — name similarity plus a distance check — not just Google's own top result), and the link opens that instead: the restaurant's real page, photos and reviews included, with the coordinate link as an automatic fallback if the match ever stops resolving. Every active place also has a public preview page (`/p/[id]`, linked from a Share button on the full page) — the app's only page that needs no sign-in, showing name, cuisine, address, best dishes, aggregate rating and the same Maps link (real listing or pin, same rule) to anyone with the link, with a "Join to see more" prompt into `/login` for everything past that, including the named review list. |
 | **Map** | Leaflet map of everything in walking distance, with real walking routes when OneMap is configured. A Kaki-favourite place gets an amber ring on its marker, layered independently of the existing selected/not-selected fill color. |
@@ -289,7 +290,7 @@ Roughly 30 minutes end to end. Everything below stays on a free tier.
    `service_role` key. The last one is a secret; it bypasses all access
    control.
 3. **SQL Editor** — run every file in `supabase/migrations/` in numeric order,
-   001 through 052. They are idempotent, so re-running is harmless.
+   001 through 053. They are idempotent, so re-running is harmless.
 4. **Authentication → Providers → Anonymous sign-ins** — turn this on. It is
    what makes name-only sign-in work.
 5. **Authentication → URL Configuration** — set the Site URL to your deployed
@@ -768,6 +769,16 @@ caller's identity on top of it wouldn't add anything since whoever is
 redeeming it *is*, by construction, whoever's browser currently holds the
 link.
 
+**Personal invite links (`discovery_token`, migration 053) are a deliberately
+separate column from `recovery_token`, not a reused one, despite an
+identical "unguessable, `SECURITY DEFINER` resolver" shape.** The two have
+opposite threat models: `recovery_token` is a login bypass that must stay
+secret indefinitely, `discovery_token` is *meant* to be handed out — posted,
+texted, put on a QR code. Sharing a column would mean either loosening the
+secrecy expectation on account recovery or making the invite link
+regenerate (and thus quietly break) every time someone recovers their
+account, neither of which either feature should ever cause.
+
 **Adding someone to a Kaki directly needs the same `SECURITY DEFINER`
 escape hatch as the invite link's own join step.** `kaki_members_insert`'s
 RLS policy is `user_id = auth.uid()` — you may add yourself, no one else —
@@ -908,7 +919,7 @@ does the reassignment, not the authorization check.
 ## Tests
 
 ```bash
-npm test          # 435 tests across 37 files
+npm test          # 441 tests across 38 files
 npm run typecheck
 npm run lint
 ```
@@ -952,6 +963,7 @@ npm run lint
 | `utils.test.ts` | `formatTime`/`formatDate` render in Singapore time regardless of the runtime's own timezone; `relativeDayLabel` agrees with the Singapore calendar rather than UTC's right at the UTC day boundary |
 | `calendar.test.ts` | `.ics`/Google Calendar link generation converts straight to UTC regardless of runtime timezone, RFC 5545 text escaping, `isFullyDecided`'s gate (closed, a real winner — place or free-text label — and a non-polling date) |
 | `cuisines.test.ts` | Normalizing a typed label into its slug, idempotent on an exact slug collision, preview counts across places and taste preferences, admin-only and no-self-merge guards on combine, and a combine actually reaching and deduping every reference before retiring the merged-away slug |
+| `personalInvite.test.ts` | Self or admin can generate a personal invite link, a non-admin can't generate one for someone else, an unknown token resolves to `null`, and regenerating retires the previous token |
 
 **`npm test` does not typecheck.** Vitest transforms TypeScript with esbuild,
 which strips annotations without checking them, and the suite is all pure

@@ -22,6 +22,7 @@ import MyFlagsList from "@/components/profile/MyFlagsList";
 import PushNotificationToggle from "@/components/profile/PushNotificationToggle";
 import AddToHomeScreenCard from "@/components/profile/AddToHomeScreenCard";
 import RecoveryLinkPanel from "@/components/profile/RecoveryLinkPanel";
+import PersonalInvitePanel from "@/components/profile/PersonalInvitePanel";
 import { fetcher, mutateJson } from "@/lib/fetcher";
 import { config, features } from "@/lib/config";
 import { BUDGET_TIERS } from "@/lib/constants";
@@ -409,6 +410,10 @@ export default function ProfilePage() {
 
           <div className="py-3 first:pt-0 last:pb-0">
             <PushNotificationToggle />
+          </div>
+
+          <div className="py-3 first:pt-0 last:pb-0">
+            <PersonalInvitePanel />
           </div>
 
           {config.authAdapter === "name" && !config.isDemo && (

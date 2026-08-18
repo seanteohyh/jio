@@ -65,3 +65,14 @@ export function placeShareUrl(placeId: string): string {
 export function lobangShareUrl(token: string): string {
   return absoluteUrl(`/l/${token}`);
 }
+
+/**
+ * Shareable link that opens a person's profile card — CHANGES_20260818.md
+ * §3 / docs/user-discovery.md §4.3. Token-keyed like the invite links
+ * above, not id-keyed — a user's id being public would let anyone start a
+ * Jio with or add anyone to a Kaki without them ever having shared
+ * anything, the same enumeration risk `discovery_token` exists to avoid.
+ */
+export function personalInviteUrl(token: string): string {
+  return absoluteUrl(`/u/${token}`);
+}

@@ -3051,6 +3051,26 @@ export const supabaseRepo: Repo = {
     });
     if (error) fail("Could not merge those cuisines", error);
   },
+
+  async generatePersonalInviteToken(_callerId, userId) {
+    const client = await db();
+    const { data, error } = await client.rpc("generate_discovery_token", {
+      p_user_id: userId,
+    });
+    if (error) fail("Could not create a personal invite link", error);
+    return data as string;
+  },
+
+  async resolvePersonalInvite(token) {
+    const client = await db();
+    const { data, error } = await client
+      .rpc("resolve_discovery_token", { p_token: token })
+      .maybeSingle();
+    if (error) fail("Could not check that invite link", error);
+    if (!data) return null;
+    const row = data as { user_id: string; display_name: string };
+    return { user_id: row.user_id, display_name: row.display_name };
+  },
 };
 
 export default supabaseRepo;

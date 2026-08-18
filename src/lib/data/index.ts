@@ -21,6 +21,7 @@ import type {
   PlacesPage,
   PublicLobang,
   PublicPlace,
+  PersonalInvite,
   PlacesPagination,
   Profile,
   PushSubscriptionInput,
@@ -598,6 +599,25 @@ export interface Repo {
     keepSlug: string,
     mergeSlug: string
   ): Promise<void>;
+
+  // ---- Personal invite links (CHANGES_20260818.md §3 / docs/user-discovery.md §4.3) ----
+  /**
+   * Self or admin. Regenerating overwrites and retires any previous token
+   * for that account — same "no way to list or recover an old one, only
+   * mint a fresh one" shape as `generateRecoveryToken`, just a different
+   * threat model: this one is meant to be handed out, not kept secret.
+   */
+  generatePersonalInviteToken(
+    callerId: string,
+    userId: string
+  ): Promise<string>;
+  /**
+   * Resolves a personal invite token to the minimum needed to render
+   * `/u/[token]` — `null` if unknown. No authorization check by design,
+   * same "possession of the token is the invite" reasoning as every other
+   * token in this schema.
+   */
+  resolvePersonalInvite(token: string): Promise<PersonalInvite | null>;
 }
 
 /** Method names the conformance test walks. Keep in sync with the interface. */
@@ -691,6 +711,8 @@ export const REPO_METHODS = [
   "addCuisine",
   "previewCuisineMerge",
   "mergeCuisines",
+  "generatePersonalInviteToken",
+  "resolvePersonalInvite",
 ] as const;
 
 export type RepoMethod = (typeof REPO_METHODS)[number];

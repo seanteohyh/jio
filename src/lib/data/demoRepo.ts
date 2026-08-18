@@ -65,6 +65,7 @@ import type {
   MemberData,
   ModerationLogEntry,
   Office,
+  PersonalInvite,
   Place,
   PlaceFlag,
   Profile,
@@ -124,6 +125,7 @@ interface DemoStore {
    *  never something a client should be able to read off a profile. */
   recoveryTokens: { user_id: string; token: string }[];
   cuisines: CuisineOption[];
+  discoveryTokens: { user_id: string; token: string }[];
 }
 
 const globalStore = globalThis as typeof globalThis & {
@@ -157,6 +159,7 @@ function seed(): DemoStore {
     pushSubscriptions: [],
     recoveryTokens: [],
     cuisines: DEFAULT_CUISINE_SEED.map((c) => ({ ...c })),
+    discoveryTokens: [],
   };
 }
 
@@ -2552,6 +2555,32 @@ export const demoRepo: Repo = {
       }
     }
     s.cuisines = s.cuisines.filter((c) => c.slug !== mergeSlug);
+  },
+
+  async generatePersonalInviteToken(callerId, userId) {
+    const isAdmin = await demoRepo.isAdmin(callerId);
+    if (callerId !== userId && !isAdmin) {
+      throw new Error("You may only get a personal invite link for your own account");
+    }
+
+    const s = store();
+    if (!s.profiles.some((p) => p.user_id === userId)) {
+      throw new Error("That account does not exist");
+    }
+
+    const token = uuid();
+    s.discoveryTokens = s.discoveryTokens.filter((t) => t.user_id !== userId);
+    s.discoveryTokens.push({ user_id: userId, token });
+    return token;
+  },
+
+  async resolvePersonalInvite(token): Promise<PersonalInvite | null> {
+    const s = store();
+    const entry = s.discoveryTokens.find((t) => t.token === token);
+    if (!entry) return null;
+    const profile = s.profiles.find((p) => p.user_id === entry.user_id);
+    if (!profile) return null;
+    return { user_id: profile.user_id, display_name: profile.display_name };
   },
 };
 
