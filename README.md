@@ -884,7 +884,7 @@ anywhere but its own link.
 ## Tests
 
 ```bash
-npm test          # 411 tests across 34 files
+npm test          # 416 tests across 35 files
 npm run typecheck
 npm run lint
 ```
@@ -925,6 +925,7 @@ npm run lint
 | `googlePlaces.test.ts` | The Google Maps link confidence gate (`nameSimilarity` — exact/reordered/partial/unrelated/punctuation/empty-input matches) and the link builder (`googleMapsPlaceUrl` — real listing when a place id is present, coordinate fallback otherwise) |
 | `lobangFeed.test.ts` | `mergeLobangFeed`'s tag-and-sort: direction tagging, newest-first ordering across both lists, either list empty, and that it doesn't mutate its inputs |
 | `cuisinePreference.test.ts` | `cycleCuisinePreference`'s neutral → like → dislike → neutral transition table, a full cycle returning to the start, other cuisines left untouched, no input mutation |
+| `utils.test.ts` | `formatTime`/`formatDate` render in Singapore time regardless of the runtime's own timezone; `relativeDayLabel` agrees with the Singapore calendar rather than UTC's right at the UTC day boundary |
 
 **`npm test` does not typecheck.** Vitest transforms TypeScript with esbuild,
 which strips annotations without checking them, and the suite is all pure

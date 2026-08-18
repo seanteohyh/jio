@@ -9,23 +9,28 @@ import StreakBanner from "@/components/home/StreakBanner";
 import EventRow from "@/components/events/EventRow";
 import { LinkButton, SectionHeading } from "@/components/ui";
 import JioLockup from "@/components/brand/JioLockup";
-import { formatTime } from "@/lib/utils";
+import { formatTime, isSameSgtDay } from "@/lib/utils";
 import type { LunchEvent } from "@/types";
 
+/**
+ * Needs the hour *in Singapore*, not whatever timezone is running the code
+ * — Home is the app's one Server Component, so this runs during SSR on
+ * Vercel's UTC clock, not the visitor's phone (CHANGES_20260818.md §4).
+ * `isSameSgtDay` below (imported from utils.ts) is the same fix for the
+ * "is this today's Jio" check just below.
+ */
 function greeting(now = new Date()): string {
-  const hour = now.getHours();
+  const hour = Number(
+    new Intl.DateTimeFormat("en-SG", {
+      hour: "numeric",
+      hourCycle: "h23",
+      timeZone: "Asia/Singapore",
+    }).format(now)
+  );
   if (hour < 11) return "Morning";
   if (hour < 15) return "Lunchtime";
   if (hour < 18) return "Afternoon";
   return "Evening";
-}
-
-function isSameDay(a: Date, b: Date): boolean {
-  return (
-    a.getFullYear() === b.getFullYear() &&
-    a.getMonth() === b.getMonth() &&
-    a.getDate() === b.getDate()
-  );
 }
 
 export default async function HomePage() {
@@ -80,9 +85,7 @@ export default async function HomePage() {
   const relevantOpen = events.filter(
     (e) => e.status === "open" && e.date_phase !== "polling"
   );
-  const todaysJio = relevantOpen.find((e) =>
-    isSameDay(new Date(e.scheduled_at), now)
-  );
+  const todaysJio = relevantOpen.find((e) => isSameSgtDay(e.scheduled_at, now));
   const upcomingList = relevantOpen
     .filter((e) => e.id !== todaysJio?.id)
     .filter((e) => new Date(e.scheduled_at).getTime() > now.getTime())
