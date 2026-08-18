@@ -15,23 +15,19 @@
 const DURATION_MS = 60 * 60 * 1000;
 
 /**
- * "Fully decided" per CHANGES_20260818.md §5's decided scope — time *and*
- * place both final, not just one. A closed Jio's `winner_place_name`/
- * `winner_label` covers place; `date_phase !== "polling"` covers time (a
- * Flexi Jio whose date is still a poll has nothing to put on a calendar
- * yet, even in the rare shape where that could coincide with `closed`).
+ * Loosened post-CHANGES_20260818.md §5: originally gated on the Jio being
+ * fully decided (closed, with a winner). People wanted to block their own
+ * calendar as soon as the *time* is settled, without waiting on the group
+ * to finish voting on place or RSVPing — so only the date has to be fixed.
+ * `date_phase !== "polling"` covers that (a Flexi Jio whose date is still a
+ * poll has nothing to put on a calendar yet). `cancelled` is still excluded
+ * — nothing to add once the Jio itself is off.
  */
-export function isFullyDecided(event: {
+export function canAddToCalendar(event: {
   status: string;
   date_phase?: string | null;
-  winner_place_name?: string | null;
-  winner_label?: string | null;
 }): boolean {
-  return (
-    event.status === "closed" &&
-    event.date_phase !== "polling" &&
-    Boolean(event.winner_place_name || event.winner_label)
-  );
+  return event.status !== "cancelled" && event.date_phase !== "polling";
 }
 
 /** "2026-08-20T04:00:00.000Z" -> "20260820T040000Z" (iCalendar UTC form,

@@ -19,7 +19,7 @@ import ShareLink from "@/components/ShareLink";
 import ShareResultCard from "@/components/ShareResultCard";
 import { fetcher, mutateJson } from "@/lib/fetcher";
 import { eventInviteUrl } from "@/lib/shareUrl";
-import { googleCalendarUrl, isFullyDecided } from "@/lib/calendar";
+import { googleCalendarUrl, canAddToCalendar } from "@/lib/calendar";
 import { subscribeToEventChanges } from "@/lib/realtime";
 import { features } from "@/lib/config";
 import { cn, formatDate, formatDateTime, placeDescriptor } from "@/lib/utils";
@@ -471,11 +471,13 @@ export default function EventDetailPage({
         )}
 
       {/*
-        CHANGES_20260818.md §5 — only once time *and* place are both final,
-        same gate `isFullyDecided` uses. A one-time snapshot: neither link
-        updates if this Jio's time or place changes after someone adds it.
+        Available as soon as the date is fixed, not once the whole Jio is
+        decided — same gate `canAddToCalendar` uses. People want to block
+        their own calendar without waiting on the group to finish voting or
+        RSVPing. A one-time snapshot either way: neither link updates if
+        this Jio's time or place changes after someone adds it.
       */}
-      {isFullyDecided(event) && (
+      {canAddToCalendar(event) && (
         <div className="border-line bg-cream flex flex-wrap items-center gap-3 rounded-xl border p-3">
           <p className="text-ink text-sm font-medium">Add to calendar</p>
           <LinkButton
@@ -483,7 +485,8 @@ export default function EventDetailPage({
               id: event.id,
               title: event.title,
               scheduledAt: event.scheduled_at,
-              location: event.winner_place_name ?? event.winner_label ?? "",
+              location:
+                event.winner_place_name ?? event.winner_label ?? "Place TBD",
               description: [
                 event.host_name && `Hosted by ${event.host_name}`,
                 `View this Jio: ${eventInviteUrl(event.invite_token)}`,

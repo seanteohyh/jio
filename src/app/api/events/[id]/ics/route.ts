@@ -3,7 +3,7 @@ import { requireUser } from "@/lib/auth";
 import { getRepoAsync } from "@/lib/data/repo";
 import { errorResponse, notFound, badRequest } from "@/lib/api";
 import { config, featureGate } from "@/lib/config";
-import { buildIcs, isFullyDecided } from "@/lib/calendar";
+import { buildIcs, canAddToCalendar } from "@/lib/calendar";
 import { eventInviteUrl } from "@/lib/shareUrl";
 
 type Params = { params: Promise<{ id: string }> };
@@ -25,11 +25,12 @@ export async function GET(_request: NextRequest, { params }: Params) {
 
     const event = await repo.getEvent(id);
     if (!event) return notFound("That Jio does not exist");
-    if (!isFullyDecided(event)) {
-      return badRequest("This Jio isn't fully decided yet");
+    if (!canAddToCalendar(event)) {
+      return badRequest("This Jio's date isn't fixed yet");
     }
 
-    const location = event.winner_place_name ?? event.winner_label ?? "";
+    const location =
+      event.winner_place_name ?? event.winner_label ?? "Place TBD";
     const description = [
       event.host_name && `Hosted by ${event.host_name}`,
       `View this Jio: ${eventInviteUrl(event.invite_token)}`,
