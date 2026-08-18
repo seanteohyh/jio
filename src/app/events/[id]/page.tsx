@@ -19,6 +19,7 @@ import ShareLink from "@/components/ShareLink";
 import ShareResultCard from "@/components/ShareResultCard";
 import { fetcher, mutateJson } from "@/lib/fetcher";
 import { eventInviteUrl } from "@/lib/shareUrl";
+import { googleCalendarUrl, isFullyDecided } from "@/lib/calendar";
 import { subscribeToEventChanges } from "@/lib/realtime";
 import { features } from "@/lib/config";
 import { cn, formatDate, formatDateTime, placeDescriptor } from "@/lib/utils";
@@ -468,6 +469,44 @@ export default function EventDetailPage({
             }
           />
         )}
+
+      {/*
+        CHANGES_20260818.md §5 — only once time *and* place are both final,
+        same gate `isFullyDecided` uses. A one-time snapshot: neither link
+        updates if this Jio's time or place changes after someone adds it.
+      */}
+      {isFullyDecided(event) && (
+        <div className="border-line bg-cream flex flex-wrap items-center gap-3 rounded-xl border p-3">
+          <p className="text-ink text-sm font-medium">Add to calendar</p>
+          <LinkButton
+            href={googleCalendarUrl({
+              id: event.id,
+              title: event.title,
+              scheduledAt: event.scheduled_at,
+              location: event.winner_place_name ?? event.winner_label ?? "",
+              description: [
+                event.host_name && `Hosted by ${event.host_name}`,
+                `View this Jio: ${eventInviteUrl(event.invite_token)}`,
+              ]
+                .filter(Boolean)
+                .join("\n"),
+              url: eventInviteUrl(event.invite_token),
+            })}
+            variant="secondary"
+            size="sm"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Google Calendar
+          </LinkButton>
+          <a
+            href={`/api/events/${event.id}/ics`}
+            className="text-ember text-xs underline"
+          >
+            Download .ics
+          </a>
+        </div>
+      )}
 
       {actionError && <ErrorNote>{actionError}</ErrorNote>}
 
