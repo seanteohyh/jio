@@ -2,7 +2,7 @@
 
 import { formatCuisine, formatMonthKey } from "@/lib/utils";
 import { Star } from "lucide-react";
-import { Card, SectionHeading } from "./ui";
+import { Card, EmptyState, LinkButton, SectionHeading } from "./ui";
 import type { KakiMetrics, UserMetrics } from "@/types";
 
 /**
@@ -90,9 +90,11 @@ function StatTile({
 export function UserMetricsCharts({ metrics }: { metrics: UserMetrics }) {
   if (metrics.totalVisits === 0) {
     return (
-      <p className="text-stone text-sm">
-        Log a few visits and your stats will show up here.
-      </p>
+      <EmptyState
+        title="No visits logged yet"
+        description="Log a few visits and your stats will show up here."
+        action={<LinkButton href="/places">Browse places</LinkButton>}
+      />
     );
   }
 
@@ -161,9 +163,10 @@ export function KakiMetricsCharts({
 }) {
   if (metrics.groupTotalVisits === 0) {
     return (
-      <p className="text-stone text-sm">
-        Nobody in this group has logged a visit yet.
-      </p>
+      <EmptyState
+        title="No visits yet"
+        description="Nobody in this group has logged a visit yet — once someone does, stats show up here."
+      />
     );
   }
 

@@ -13,6 +13,7 @@ import {
   inputClass,
 } from "@/components/ui";
 import { fetcher, mutateJson } from "@/lib/fetcher";
+import HintCard from "@/components/HintCard";
 import type { Kaki } from "@/types";
 
 export default function KakisPage() {
@@ -58,6 +59,11 @@ export default function KakisPage() {
           {creating ? "Cancel" : "New"}
         </Button>
       </header>
+
+      <HintCard page="kakis" icon="👥">
+        Kaki means your lunch crew — create one to share stats and jio each
+        other faster.
+      </HintCard>
 
       {creating && (
         <Card className="animate-fade-in">

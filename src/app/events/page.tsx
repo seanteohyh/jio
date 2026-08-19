@@ -402,13 +402,23 @@ export default function EventsPage() {
                   Group by Kaki
                 </button>
               )}
-              <button
-                type="button"
-                onClick={() => setView((v) => (v === "calendar" ? "list" : "calendar"))}
-                className="border-line text-stone hover:text-ink rounded-full border px-3 py-1.5 text-xs font-medium"
-              >
-                {view === "calendar" ? "List view" : "Calendar view"}
-              </button>
+              <div className="flex shrink-0 gap-1.5">
+                {(["calendar", "list"] as const).map((v) => (
+                  <button
+                    key={v}
+                    type="button"
+                    onClick={() => setView(v)}
+                    className={cn(
+                      "rounded-full border px-3 py-1.5 text-xs font-medium capitalize",
+                      view === v
+                        ? "bg-ember border-ember text-white"
+                        : "border-line text-stone hover:text-ink"
+                    )}
+                  >
+                    {v}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 

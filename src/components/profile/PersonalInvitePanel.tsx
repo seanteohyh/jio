@@ -7,15 +7,14 @@ import QrCode from "@/components/QrCode";
 import { mutateJson } from "@/lib/fetcher";
 
 /**
- * Self-service personal invite link — CHANGES_20260818.md §3 / docs/user-
- * discovery.md §4.3. Opening it shows the profile card for whoever's name
- * is on it, with "Start a Jio with them" / "Add them to a Kaki" — no
- * friend-edge created just by viewing. Mirrors `RecoveryLinkPanel` (same
- * "can't read an old one back, only mint a fresh one" shape) plus a QR
- * code, since the real context here is an office — the person is across
- * the room, not across the internet.
+ * The generate-and-display logic behind the personal invite link, lifted
+ * out of the panel below so the QR shortcut icon in the page header
+ * (`QrShortcutButton`, CHANGES_20260819.md §2) can share the exact same
+ * token rather than minting a second one — called once by the page and
+ * passed down to both, "session" scope falls out of that for free (it's
+ * just React state living as long as the page does).
  */
-export default function PersonalInvitePanel() {
+export function usePersonalInviteLink() {
   const [url, setUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -42,6 +41,29 @@ export default function PersonalInvitePanel() {
     }
   };
 
+  return { url, busy, error, generate };
+}
+
+/**
+ * Self-service personal invite link — CHANGES_20260818.md §3 / docs/user-
+ * discovery.md §4.3. Opening it shows the profile card for whoever's name
+ * is on it, with "Start a Jio with them" / "Add them to a Kaki" — no
+ * friend-edge created just by viewing. Mirrors `RecoveryLinkPanel` (same
+ * "can't read an old one back, only mint a fresh one" shape) plus a QR
+ * code, since the real context here is an office — the person is across
+ * the room, not across the internet.
+ *
+ * Stays exactly where it is in the Account zone — the manage/regenerate
+ * surface. The header's QR shortcut is a quick-view into this same token,
+ * not a replacement for it, which is why both take the shared invite state
+ * as props rather than each owning their own.
+ */
+export default function PersonalInvitePanel({
+  url,
+  busy,
+  error,
+  generate,
+}: ReturnType<typeof usePersonalInviteLink>) {
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between gap-3">

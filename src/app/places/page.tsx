@@ -18,6 +18,7 @@ import {
   SectionHeading,
   SkeletonRows,
 } from "@/components/ui";
+import HintCard from "@/components/HintCard";
 import { fetcher } from "@/lib/fetcher";
 import { features } from "@/lib/config";
 import type { Place, WishlistEntry } from "@/types";
@@ -61,6 +62,11 @@ export default function PlacesPage() {
           <LinkButton href="/places/new">Add</LinkButton>
         </div>
       </header>
+
+      <HintCard page="places" icon="🔖">
+        Filter by cuisine, budget, or walk time to narrow things down, and
+        bookmark anywhere you want to find again fast.
+      </HintCard>
 
       {features.wishlist && (
         <div className="border-line flex gap-1 rounded-full border p-1 text-sm">

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { PlusSquare, Share, Smartphone } from "lucide-react";
-import { Button } from "@/components/ui";
+import { Button, Card } from "@/components/ui";
 import { useInstallPrompt } from "@/components/InstallPromptProvider";
 
 /**
@@ -17,11 +17,19 @@ import { useInstallPrompt } from "@/components/InstallPromptProvider";
  * for the same reason: a button that can't do anything is worse than no
  * button.
  *
- * No own `Card` wrapper (CHANGES_20260816.md §3) — this is only ever
- * rendered on `/profile`, grouped with the page's other personal-account
- * rows inside one shared card there, not as a standalone card of its own.
+ * No own `Card` wrapper by default (CHANGES_20260816.md §3) — on `/profile`
+ * this is grouped with the page's other personal-account rows inside one
+ * shared card there, not a standalone card of its own. `standalone` (Home,
+ * CHANGES_20260819.md §1) wraps it in one — a bare row would otherwise sit
+ * unbordered on the page background with nothing else grouping it. The
+ * suppression checks above still run first either way, so a wrapping Card
+ * never renders empty.
  */
-export default function AddToHomeScreenCard() {
+export default function AddToHomeScreenCard({
+  standalone: standaloneCard,
+}: {
+  standalone?: boolean;
+}) {
   const { platform, standalone, install } = useInstallPrompt();
   const [installed, setInstalled] = useState(false);
 
@@ -32,7 +40,7 @@ export default function AddToHomeScreenCard() {
     if (outcome === "accepted") setInstalled(true);
   };
 
-  return (
+  const row = (
     <div className="flex items-start gap-3">
       <span className="bg-ember-tint text-ember flex h-9 w-9 shrink-0 items-center justify-center rounded-full">
         <Smartphone className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
@@ -71,4 +79,6 @@ export default function AddToHomeScreenCard() {
       </div>
     </div>
   );
+
+  return standaloneCard ? <Card>{row}</Card> : row;
 }

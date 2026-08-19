@@ -62,6 +62,13 @@ export default function KakiDetailPage({
   };
 
   const leave = async () => {
+    if (
+      !window.confirm(
+        "Leave this group? You'll need a new invite to get back in."
+      )
+    ) {
+      return;
+    }
     setBusy(true);
     setActionError(null);
     try {
