@@ -286,6 +286,18 @@ export interface Repo {
     hostId: string
   ): Promise<void>;
   /**
+   * Host-only, works before or after the Jio is decided — CHANGES_20260819b.md.
+   * Also drops the removed person's own RSVP, ballot and any Flexi
+   * date-availability on this event, so a stray response doesn't linger for
+   * someone no longer in it. Anything they *added* (an option, a candidate
+   * date) is left alone — still useful to whoever's left.
+   */
+  removeInviteeFromEvent(
+    eventId: string,
+    userId: string,
+    hostId: string
+  ): Promise<void>;
+  /**
    * Self-service — "following the link is the acceptance" (§4). Adds the
    * *caller* as an invitee, never anyone else; a no-op if they're already
    * the host or already invited. Called when a signed-in user lands on an
@@ -682,6 +694,7 @@ export const REPO_METHODS = [
   "markDateAvailability",
   "confirmEventDate",
   "addInviteesToEvent",
+  "removeInviteeFromEvent",
   "joinEventViaInvite",
   "addOptionToEvent",
   "addFreeTextOptionToEvent",

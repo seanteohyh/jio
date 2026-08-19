@@ -1521,6 +1521,21 @@ export const supabaseRepo: Repo = {
     if (error) fail("Could not add invitees", error);
   },
 
+  // Host-privileged and cross-table (invitee row, plus their RSVP, ballot
+  // and any Flexi date-availability) — routed through a security-definer
+  // RPC rather than plain client deletes, since event_rsvps/event_votes/
+  // event_date_votes are all `user_id = auth.uid()`-only under RLS and a
+  // host's own session has no standing to delete another user's rows on
+  // them directly. See 055_remove_event_invitee.sql.
+  async removeInviteeFromEvent(eventId, userId, _hostId) {
+    const client = await db();
+    const { error } = await client.rpc("remove_event_invitee", {
+      p_event_id: eventId,
+      p_user_id: userId,
+    });
+    if (error) fail("Could not remove that invitee", error);
+  },
+
   // `userId` isn't passed to the RPC — same shape as cancelEvent's
   // `_hostId`. join_event_via_invite trusts auth.uid(), not an argument the
   // caller could otherwise forge; kept in the signature only so this

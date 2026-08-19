@@ -1119,6 +1119,35 @@ export const demoRepo: Repo = {
     }
   },
 
+  async removeInviteeFromEvent(eventId, userId, hostId) {
+    const s = store();
+    const event = s.events.find((e) => e.id === eventId);
+    if (!event) throw new Error("Event not found");
+    if (event.host_id !== hostId) {
+      throw new Error("Only the host can remove people");
+    }
+    if (userId === event.host_id) {
+      throw new Error("The host can't be removed");
+    }
+
+    s.invitees = s.invitees.filter(
+      (i) => !(i.event_id === eventId && i.user_id === userId)
+    );
+    // Their RSVP, ballot and any Flexi date-availability would otherwise
+    // linger for someone no longer part of the Jio, skewing counts nobody
+    // can now attribute to them. Anything they added (an option, a
+    // candidate date) stays — that's still useful to everyone else.
+    s.rsvps = s.rsvps.filter(
+      (r) => !(r.event_id === eventId && r.user_id === userId)
+    );
+    s.votes = s.votes.filter(
+      (v) => !(v.event_id === eventId && v.user_id === userId)
+    );
+    s.dateVotes = s.dateVotes.filter(
+      (v) => !(v.event_id === eventId && v.user_id === userId)
+    );
+  },
+
   async joinEventViaInvite(eventId, userId) {
     const s = store();
     const event = s.events.find((e) => e.id === eventId);

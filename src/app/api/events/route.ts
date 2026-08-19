@@ -5,6 +5,7 @@ import { badRequest, errorResponse, json, readJson } from "@/lib/api";
 import { featureGate } from "@/lib/config";
 import { DEFAULT_OFFICE } from "@/lib/constants";
 import { sendPushToUsers } from "@/lib/push";
+import { expandInvitees } from "@/lib/events";
 import type { Repo } from "@/lib/data";
 
 /** Best-effort — a push failure must never fail the Jio it's announcing. */
@@ -90,43 +91,6 @@ interface CreateEventBody {
 }
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-
-/**
- * Turn the picker's selection into a flat invitee list.
- *
- * A chosen group is **snapshotted** — its members become individual invitees
- * right now, rather than being resolved from live membership later. Migration
- * 019 settled this for lobangs and the same reasoning applies: if membership
- * were read at read-time, someone joining the group next week would silently
- * become a person who "was invited" to last week's lunch, and someone leaving
- * would vanish from it.
- *
- * The group id is *also* kept on the event (`kaki_id`) so the Jio can still say
- * who it was with. Both, not either.
- *
- * Deliberately server-side: the client has no business deciding who counts as a
- * member, and `getKaki` is already subject to the same RLS as everything else.
- * Overlaps are deduped silently — picking a group and then someone already in
- * it is a normal thing to do, not an error. The host is dropped because they
- * are the host.
- */
-async function expandInvitees(
-  repo: Repo,
-  hostId: string,
-  explicit: string[],
-  kakiIds: string[]
-): Promise<string[]> {
-  const ids = new Set(explicit);
-
-  for (const kakiId of kakiIds) {
-    const kaki = await repo.getKaki(kakiId);
-    if (!kaki) continue;
-    for (const member of kaki.members) ids.add(member.user_id);
-  }
-
-  ids.delete(hostId);
-  return [...ids];
-}
 
 export async function POST(request: NextRequest) {
   const blocked = featureGate("events");
