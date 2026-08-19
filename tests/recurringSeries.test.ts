@@ -155,6 +155,38 @@ describe("generateDueOccurrences", () => {
     expect(count).toBe(0);
   });
 
+  it("generates the configured time as its Singapore instant, not the runtime's own local hour", async () => {
+    // CHANGES_20260819b.md §2 — `time_of_day` is meant as Singapore local
+    // time; the bug wrote it as the runtime's own (UTC, on Vercel) local
+    // hour instead, so "12:00" was stored as 12:00 UTC (8pm SGT) rather
+    // than 04:00 UTC (12:00 SGT).
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-05T09:00:00Z")); // Wed, 9am UTC = 5pm SGT
+
+    await demoRepo.createRecurringSeries(
+      seriesInput({ time_of_day: "12:00" })
+    );
+    await demoRepo.generateDueOccurrences(DEMO_USER_ID);
+
+    const events = await demoRepo.listEvents(DEMO_USER_ID);
+    const generated = events.find((e) => e.recurring_series_id);
+    expect(generated?.scheduled_at).toBe("2026-08-05T04:00:00.000Z");
+  });
+
+  it("treats 'today' as Singapore's calendar day, not UTC's, right after UTC midnight", async () => {
+    // 2026-08-05T20:00:00Z is already Thursday, 4am in Singapore, even
+    // though it's still Wednesday in UTC. A series recurring on Wednesday
+    // should not treat "today" as still being that Wednesday — in
+    // Singapore terms it already passed, so the next real occurrence
+    // (Aug 12) is 6 days out, past the 3-day lookahead window.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-05T20:00:00Z"));
+
+    await demoRepo.createRecurringSeries(seriesInput({ weekday: 3 })); // Wednesday
+    const count = await demoRepo.generateDueOccurrences(DEMO_USER_ID);
+    expect(count).toBe(0);
+  });
+
   it("expands invitees fresh from current kaki membership", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-05T09:00:00"));

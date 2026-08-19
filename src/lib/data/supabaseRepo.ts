@@ -5,6 +5,7 @@ import {
   generateToken,
   haversine,
   nextOccurrence,
+  sgtToday,
   slugifyCuisine,
   sortPlacesForList,
   uuid,
@@ -2243,8 +2244,7 @@ export const supabaseRepo: Repo = {
     if (due.length === 0) return 0;
 
     let generated = 0;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const today = sgtToday();
 
     for (const series of due) {
       const next = nextOccurrence(series.weekday, today);
@@ -2270,9 +2270,13 @@ export const supabaseRepo: Repo = {
       }
       inviteeSet.delete(series.host_id);
 
-      const [hh, mm] = series.time_of_day.split(":").map(Number);
-      const scheduledAt = new Date(next);
-      scheduledAt.setHours(hh, mm, 0, 0);
+      // `time_of_day` is a wall-clock time meant as Singapore local time —
+      // an explicit +08:00 offset parses to the correct instant regardless
+      // of what timezone this server process happens to be running in.
+      // `setHours` on a plain Date used the *runtime's* local timezone
+      // instead, silently writing e.g. "12:00" as 12:00 UTC (8pm SGT) —
+      // CHANGES_20260819b.md §2.
+      const scheduledAt = new Date(`${nextKey}T${series.time_of_day}+08:00`);
 
       const placeIds =
         series.mode === "fixed"

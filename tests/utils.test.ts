@@ -1,5 +1,11 @@
-import { describe, expect, it } from "vitest";
-import { formatDate, formatTime, relativeDayLabel, sgtDateKey } from "@/lib/utils";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  formatDate,
+  formatTime,
+  relativeDayLabel,
+  sgtDateKey,
+  sgtToday,
+} from "@/lib/utils";
 
 /**
  * CHANGES_20260818.md §4 — Home's Server Component renders on Vercel's UTC
@@ -28,6 +34,23 @@ describe("formatDate", () => {
 describe("sgtDateKey", () => {
   it("rolls a late-UTC timestamp into the next SGT day", () => {
     expect(sgtDateKey("2026-08-17T23:00:00Z")).toBe("2026-08-18");
+  });
+});
+
+describe("sgtToday", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("returns Singapore's calendar day, not UTC's, near the UTC day boundary", () => {
+    // 2026-08-17T23:00:00Z is already 2026-08-18 in Singapore.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-17T23:00:00Z"));
+
+    const today = sgtToday();
+    expect(today.getFullYear()).toBe(2026);
+    expect(today.getMonth()).toBe(7); // August, 0-indexed
+    expect(today.getDate()).toBe(18);
   });
 });
 
