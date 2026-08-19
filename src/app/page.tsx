@@ -88,11 +88,19 @@ export default async function HomePage() {
   // calendar competing with the Jios tab's actual one, and screenshotted
   // back poorly. Capped at 2 so this stays a glance, not a second full
   // browsable list — that stays on Jios.
-  const relevantOpen = events.filter(
-    (e) => e.status === "open" && e.date_phase !== "polling"
+  //
+  // `status !== "cancelled"`, not `=== "open"` — a closed Jio is decided,
+  // not necessarily over. Voting can lock well before the lunch itself
+  // happens, and a decided-but-future Jio is exactly as "upcoming" as one
+  // still being voted on; excluding it here was a real bug, not a scope
+  // choice (it also vanished entirely, rather than just losing its vote
+  // controls). Only `cancelled` and still-polling Flexi Jios (no real date
+  // yet) are excluded.
+  const relevantEvents = events.filter(
+    (e) => e.status !== "cancelled" && e.date_phase !== "polling"
   );
-  const todaysJio = relevantOpen.find((e) => isSameSgtDay(e.scheduled_at, now));
-  const upcomingList = relevantOpen
+  const todaysJio = relevantEvents.find((e) => isSameSgtDay(e.scheduled_at, now));
+  const upcomingList = relevantEvents
     .filter((e) => e.id !== todaysJio?.id)
     .filter((e) => new Date(e.scheduled_at).getTime() > now.getTime())
     .sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at))
