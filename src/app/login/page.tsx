@@ -20,6 +20,7 @@ import JioLockup from "@/components/brand/JioLockup";
 function NameForm({ next }: { next: string }) {
   const router = useRouter();
   const nameInputRef = useRef<HTMLInputElement>(null);
+  const altNameInputRef = useRef<HTMLInputElement>(null);
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -27,8 +28,14 @@ function NameForm({ next }: { next: string }) {
   // already exists — is that you?" (CHANGES_20260807c.md §3 item 1). Holds
   // the matched account's exact stored name for the prompt's copy.
   const [pendingMatch, setPendingMatch] = useState<string | null>(null);
+  // CHANGES_20260819.md §5 — "No, different person" used to bounce back to
+  // the plain login form with a red error, as if a shared name were a
+  // mistake. Instead the confirm card stays open and swaps to this inline
+  // field, so picking a different name never leaves the flow it started in.
+  const [choosingNewName, setChoosingNewName] = useState(false);
+  const [altName, setAltName] = useState("");
 
-  const attempt = async (confirmClaim?: boolean) => {
+  const attempt = async (tryName: string, confirmClaim?: boolean) => {
     setBusy(true);
     setError(null);
 
@@ -36,30 +43,30 @@ function NameForm({ next }: { next: string }) {
       const response = await fetch("/api/auth/signin", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ display_name: name, confirm_claim: confirmClaim }),
+        body: JSON.stringify({ display_name: tryName, confirm_claim: confirmClaim }),
       });
       const payload = await response.json();
 
       if (payload.needs_confirmation) {
-        setPendingMatch(payload.matched_name ?? name);
+        setName(tryName);
+        setPendingMatch(payload.matched_name ?? tryName);
+        setChoosingNewName(false);
         setBusy(false);
         return;
       }
 
       if (payload.name_taken) {
-        // CHANGES_20260818.md §2 — "No, different person" no longer signs
-        // in under a name someone else already has. Drop back to the plain
-        // field rather than the confirm prompt, keep what they typed (the
-        // collision itself is the useful context here), and say why.
+        // Not reachable from this form's own flow anymore (nothing here
+        // calls confirm_claim=false), but the route can still return it, so
+        // this stays as a defensive fallback rather than an assumed-dead
+        // branch.
         setPendingMatch(null);
+        setChoosingNewName(false);
         setError(
-          `"${payload.matched_name ?? name}" is already in use — try a ` +
+          `"${payload.matched_name ?? tryName}" is already in use — try a ` +
             "different name so your teammates can tell you apart."
         );
         setBusy(false);
-        // The name field isn't mounted yet — it's still showing the confirm
-        // prompt this click came from — so focus has to wait for that state
-        // flip to actually render before the node exists to focus.
         setTimeout(() => nameInputRef.current?.focus(), 0);
         return;
       }
@@ -76,8 +83,47 @@ function NameForm({ next }: { next: string }) {
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
-    await attempt(undefined);
+    await attempt(name, undefined);
   };
+
+  const submitAltName = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const trimmed = altName.trim();
+    if (!trimmed) return;
+    await attempt(trimmed, undefined);
+  };
+
+  if (choosingNewName) {
+    return (
+      <div className="space-y-4">
+        <p className="text-ink text-sm">
+          No problem — what should we call you instead?
+        </p>
+
+        {error && <ErrorNote>{error}</ErrorNote>}
+
+        <form onSubmit={submitAltName} className="space-y-3">
+          <input
+            ref={altNameInputRef}
+            required
+            value={altName}
+            onChange={(e) => setAltName(e.target.value)}
+            className={inputClass}
+            autoComplete="nickname"
+            maxLength={40}
+            autoFocus
+          />
+          <Button
+            type="submit"
+            className="w-full"
+            disabled={busy || !altName.trim()}
+          >
+            {busy ? "One moment…" : "Continue"}
+          </Button>
+        </form>
+      </div>
+    );
+  }
 
   if (pendingMatch) {
     return (
@@ -106,7 +152,7 @@ function NameForm({ next }: { next: string }) {
             type="button"
             className="flex-1"
             disabled={busy}
-            onClick={() => attempt(true)}
+            onClick={() => attempt(name, true)}
           >
             {busy ? "One moment…" : "Yes, that's me"}
           </Button>
@@ -115,7 +161,12 @@ function NameForm({ next }: { next: string }) {
             variant="secondary"
             className="flex-1"
             disabled={busy}
-            onClick={() => attempt(false)}
+            onClick={() => {
+              setChoosingNewName(true);
+              setAltName("");
+              setError(null);
+              setTimeout(() => altNameInputRef.current?.focus(), 0);
+            }}
           >
             No, different person
           </Button>

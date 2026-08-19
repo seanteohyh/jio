@@ -17,6 +17,7 @@ import {
 import RouletteWheel from "@/components/RouletteWheel";
 import ShareLink from "@/components/ShareLink";
 import ShareResultCard from "@/components/ShareResultCard";
+import InvitePicker, { type InviteSelection } from "@/components/InvitePicker";
 import { fetcher, mutateJson } from "@/lib/fetcher";
 import { eventInviteUrl } from "@/lib/shareUrl";
 import { googleCalendarUrl, canAddToCalendar } from "@/lib/calendar";
@@ -65,6 +66,12 @@ export default function EventDetailPage({
     placeId: string;
     label: string;
   } | null>(null);
+  // CHANGES_20260819b.md — host add/remove, both before and after confirmed.
+  const [inviting, setInviting] = useState(false);
+  const [inviteSelection, setInviteSelection] = useState<InviteSelection>({
+    userIds: [],
+    kakiIds: [],
+  });
 
   // Live updates while people vote. Falls back silently if realtime is off.
   useEffect(() => {
@@ -270,6 +277,24 @@ export default function EventDetailPage({
         "DELETE"
       );
       setBallotTouched(false);
+    });
+
+  const sendInvites = () =>
+    run(async () => {
+      await mutateJson(`/api/events/${id}/invitees`, "POST", {
+        user_ids: inviteSelection.userIds,
+        kaki_ids: inviteSelection.kakiIds,
+      });
+      setInviting(false);
+      setInviteSelection({ userIds: [], kakiIds: [] });
+    });
+
+  const removeInvitee = (userId: string) =>
+    run(async () => {
+      await mutateJson(
+        `/api/events/${id}/invitees?userId=${userId}`,
+        "DELETE"
+      );
     });
 
   const suggestOptions = () =>
@@ -601,49 +626,161 @@ export default function EventDetailPage({
         </Card>
       )}
 
-      {/* --- RSVP --- */}
-      {isOpen && !isDatePolling && (
+      {/*
+        --- RSVP ---
+        The action buttons are only meaningful while still open, but who
+        answered what stays visible after — CHANGES_20260819b.md: "esp once
+        confirmed everyone should be able to see who's going and who can't
+        make it," which the old version got backwards (the whole card,
+        breakdown included, vanished the moment a Jio closed). Not shown
+        during Flexi date-polling — nobody's answered "are you coming" to a
+        Jio with no fixed date yet.
+      */}
+      {!isDatePolling && !isCancelled && (
         <Card>
-          <SectionHeading>Are you coming?</SectionHeading>
-          <div className="flex gap-2">
-            {(["yes", "maybe", "no"] as RsvpResponse[]).map((response) => (
-              <Button
-                key={response}
-                size="sm"
-                variant={viewer.myRsvp === response ? "primary" : "secondary"}
-                onClick={() => sendRsvp(response)}
-                disabled={busy}
-              >
-                {response === "yes"
-                  ? "I'm in"
-                  : response === "maybe"
-                    ? "Maybe"
-                    : "Can't"}
-              </Button>
-            ))}
-          </div>
+          <SectionHeading>Who's coming</SectionHeading>
 
-          {event.rsvps.length > 0 && (
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              {event.rsvps
-                .filter((r) => r.response === "yes")
-                .map((rsvp) => (
-                  <span
-                    key={rsvp.user_id}
-                    className="flex items-center gap-1.5 text-xs"
-                  >
-                    <Avatar
-                      name={rsvp.display_name ?? "Teammate"}
-                      id={rsvp.user_id}
-                      size={22}
-                    />
-                    {rsvp.display_name}
-                  </span>
-                ))}
-              <span className="text-stone text-xs">
-                {event.going_count ?? 0} going
-              </span>
+          {isOpen && (
+            <div className="mb-3 flex gap-2">
+              {(["yes", "maybe", "no"] as RsvpResponse[]).map((response) => (
+                <Button
+                  key={response}
+                  size="sm"
+                  variant={viewer.myRsvp === response ? "primary" : "secondary"}
+                  onClick={() => sendRsvp(response)}
+                  disabled={busy}
+                >
+                  {response === "yes"
+                    ? "I'm in"
+                    : response === "maybe"
+                      ? "Maybe"
+                      : "Can't"}
+                </Button>
+              ))}
             </div>
+          )}
+
+          {event.rsvps.length > 0 ? (
+            <div className="space-y-2.5">
+              {(["yes", "maybe", "no"] as RsvpResponse[]).map((response) => {
+                const people = event.rsvps.filter(
+                  (r) => r.response === response
+                );
+                if (people.length === 0) return null;
+                const label =
+                  response === "yes"
+                    ? "Going"
+                    : response === "maybe"
+                      ? "Maybe"
+                      : "Can't make it";
+                return (
+                  <div key={response}>
+                    <p className="text-stone text-xs font-medium tracking-wide uppercase">
+                      {label} · {people.length}
+                    </p>
+                    <div className="mt-1 flex flex-wrap gap-2">
+                      {people.map((rsvp) => (
+                        <span
+                          key={rsvp.user_id}
+                          className="flex items-center gap-1.5 text-xs"
+                        >
+                          <Avatar
+                            name={rsvp.display_name ?? "Teammate"}
+                            id={rsvp.user_id}
+                            size={22}
+                          />
+                          {rsvp.display_name}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="text-stone text-xs">Nobody has responded yet.</p>
+          )}
+        </Card>
+      )}
+
+      {/*
+        --- Manage invitees --- (host only)
+        CHANGES_20260819b.md — "host can add or remove users in the Jio,
+        both before and after confirmed." No `isOpen`/`isCancelled` gate on
+        purpose: the backend allows either action at any status, and a host
+        closing (or even cancelling) a Jio doesn't stop being able to say
+        who's on it.
+      */}
+      {viewer.isHost && (
+        <Card className="space-y-3">
+          <SectionHeading>Invited</SectionHeading>
+
+          {event.kaki_id && (
+            <p className="text-stone text-xs">
+              This Jio is also linked to a Kaki group — its members can see
+              and join it too, and aren&apos;t listed (or removable) here.
+            </p>
+          )}
+
+          {event.invitees.length > 0 ? (
+            <div className="flex flex-wrap gap-1.5">
+              {event.invitees.map((invitee) => (
+                <button
+                  key={invitee.user_id}
+                  type="button"
+                  onClick={() => removeInvitee(invitee.user_id)}
+                  disabled={busy}
+                  className="border-line text-stone rounded-full border px-2.5 py-1 text-xs hover:border-ember hover:text-ember"
+                >
+                  {invitee.display_name ?? "Teammate"} ×
+                </button>
+              ))}
+            </div>
+          ) : (
+            <p className="text-stone text-xs">
+              Nobody individually invited yet.
+            </p>
+          )}
+
+          {inviting ? (
+            <div className="space-y-2">
+              <InvitePicker
+                value={inviteSelection}
+                onChange={setInviteSelection}
+                selfId={viewer.id}
+              />
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  onClick={sendInvites}
+                  disabled={
+                    busy ||
+                    (inviteSelection.userIds.length === 0 &&
+                      inviteSelection.kakiIds.length === 0)
+                  }
+                >
+                  Send invites
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    setInviting(false);
+                    setInviteSelection({ userIds: [], kakiIds: [] });
+                  }}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => setInviting(true)}
+            >
+              Invite more people
+            </Button>
           )}
         </Card>
       )}

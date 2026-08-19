@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import Link from "next/link";
 import useSWR from "swr";
 import { Avatar, EmptyState, ErrorNote, SkeletonRows } from "@/components/ui";
+import HintCard from "@/components/HintCard";
 import { fetcher, mutateJson } from "@/lib/fetcher";
 import { mergeLobangFeed, relativeDayLabel } from "@/lib/utils";
 import type { Lobang } from "@/types";
@@ -74,6 +75,11 @@ export default function LobangsPage() {
           first.
         </p>
       </header>
+
+      <HintCard page="lobangs" icon="📌">
+        Lobang means a tip — &ldquo;saw this, thought of you.&rdquo; Send one
+        from any place&apos;s page.
+      </HintCard>
 
       {isLoading && <SkeletonRows count={6} rowClassName="h-14 w-2/3" />}
       {error && <ErrorNote>{error.message}</ErrorNote>}

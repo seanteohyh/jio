@@ -7,10 +7,16 @@ import StartJioWizard from "@/components/home/StartJioWizard";
 import NeedsAvailability from "@/components/home/NeedsAvailability";
 import StreakBanner from "@/components/home/StreakBanner";
 import EventRow from "@/components/events/EventRow";
+import AddToHomeScreenCard from "@/components/profile/AddToHomeScreenCard";
+import HintCard from "@/components/HintCard";
 import { LinkButton, SectionHeading } from "@/components/ui";
 import JioLockup from "@/components/brand/JioLockup";
 import { formatTime, isSameSgtDay } from "@/lib/utils";
 import type { LunchEvent } from "@/types";
+
+/** CHANGES_20260819.md §1 — how long a fresh account still counts as
+ *  "newer" for the inline home-screen nudge below Upcoming. */
+const NEW_USER_WINDOW_DAYS = 14;
 
 /**
  * Needs the hour *in Singapore*, not whatever timezone is running the code
@@ -98,6 +104,11 @@ export default async function HomePage() {
     .filter((e) => e.host_id === user.id && e.status !== "open")
     .sort((a, b) => b.scheduled_at.localeCompare(a.scheduled_at))[0];
 
+  const isNewerUser =
+    !!profile?.created_at &&
+    now.getTime() - new Date(profile.created_at).getTime() <
+      NEW_USER_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+
   return (
     <div className="space-y-6">
       {/* The lockup only appears on Home. Everywhere else the side rail or the
@@ -139,6 +150,11 @@ export default async function HomePage() {
         )}
       </header>
 
+      <HintCard page="home" icon="🍜">
+        Start a Jio to vote with the group, or tap &ldquo;Just tell me where
+        to go&rdquo; for an instant pick with no voting.
+      </HintCard>
+
       {features.metrics && <StreakBanner />}
 
       <div className="flex flex-col gap-2 sm:flex-row">
@@ -176,6 +192,8 @@ export default async function HomePage() {
           </ul>
         </div>
       )}
+
+      {isNewerUser && <AddToHomeScreenCard standalone />}
 
       {features.events && <NeedsAvailability />}
     </div>

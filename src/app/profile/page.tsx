@@ -22,7 +22,11 @@ import MyFlagsList from "@/components/profile/MyFlagsList";
 import PushNotificationToggle from "@/components/profile/PushNotificationToggle";
 import AddToHomeScreenCard from "@/components/profile/AddToHomeScreenCard";
 import RecoveryLinkPanel from "@/components/profile/RecoveryLinkPanel";
-import PersonalInvitePanel from "@/components/profile/PersonalInvitePanel";
+import PersonalInvitePanel, {
+  usePersonalInviteLink,
+} from "@/components/profile/PersonalInvitePanel";
+import QrShortcutButton from "@/components/profile/QrShortcutButton";
+import HintCard from "@/components/HintCard";
 import { fetcher, mutateJson } from "@/lib/fetcher";
 import { config, features } from "@/lib/config";
 import { BUDGET_TIERS } from "@/lib/constants";
@@ -153,6 +157,8 @@ export default function ProfilePage() {
     router.refresh();
   };
 
+  const personalInvite = usePersonalInviteLink();
+
   const visits = visitsData?.visits ?? [];
   const byMonth = groupBy(visits, (v) => v.visited_at.slice(0, 7));
   const months = Array.from(byMonth.keys()).sort((a, b) => b.localeCompare(a));
@@ -167,14 +173,22 @@ export default function ProfilePage() {
 
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight">You</h1>
-        <p className="text-stone mt-1 text-sm">
-          {/* Name-only users have no email, so fall back to who they said
-              they are rather than showing an empty line. */}
-          {me?.user?.email ?? me?.user?.display_name ?? "Signed in"}
-        </p>
+      <header className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">You</h1>
+          <p className="text-stone mt-1 text-sm">
+            {/* Name-only users have no email, so fall back to who they said
+                they are rather than showing an empty line. */}
+            {me?.user?.email ?? me?.user?.display_name ?? "Signed in"}
+          </p>
+        </div>
+        <QrShortcutButton {...personalInvite} />
       </header>
+
+      <HintCard page="you" icon="📱">
+        Tap the scan icon above to share your invite in person, and set your
+        Taste preferences below so picks fit you better.
+      </HintCard>
 
       {/* Zone 1 — Settings: everything you edit, one card, one Save. */}
       <div className="space-y-3">
@@ -427,7 +441,7 @@ export default function ProfilePage() {
           </div>
 
           <div className="py-3 first:pt-0 last:pb-0">
-            <PersonalInvitePanel />
+            <PersonalInvitePanel {...personalInvite} />
           </div>
 
           {config.authAdapter === "name" && !config.isDemo && (

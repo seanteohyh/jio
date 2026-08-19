@@ -15,6 +15,7 @@ import {
 import InvitePicker, {
   type InviteSelection,
 } from "@/components/InvitePicker";
+import HintCard from "@/components/HintCard";
 import { fetcher, mutateJson } from "@/lib/fetcher";
 import type { Place, ScoredPlace } from "@/types";
 
@@ -166,208 +167,216 @@ export default function JioForm({
     variant === "page" ? { className: "space-y-4" } : { className: "space-y-4" };
 
   return (
-    <form onSubmit={submit} className="space-y-4">
-      <Wrapper {...wrapperProps}>
-        <Field label="What is it">
-          <input
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            className={inputClass}
-            placeholder="Friday team lunch"
-          />
-        </Field>
+    <>
+      <HintCard page="start-jio" icon="🗳️">
+        Everyone ranks the options — the Borda count just means points for
+        where you rank something, so it&apos;s rarely just
+        first-choice-wins.
+      </HintCard>
 
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => setMode("fixed")}
-            className={
-              mode === "fixed"
-                ? "bg-ember rounded-full px-3 py-1.5 text-xs font-medium text-white"
-                : "border-line text-stone rounded-full border px-3 py-1.5 text-xs"
-            }
-          >
-            Pick a date now
-          </button>
-          <button
-            type="button"
-            onClick={() => setMode("flexi")}
-            className={
-              mode === "flexi"
-                ? "bg-ember rounded-full px-3 py-1.5 text-xs font-medium text-white"
-                : "border-line text-stone rounded-full border px-3 py-1.5 text-xs"
-            }
-          >
-            Poll a few dates first
-          </button>
-        </div>
-
-        {mode === "fixed" ? (
-          <Field label="When" hint="Date and time.">
-            <input
-              type="datetime-local"
-              required
-              value={when}
-              onChange={(e) => setWhen(e.target.value)}
-              className={inputClass}
-            />
-          </Field>
-        ) : (
-          <Field
-            label="Candidate dates"
-            hint="At least 2. Everyone marks which ones they're free, then you confirm one."
-          >
-            <div className="flex items-center gap-2">
-              <input
-                type="date"
-                value={newCandidateDate}
-                onChange={(e) => setNewCandidateDate(e.target.value)}
-                className={inputClass}
-              />
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={addCandidateDate}
-                disabled={!newCandidateDate}
-              >
-                Add
-              </Button>
-            </div>
-            {candidateDates.length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {candidateDates.map((date) => (
-                  <button
-                    key={date}
-                    type="button"
-                    onClick={() =>
-                      setCandidateDates((prev) =>
-                        prev.filter((d) => d !== date)
-                      )
-                    }
-                    className="border-line text-stone rounded-full border px-2.5 py-1 text-xs hover:border-ember hover:text-ember"
-                  >
-                    {date} ×
-                  </button>
-                ))}
-              </div>
-            )}
-          </Field>
-        )}
-      </Wrapper>
-
-      {mode === "fixed" && (
+      <form onSubmit={submit} className="space-y-4">
         <Wrapper {...wrapperProps}>
-          <SectionHeading>Options to vote on</SectionHeading>
-
-          <Field label="Find a place">
+          <Field label="What is it">
             <input
-              value={placeQuery}
-              onChange={(e) => setPlaceQuery(e.target.value)}
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
               className={inputClass}
-              placeholder="Search by name…"
-              autoComplete="off"
+              placeholder="Friday team lunch"
             />
           </Field>
 
-          <p className="text-stone text-xs">
-            {trimmedQuery.length >= 2
-              ? searching
-                ? "Searching…"
-                : `${optionPool.length} match${optionPool.length === 1 ? "" : "es"}`
-              : "Suggested for you, best first. Invitees can add more once it is open."}
-          </p>
-
-          <div className="flex flex-wrap gap-1.5">
-            {optionPool.length === 0 && !searching && (
-              <span className="text-stone text-xs">
-                {trimmedQuery.length >= 2 ? "Nothing found." : "Loading…"}
-              </span>
-            )}
-            {optionPool.map((place) => {
-              const active = selected.includes(place.id);
-              return (
-                <button
-                  key={place.id}
-                  type="button"
-                  onClick={() => toggleOption(place.id)}
-                  className={
-                    active
-                      ? "bg-ember rounded-full px-2.5 py-1 text-xs text-white"
-                      : "border-line text-stone hover:border-ember rounded-full border px-2.5 py-1 text-xs"
-                  }
-                >
-                  {place.name}
-                  {typeof place.walk_minutes === "number" && (
-                    <span className="opacity-70"> · {place.walk_minutes}m</span>
-                  )}
-                </button>
-              );
-            })}
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setMode("fixed")}
+              className={
+                mode === "fixed"
+                  ? "bg-ember rounded-full px-3 py-1.5 text-xs font-medium text-white"
+                  : "border-line text-stone rounded-full border px-3 py-1.5 text-xs"
+              }
+            >
+              Pick a date now
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode("flexi")}
+              className={
+                mode === "flexi"
+                  ? "bg-ember rounded-full px-3 py-1.5 text-xs font-medium text-white"
+                  : "border-line text-stone rounded-full border px-3 py-1.5 text-xs"
+              }
+            >
+              Poll a few dates first
+            </button>
           </div>
 
-          <p className="text-stone text-xs">
-            {selected.length} selected.{" "}
-            <Link
-              href="/places/new"
-              className="hover:text-ember underline"
+          {mode === "fixed" ? (
+            <Field label="When" hint="Date and time.">
+              <input
+                type="datetime-local"
+                required
+                value={when}
+                onChange={(e) => setWhen(e.target.value)}
+                className={inputClass}
+              />
+            </Field>
+          ) : (
+            <Field
+              label="Candidate dates"
+              hint="At least 2. Everyone marks which ones they're free, then you confirm one."
             >
-              Not here? Add a place
-            </Link>
-          </p>
+              <div className="flex items-center gap-2">
+                <input
+                  type="date"
+                  value={newCandidateDate}
+                  onChange={(e) => setNewCandidateDate(e.target.value)}
+                  className={inputClass}
+                />
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={addCandidateDate}
+                  disabled={!newCandidateDate}
+                >
+                  Add
+                </Button>
+              </div>
+              {candidateDates.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {candidateDates.map((date) => (
+                    <button
+                      key={date}
+                      type="button"
+                      onClick={() =>
+                        setCandidateDates((prev) =>
+                          prev.filter((d) => d !== date)
+                        )
+                      }
+                      className="border-line text-stone rounded-full border px-2.5 py-1 text-xs hover:border-ember hover:text-ember"
+                    >
+                      {date} ×
+                    </button>
+                  ))}
+                </div>
+              )}
+            </Field>
+          )}
         </Wrapper>
-      )}
 
-      <Wrapper {...wrapperProps}>
-        <SectionHeading>Who is coming</SectionHeading>
-        <InvitePicker value={invite} onChange={setInvite} />
-      </Wrapper>
+        {mode === "fixed" && (
+          <Wrapper {...wrapperProps}>
+            <SectionHeading>Options to vote on</SectionHeading>
 
-      <Wrapper {...wrapperProps}>
-        <label className="flex items-start gap-2.5 text-sm">
-          <input
-            type="checkbox"
-            checked={hideVotes}
-            onChange={(e) => setHideVotes(e.target.checked)}
-            className="accent-ember mt-0.5"
-          />
-          <span>
-            <span className="text-ink font-medium">Hide votes until this Jio closes</span>
-            <span className="text-stone block text-xs">
-              Nobody sees the running standing while voting is open — not
-              even you. Only the ballot count shows until it closes. Can’t
-              be changed once the Jio is started.
+            <Field label="Find a place">
+              <input
+                value={placeQuery}
+                onChange={(e) => setPlaceQuery(e.target.value)}
+                className={inputClass}
+                placeholder="Search by name…"
+                autoComplete="off"
+              />
+            </Field>
+
+            <p className="text-stone text-xs">
+              {trimmedQuery.length >= 2
+                ? searching
+                  ? "Searching…"
+                  : `${optionPool.length} match${optionPool.length === 1 ? "" : "es"}`
+                : "Suggested for you, best first. Invitees can add more once it is open."}
+            </p>
+
+            <div className="flex flex-wrap gap-1.5">
+              {optionPool.length === 0 && !searching && (
+                <span className="text-stone text-xs">
+                  {trimmedQuery.length >= 2 ? "Nothing found." : "Loading…"}
+                </span>
+              )}
+              {optionPool.map((place) => {
+                const active = selected.includes(place.id);
+                return (
+                  <button
+                    key={place.id}
+                    type="button"
+                    onClick={() => toggleOption(place.id)}
+                    className={
+                      active
+                        ? "bg-ember rounded-full px-2.5 py-1 text-xs text-white"
+                        : "border-line text-stone hover:border-ember rounded-full border px-2.5 py-1 text-xs"
+                    }
+                  >
+                    {place.name}
+                    {typeof place.walk_minutes === "number" && (
+                      <span className="opacity-70"> · {place.walk_minutes}m</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            <p className="text-stone text-xs">
+              {selected.length} selected.{" "}
+              <Link
+                href="/places/new"
+                className="hover:text-ember underline"
+              >
+                Not here? Add a place
+              </Link>
+            </p>
+          </Wrapper>
+        )}
+
+        <Wrapper {...wrapperProps}>
+          <SectionHeading>Who is coming</SectionHeading>
+          <InvitePicker value={invite} onChange={setInvite} />
+        </Wrapper>
+
+        <Wrapper {...wrapperProps}>
+          <label className="flex items-start gap-2.5 text-sm">
+            <input
+              type="checkbox"
+              checked={hideVotes}
+              onChange={(e) => setHideVotes(e.target.checked)}
+              className="accent-ember mt-0.5"
+            />
+            <span>
+              <span className="text-ink font-medium">Hide votes until this Jio closes</span>
+              <span className="text-stone block text-xs">
+                Nobody sees the running standing while voting is open — not
+                even you. Only the ballot count shows until it closes. Can’t
+                be changed once the Jio is started.
+              </span>
             </span>
-          </span>
-        </label>
-      </Wrapper>
+          </label>
+        </Wrapper>
 
-      {error && <ErrorNote>{error}</ErrorNote>}
+        {error && <ErrorNote>{error}</ErrorNote>}
 
-      <div className="flex gap-2">
-        <Button
-          type="submit"
-          disabled={
-            busy ||
-            (mode === "fixed"
-              ? selected.length === 0
-              : candidateDates.length < 2)
-          }
-        >
-          {busy
-            ? "Starting…"
-            : mode === "flexi"
-              ? "Start polling dates"
-              : "Start the Jio"}
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          onClick={onCancel ?? (() => router.back())}
-        >
-          Cancel
-        </Button>
-      </div>
-    </form>
+        <div className="flex gap-2">
+          <Button
+            type="submit"
+            disabled={
+              busy ||
+              (mode === "fixed"
+                ? selected.length === 0
+                : candidateDates.length < 2)
+            }
+          >
+            {busy
+              ? "Starting…"
+              : mode === "flexi"
+                ? "Start polling dates"
+                : "Start the Jio"}
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={onCancel ?? (() => router.back())}
+          >
+            Cancel
+          </Button>
+        </div>
+      </form>
+    </>
   );
 }
