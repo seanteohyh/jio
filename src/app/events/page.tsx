@@ -337,13 +337,21 @@ export default function EventsPage() {
                           : ""}
                     </p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => cancelSeries(series.id)}
-                    className="text-stone hover:text-ember shrink-0 text-xs underline"
-                  >
-                    Stop
-                  </button>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <Link
+                      href={`/events/recurring/${series.id}/edit`}
+                      className="text-stone hover:text-ember text-xs underline"
+                    >
+                      Edit
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={() => cancelSeries(series.id)}
+                      className="text-stone hover:text-ember text-xs underline"
+                    >
+                      Stop
+                    </button>
+                  </div>
                 </li>
               ))}
             </ul>

@@ -214,3 +214,179 @@ describe("generateDueOccurrences", () => {
     ).not.toContain(DEMO_TEAMMATE_B);
   });
 });
+
+describe("updateRecurringSeries", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("lets the host update the series' own fields", async () => {
+    const series = await demoRepo.createRecurringSeries(seriesInput());
+    const updated = await demoRepo.updateRecurringSeries(
+      series.id,
+      DEMO_USER_ID,
+      { title: "New name", time_of_day: "13:00" }
+    );
+    expect(updated.title).toBe("New name");
+    expect(updated.time_of_day).toBe("13:00");
+    // Untouched fields keep their original value.
+    expect(updated.weekday).toBe(3);
+  });
+
+  it("refuses anyone but the host", async () => {
+    const series = await demoRepo.createRecurringSeries(seriesInput());
+    await expect(
+      demoRepo.updateRecurringSeries(series.id, DEMO_TEAMMATE_A, {
+        title: "Hijacked",
+      })
+    ).rejects.toThrow();
+  });
+
+  it("propagates a time change onto a still-open generated occurrence, same date", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-05T09:00:00Z")); // Wed, 9am UTC
+
+    const series = await demoRepo.createRecurringSeries(seriesInput());
+    await demoRepo.generateDueOccurrences(DEMO_USER_ID);
+    const before = (await demoRepo.listEvents(DEMO_USER_ID)).find(
+      (e) => e.recurring_series_id === series.id
+    )!;
+    expect(before.scheduled_at).toBe("2026-08-05T04:15:00.000Z"); // 12:15 SGT
+
+    await demoRepo.updateRecurringSeries(series.id, DEMO_USER_ID, {
+      time_of_day: "14:00",
+    });
+
+    const after = await demoRepo.getEvent(before.id);
+    // Same calendar date, new time (14:00 SGT = 06:00 UTC).
+    expect(after?.scheduled_at).toBe("2026-08-05T06:00:00.000Z");
+  });
+
+  it("never moves an already-generated occurrence's date when the weekday changes", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-05T09:00:00Z")); // Wed
+
+    const series = await demoRepo.createRecurringSeries(seriesInput());
+    await demoRepo.generateDueOccurrences(DEMO_USER_ID);
+    const before = (await demoRepo.listEvents(DEMO_USER_ID)).find(
+      (e) => e.recurring_series_id === series.id
+    )!;
+
+    await demoRepo.updateRecurringSeries(series.id, DEMO_USER_ID, {
+      weekday: 4, // Thursday, from now on
+    });
+
+    const after = await demoRepo.getEvent(before.id);
+    // Still Wednesday, Aug 5 — the weekday edit only affects future
+    // occurrences, not this already-generated one.
+    expect(after?.scheduled_at.slice(0, 10)).toBe("2026-08-05");
+  });
+
+  it("propagates a place/mode change onto a still-open occurrence nobody's responded to", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-05T09:00:00Z"));
+
+    const series = await demoRepo.createRecurringSeries(seriesInput());
+    await demoRepo.generateDueOccurrences(DEMO_USER_ID);
+    const before = (await demoRepo.listEvents(DEMO_USER_ID)).find(
+      (e) => e.recurring_series_id === series.id
+    )!;
+
+    await demoRepo.updateRecurringSeries(series.id, DEMO_USER_ID, {
+      mode: "vote",
+      fixed_place_id: null,
+      option_place_ids: ["demo-place-01", "demo-place-02"],
+    });
+
+    const after = await demoRepo.getEvent(before.id);
+    expect(after?.options.map((o) => o.place_id).sort()).toEqual([
+      "demo-place-01",
+      "demo-place-02",
+    ]);
+  });
+
+  it("does not touch a still-open occurrence's options once a ballot's been cast", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-05T09:00:00Z"));
+
+    const series = await demoRepo.createRecurringSeries(seriesInput());
+    await demoRepo.generateDueOccurrences(DEMO_USER_ID);
+    const before = (await demoRepo.listEvents(DEMO_USER_ID)).find(
+      (e) => e.recurring_series_id === series.id
+    )!;
+    await demoRepo.castBallot(before.id, DEMO_TEAMMATE_A, ["demo-place-01"]);
+
+    await demoRepo.updateRecurringSeries(series.id, DEMO_USER_ID, {
+      mode: "vote",
+      fixed_place_id: null,
+      option_place_ids: ["demo-place-01", "demo-place-02"],
+    });
+
+    const after = await demoRepo.getEvent(before.id);
+    expect(after?.options.map((o) => o.place_id)).toEqual(["demo-place-01"]);
+  });
+
+  it("does not touch a still-open occurrence's options once an RSVP's been cast", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-05T09:00:00Z"));
+
+    const series = await demoRepo.createRecurringSeries(seriesInput());
+    await demoRepo.generateDueOccurrences(DEMO_USER_ID);
+    const before = (await demoRepo.listEvents(DEMO_USER_ID)).find(
+      (e) => e.recurring_series_id === series.id
+    )!;
+    await demoRepo.rsvp(before.id, DEMO_TEAMMATE_A, "yes");
+
+    await demoRepo.updateRecurringSeries(series.id, DEMO_USER_ID, {
+      mode: "vote",
+      fixed_place_id: null,
+      option_place_ids: ["demo-place-01", "demo-place-02"],
+    });
+
+    const after = await demoRepo.getEvent(before.id);
+    expect(after?.options.map((o) => o.place_id)).toEqual(["demo-place-01"]);
+  });
+
+  it("propagates an invitee list change onto a still-open occurrence nobody's responded to", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-05T09:00:00Z"));
+
+    const series = await demoRepo.createRecurringSeries(seriesInput());
+    await demoRepo.generateDueOccurrences(DEMO_USER_ID);
+    const before = (await demoRepo.listEvents(DEMO_USER_ID)).find(
+      (e) => e.recurring_series_id === series.id
+    )!;
+
+    await demoRepo.updateRecurringSeries(series.id, DEMO_USER_ID, {
+      invitee_ids: [DEMO_TEAMMATE_A, DEMO_TEAMMATE_B],
+    });
+
+    const after = await demoRepo.getEvent(before.id);
+    expect(after?.invitees.map((i) => i.user_id).sort()).toEqual(
+      [DEMO_TEAMMATE_A, DEMO_TEAMMATE_B].sort()
+    );
+  });
+
+  it("leaves a closed occurrence untouched by any edit", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-05T09:00:00Z"));
+
+    const series = await demoRepo.createRecurringSeries(seriesInput());
+    await demoRepo.generateDueOccurrences(DEMO_USER_ID);
+    const before = (await demoRepo.listEvents(DEMO_USER_ID)).find(
+      (e) => e.recurring_series_id === series.id
+    )!;
+    await demoRepo.closeEvent(before.id, DEMO_USER_ID, "demo-place-01");
+
+    await demoRepo.updateRecurringSeries(series.id, DEMO_USER_ID, {
+      time_of_day: "18:00",
+      mode: "vote",
+      fixed_place_id: null,
+      option_place_ids: ["demo-place-01", "demo-place-02"],
+    });
+
+    const after = await demoRepo.getEvent(before.id);
+    expect(after?.scheduled_at).toBe(before.scheduled_at);
+    expect(after?.options.map((o) => o.place_id)).toEqual(["demo-place-01"]);
+  });
+});

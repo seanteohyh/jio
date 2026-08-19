@@ -1638,6 +1638,89 @@ export const demoRepo: Repo = {
     series.status = "cancelled";
   },
 
+  async updateRecurringSeries(seriesId, hostId, updates) {
+    const s = store();
+    const series = s.recurringSeries.find((sr) => sr.id === seriesId);
+    if (!series) throw new Error("Series not found");
+    if (series.host_id !== hostId) {
+      throw new Error("Only the host can edit this series");
+    }
+
+    const nextMode = updates.mode ?? series.mode;
+    Object.assign(series, {
+      title: updates.title ?? series.title,
+      weekday: updates.weekday ?? series.weekday,
+      time_of_day: updates.time_of_day ?? series.time_of_day,
+      mode: nextMode,
+      fixed_place_id:
+        nextMode === "fixed"
+          ? (updates.fixed_place_id ?? series.fixed_place_id)
+          : null,
+      option_place_ids:
+        nextMode === "vote"
+          ? (updates.option_place_ids ?? series.option_place_ids)
+          : [],
+      invitee_ids: updates.invitee_ids ?? series.invitee_ids,
+      kaki_id:
+        updates.kaki_id !== undefined ? updates.kaki_id : series.kaki_id,
+    });
+
+    // Propagate onto any already-generated occurrence that's still `open`
+    // — "any Jio not confirmed yet, if pending, should also change."
+    const openOccurrences = s.events.filter(
+      (e) => e.recurring_series_id === seriesId && e.status === "open"
+    );
+    for (const occurrence of openOccurrences) {
+      // Time-of-day always propagates; the weekday never moves an
+      // occurrence that's already generated — its calendar date is fixed.
+      if (updates.time_of_day !== undefined) {
+        const existingDateKey = dateKey(new Date(occurrence.scheduled_at));
+        occurrence.scheduled_at = new Date(
+          `${existingDateKey}T${series.time_of_day}+08:00`
+        ).toISOString();
+      }
+
+      const hasResponses =
+        s.votes.some((v) => v.event_id === occurrence.id) ||
+        s.rsvps.some((r) => r.event_id === occurrence.id);
+      // Once someone's actually answered, changing the place/mode/invitees
+      // out from under them would invalidate what they answered — leave
+      // this occurrence's own options/invitees exactly as they are.
+      if (hasResponses) continue;
+
+      const inviteeSet = new Set(series.invitee_ids);
+      if (series.kaki_id) {
+        for (const m of s.kakiMembers.filter(
+          (km) => km.kaki_id === series.kaki_id
+        )) {
+          inviteeSet.add(m.user_id);
+        }
+      }
+      inviteeSet.delete(series.host_id);
+      s.invitees = s.invitees.filter((i) => i.event_id !== occurrence.id);
+      for (const userId of inviteeSet) {
+        s.invitees.push({ event_id: occurrence.id, user_id: userId });
+      }
+      occurrence.kaki_id = series.kaki_id ?? null;
+
+      s.options = s.options.filter((o) => o.event_id !== occurrence.id);
+      const placeIds =
+        series.mode === "fixed"
+          ? [series.fixed_place_id!]
+          : series.option_place_ids;
+      for (const placeId of placeIds) {
+        s.options.push({
+          event_id: occurrence.id,
+          place_id: placeId,
+          added_by: hostId,
+          is_suggested: false,
+        });
+      }
+    }
+
+    return series;
+  },
+
   async generateDueOccurrences(hostId) {
     const s = store();
     const due = s.recurringSeries.filter(
