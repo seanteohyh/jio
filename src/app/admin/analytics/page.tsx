@@ -70,12 +70,21 @@ export default function AdminAnalyticsPage() {
       {data?.analytics && (
         <>
           <FunnelSection funnel={data.analytics.funnel} />
-          <GrowthSection growth={data.analytics.growth} />
+          <GrowthSection
+            growth={data.analytics.growth}
+            windowDays={data.analytics.windowDays}
+          />
           <JioOutcomesSection outcomes={data.analytics.jioOutcomes} />
           <ContentSection content={data.analytics.content} />
           <SocialSection social={data.analytics.social} />
-          <ModerationSection moderation={data.analytics.moderation} />
-          <WishlistSection wishlist={data.analytics.wishlist} />
+          <ModerationSection
+            moderation={data.analytics.moderation}
+            windowDays={data.analytics.windowDays}
+          />
+          <WishlistSection
+            wishlist={data.analytics.wishlist}
+            windowDays={data.analytics.windowDays}
+          />
           <PerformanceSection />
         </>
       )}

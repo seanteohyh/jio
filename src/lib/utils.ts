@@ -284,6 +284,22 @@ export function sgtDateKey(input: string | Date): string {
   return new Date(d.getTime() + SGT_OFFSET_MS).toISOString().slice(0, 10);
 }
 
+/**
+ * Right now, expressed as calendar components in Singapore's fixed UTC+8
+ * offset — safe to feed into anything that reads a Date's *local* getters
+ * (`nextOccurrence`, `dateKey`), regardless of what timezone the runtime
+ * itself happens to be in. Recurring-series generation
+ * (`generateDueOccurrences`) is the reason this exists: `new Date()` plus
+ * local getters silently used the server's own calendar day during the
+ * ~8-hour window where it doesn't match Singapore's — CHANGES_20260819b.md
+ * §2, the write-side counterpart to CHANGES_20260818.md §4's display-only
+ * version of the same class of bug.
+ */
+export function sgtToday(): Date {
+  const [y, m, d] = sgtDateKey(new Date()).split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+
 /** True when `iso` falls on the same Asia/Singapore calendar day as `reference`. */
 export function isSameSgtDay(iso: string | Date, reference: Date): boolean {
   return sgtDateKey(iso) === sgtDateKey(reference);

@@ -415,6 +415,34 @@ export interface Repo {
   listRecurringSeries(hostId: string): Promise<RecurringSeries[]>;
   cancelRecurringSeries(seriesId: string, hostId: string): Promise<void>;
   /**
+   * CHANGES_20260819b.md §3 — reuses the creation form, so `updates` is the
+   * same full field set `createRecurringSeries` takes rather than a sparse
+   * delta; validation (weekday range, time format, place-required-per-mode)
+   * lives in the route, same division of labor as `createRecurringSeries`.
+   *
+   * Also propagates onto any of this series' already-generated occurrences
+   * that are still `open` — "any Jio not confirmed yet, if pending, should
+   * also change" (Sean's call). Per occurrence:
+   *  - `time_of_day` always propagates (harmless either way) — but the
+   *    *weekday* never moves an existing occurrence; its calendar date is
+   *    already fixed the moment it was generated, so only future
+   *    occurrences pick up a weekday change.
+   *  - Place/mode/invitees propagate too, but only if nobody's cast a
+   *    ballot or RSVP on that occurrence yet — once someone has, changing
+   *    what they voted on out from under them would invalidate their
+   *    answer, so that occurrence is left alone from there.
+   */
+  updateRecurringSeries(
+    seriesId: string,
+    hostId: string,
+    updates: Partial<
+      Omit<
+        RecurringSeries,
+        "id" | "host_id" | "office_id" | "status" | "last_generated_date" | "created_at"
+      >
+    >
+  ): Promise<RecurringSeries>;
+  /**
    * Generates the next occurrence of each of `hostId`'s active series, if
    * one falls due within the lookahead window — see 031_recurring_series.sql
    * for why this is lazy (host-triggered, on page load) rather than cron- or
@@ -710,6 +738,7 @@ export const REPO_METHODS = [
   "createRecurringSeries",
   "listRecurringSeries",
   "cancelRecurringSeries",
+  "updateRecurringSeries",
   "generateDueOccurrences",
   "listWishlist",
   "toggleWishlist",

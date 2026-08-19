@@ -1,5 +1,8 @@
+"use client";
+
+import { useState } from "react";
 import { Card, SectionHeading } from "@/components/ui";
-import { formatCuisine } from "@/lib/utils";
+import { cn, dateKey, formatCuisine, sgtToday } from "@/lib/utils";
 import type { AdminAnalytics, DateCount, NamedCount } from "@/types";
 
 /**
@@ -9,7 +12,27 @@ import type { AdminAnalytics, DateCount, NamedCount } from "@/types";
  * styled `div`s, not a charting library, for a handful of bars and a
  * sparkline. Costs nothing, works without JS once rendered, and the numbers
  * are in the text so a screen reader gets them for free.
+ *
+ * CHANGES_20260819b.md §1 — the two chart primitives, `Sparkline` and
+ * `DistributionBars`, were readable only by hovering (a native `title`
+ * tooltip, invisible on a phone tap, which is most of how this dashboard
+ * actually gets checked). Both now print their key numbers as visible text
+ * by default; hover/tap only recovers *extra* detail (Sparkline's per-bar
+ * date, a DistributionBars label that got truncated), never the only way to
+ * see a number at all. `"use client"` only for `Sparkline`'s tap-or-hover
+ * readout — everything else here stays as inert as before.
  */
+
+/** "2026-05-27" -> "May 27" — deliberately month-first and yearless, for a
+ *  chart caption rather than a full date; Singapore's calendar day is
+ *  already baked into the key string, so no timezone math happens here. */
+function shortDate(key: string): string {
+  const [y, m, d] = key.split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
+}
 
 export function StatTile({
   label,
@@ -33,27 +56,75 @@ export function StatTile({
 export function Sparkline({
   data,
   weekly,
+  windowDays,
 }: {
   data: DateCount[];
   /** Label buckets as week-starts rather than single days. */
   weekly?: boolean;
+  /** The series' full trailing window (`AdminAnalytics.windowDays`) — every
+   *  bucket here is the same fixed window, just daily or weekly. Used only
+   *  for the range caption; `data` itself is sparse (a day/week with zero
+   *  counts has no entry), so the window's true start would otherwise read
+   *  later than it actually is whenever the window opens on a quiet day. */
+  windowDays: number;
 }) {
+  const [activeIndex, setActiveIndex] = useState<number | null>(null);
+
   if (data.length === 0) {
     return <p className="text-stone text-xs">No data in this window yet.</p>;
   }
 
   const max = Math.max(1, ...data.map((d) => d.count));
+  const peakIndex = data.reduce(
+    (best, d, i) => (d.count > data[best].count ? i : best),
+    0
+  );
+  const latestIndex = data.length - 1;
+  const active = activeIndex !== null ? data[activeIndex] : null;
+
+  const windowStart = sgtToday();
+  windowStart.setDate(windowStart.getDate() - (windowDays - 1));
+  const windowStartKey = dateKey(windowStart);
+  const windowEndKey = dateKey(sgtToday());
 
   return (
-    <div className="flex h-16 items-end gap-0.5">
-      {data.map((point) => (
-        <div
-          key={point.date}
-          className="bg-ember/70 min-w-[3px] flex-1 rounded-t"
-          style={{ height: `${Math.max(4, (point.count / max) * 100)}%` }}
-          title={`${weekly ? "Week of " : ""}${point.date}: ${point.count}`}
-        />
-      ))}
+    <div>
+      <div className="flex h-16 items-stretch gap-0.5">
+        {data.map((point, index) => (
+          <button
+            key={point.date}
+            type="button"
+            className="group relative min-w-[3px] flex-1"
+            onMouseEnter={() => setActiveIndex(index)}
+            onMouseLeave={() => setActiveIndex(null)}
+            onFocus={() => setActiveIndex(index)}
+            onBlur={() => setActiveIndex(null)}
+            aria-label={`${weekly ? "Week of " : ""}${point.date}: ${point.count}`}
+          >
+            <span
+              className={cn(
+                "group-hover:bg-ember group-focus:bg-ember absolute inset-x-0 bottom-0 rounded-t transition-colors",
+                index === peakIndex || index === latestIndex
+                  ? "bg-ember"
+                  : "bg-ember/60"
+              )}
+              style={{ height: `${Math.max(4, (point.count / max) * 100)}%` }}
+            />
+          </button>
+        ))}
+      </div>
+      <div className="mt-1.5 flex items-center justify-between gap-2 text-[11px]">
+        <span className="text-stone shrink-0">
+          {shortDate(windowStartKey)} – {shortDate(windowEndKey)}
+        </span>
+        <span className="text-ink shrink-0 font-medium tabular-nums">
+          {active
+            ? `${shortDate(active.date)}: ${active.count}`
+            : peakIndex === latestIndex
+              ? `Now (peak): ${data[latestIndex].count}`
+              : `Peak ${data[peakIndex].count} (${shortDate(data[peakIndex].date)}) · Now ${data[latestIndex].count}`}
+        </span>
+      </div>
     </div>
   );
 }
@@ -91,50 +162,65 @@ export function RankedList({
   );
 }
 
-const BAR_COLORS = [
-  "#b4532f",
-  "#567b57",
-  "#a87b2d",
-  "#6b6091",
-  "#3f6b78",
-  "#8c4a52",
-  "#427a70",
-];
-
 export function DistributionBars({
   entries,
   formatLabel,
+  total,
 }: {
   entries: [string, number][];
   formatLabel?: (key: string) => string;
+  /**
+   * Overrides the "N total" line's sum — pass the true, untruncated total
+   * when `entries` has been sliced down (e.g. cuisine tags to the top 8).
+   * Defaults to the sum of `entries` itself, which is already the true
+   * total for the two callers that don't truncate.
+   */
+  total?: number;
 }) {
   if (entries.length === 0) {
     return <p className="text-stone text-xs">No data yet.</p>;
   }
   const max = Math.max(1, ...entries.map(([, v]) => v));
+  const grandTotal = total ?? entries.reduce((sum, [, v]) => sum + v, 0);
 
   return (
-    <ul className="space-y-2">
-      {entries.map(([key, value], index) => (
-        <li key={key} className="flex items-center gap-3 text-xs">
-          <span className="text-stone w-24 shrink-0 truncate">
-            {formatLabel ? formatLabel(key) : key}
-          </span>
-          <span className="bg-paper h-3 flex-1 overflow-hidden rounded-full">
-            <span
-              className="block h-full rounded-full"
-              style={{
-                width: `${Math.max(3, (value / max) * 100)}%`,
-                backgroundColor: BAR_COLORS[index % BAR_COLORS.length],
-              }}
-            />
-          </span>
-          <span className="text-stone w-8 shrink-0 text-right tabular-nums">
-            {value}
-          </span>
-        </li>
-      ))}
-    </ul>
+    <div>
+      {/* One consistent color everywhere, not per-row cycling — nothing in
+          this data maps to color as a second dimension, so cycling through
+          decorative hues was answering a question ("what does this color
+          mean?") that a single hue removes instead. */}
+      <div className="text-stone mb-1 flex justify-between text-[10px] tabular-nums">
+        <span>0</span>
+        <span>{max}</span>
+      </div>
+      <ul className="space-y-2">
+        {entries.map(([key, value]) => {
+          const label = formatLabel ? formatLabel(key) : key;
+          return (
+            <li key={key} className="flex items-center gap-3 text-xs">
+              <span
+                className="text-stone w-24 shrink-0 truncate"
+                title={label}
+              >
+                {label}
+              </span>
+              <span className="bg-paper h-3 flex-1 overflow-hidden rounded-full">
+                <span
+                  className="bg-ember/70 block h-full rounded-full"
+                  style={{ width: `${Math.max(3, (value / max) * 100)}%` }}
+                />
+              </span>
+              <span className="text-stone w-8 shrink-0 text-right tabular-nums">
+                {value}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+      <p className="text-stone mt-2 text-[11px] tabular-nums">
+        {grandTotal} total
+      </p>
+    </div>
   );
 }
 
@@ -174,7 +260,13 @@ export function FunnelSection({ funnel }: { funnel: AdminAnalytics["funnel"] }) 
   );
 }
 
-export function GrowthSection({ growth }: { growth: AdminAnalytics["growth"] }) {
+export function GrowthSection({
+  growth,
+  windowDays,
+}: {
+  growth: AdminAnalytics["growth"];
+  windowDays: number;
+}) {
   const sum = (series: DateCount[]) => series.reduce((a, b) => a + b.count, 0);
   return (
     <Card className="space-y-4">
@@ -184,19 +276,19 @@ export function GrowthSection({ growth }: { growth: AdminAnalytics["growth"] }) 
         <p className="text-ink text-sm font-medium">
           New users — {sum(growth.newUsersPerDay)} in window
         </p>
-        <Sparkline data={growth.newUsersPerDay} />
+        <Sparkline data={growth.newUsersPerDay} windowDays={windowDays} />
       </div>
       <div>
         <p className="text-ink text-sm font-medium">
           Jios created — {sum(growth.jiosCreatedPerDay)} in window
         </p>
-        <Sparkline data={growth.jiosCreatedPerDay} />
+        <Sparkline data={growth.jiosCreatedPerDay} windowDays={windowDays} />
       </div>
       <div>
         <p className="text-ink text-sm font-medium">
           Places added — {sum(growth.placesAddedPerDay)} in window
         </p>
-        <Sparkline data={growth.placesAddedPerDay} />
+        <Sparkline data={growth.placesAddedPerDay} windowDays={windowDays} />
         <p className="text-stone mt-1 text-[11px]">
           Any path (via a Jio or /places/new) — the schema doesn't record
           which one a place came through.
@@ -207,7 +299,10 @@ export function GrowthSection({ growth }: { growth: AdminAnalytics["growth"] }) 
           Kaki groups created — {sum(growth.kakiGroupsCreatedPerDay)} in
           window, {growth.kakiGroupsCumulative} total
         </p>
-        <Sparkline data={growth.kakiGroupsCreatedPerDay} />
+        <Sparkline
+          data={growth.kakiGroupsCreatedPerDay}
+          windowDays={windowDays}
+        />
       </div>
     </Card>
   );
@@ -274,6 +369,10 @@ export function ContentSection({
             (a, b) => b[1] - a[1]
           ).slice(0, 8)}
           formatLabel={formatCuisine}
+          total={Object.values(content.cuisineDistribution).reduce(
+            (sum, v) => sum + v,
+            0
+          )}
         />
         <p className="text-stone mt-2 text-xs">
           {content.customCuisineTagUsageCount} custom "Other" tags in use —
@@ -314,8 +413,10 @@ export function SocialSection({ social }: { social: AdminAnalytics["social"] }) 
 
 export function ModerationSection({
   moderation,
+  windowDays,
 }: {
   moderation: AdminAnalytics["moderation"];
+  windowDays: number;
 }) {
   return (
     <Card className="space-y-4">
@@ -333,11 +434,19 @@ export function ModerationSection({
       </div>
       <div>
         <p className="text-ink text-sm font-medium">Filed per week</p>
-        <Sparkline data={moderation.reportsFiledPerWeek} weekly />
+        <Sparkline
+          data={moderation.reportsFiledPerWeek}
+          weekly
+          windowDays={windowDays}
+        />
       </div>
       <div>
         <p className="text-ink text-sm font-medium">Resolved per week</p>
-        <Sparkline data={moderation.reportsResolvedPerWeek} weekly />
+        <Sparkline
+          data={moderation.reportsResolvedPerWeek}
+          weekly
+          windowDays={windowDays}
+        />
       </div>
     </Card>
   );
@@ -345,15 +454,17 @@ export function ModerationSection({
 
 export function WishlistSection({
   wishlist,
+  windowDays,
 }: {
   wishlist: AdminAnalytics["wishlist"];
+  windowDays: number;
 }) {
   return (
     <Card className="space-y-4">
       <SectionHeading>Wishlist</SectionHeading>
       <div>
         <p className="text-ink text-sm font-medium">Saves per week</p>
-        <Sparkline data={wishlist.savesPerWeek} weekly />
+        <Sparkline data={wishlist.savesPerWeek} weekly windowDays={windowDays} />
       </div>
       <RankedList items={wishlist.mostSavedPlaces} suffix=" saves" />
     </Card>

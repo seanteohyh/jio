@@ -5,6 +5,7 @@ import {
   generateToken,
   haversine,
   nextOccurrence,
+  sgtToday,
   slugifyCuisine,
   sortPlacesForList,
   uuid,
@@ -2230,6 +2231,137 @@ export const supabaseRepo: Repo = {
     }
   },
 
+  async updateRecurringSeries(seriesId, hostId, updates) {
+    const client = await db();
+
+    const { data: existingRow } = await client
+      .from("recurring_series")
+      .select("*")
+      .eq("id", seriesId)
+      .maybeSingle();
+    if (!existingRow) throw new Error("Series not found");
+    const existing = existingRow as RecurringSeries;
+    if (existing.host_id !== hostId) {
+      throw new Error("Only the host can edit this series");
+    }
+
+    const nextMode = updates.mode ?? existing.mode;
+    const payload = {
+      title: updates.title ?? existing.title,
+      weekday: updates.weekday ?? existing.weekday,
+      time_of_day: updates.time_of_day ?? existing.time_of_day,
+      mode: nextMode,
+      fixed_place_id:
+        nextMode === "fixed"
+          ? (updates.fixed_place_id ?? existing.fixed_place_id)
+          : null,
+      option_place_ids:
+        nextMode === "vote"
+          ? (updates.option_place_ids ?? existing.option_place_ids)
+          : [],
+      invitee_ids: updates.invitee_ids ?? existing.invitee_ids,
+      kaki_id:
+        updates.kaki_id !== undefined ? updates.kaki_id : existing.kaki_id,
+    };
+
+    const { error: updateError } = await client
+      .from("recurring_series")
+      .update(payload)
+      .eq("id", seriesId)
+      .eq("host_id", hostId);
+    if (updateError) fail("Could not update that series", updateError);
+
+    const series: RecurringSeries = { ...existing, ...payload };
+
+    // Propagate onto any already-generated occurrence that's still `open`
+    // — "any Jio not confirmed yet, if pending, should also change."
+    const { data: openRows } = await client
+      .from("lunch_events")
+      .select("id, scheduled_at")
+      .eq("recurring_series_id", seriesId)
+      .eq("status", "open");
+
+    for (const occurrence of (openRows ?? []) as {
+      id: string;
+      scheduled_at: string;
+    }[]) {
+      // Time-of-day always propagates; the weekday never moves an
+      // occurrence that's already generated — its calendar date is fixed.
+      if (updates.time_of_day !== undefined) {
+        const existingDateKey = dateKey(new Date(occurrence.scheduled_at));
+        const newScheduledAt = new Date(
+          `${existingDateKey}T${series.time_of_day}+08:00`
+        ).toISOString();
+        await client
+          .from("lunch_events")
+          .update({ scheduled_at: newScheduledAt })
+          .eq("id", occurrence.id);
+      }
+
+      const [{ count: voteCount }, { count: rsvpCount }] = await Promise.all([
+        client
+          .from("event_votes")
+          .select("*", { count: "exact", head: true })
+          .eq("event_id", occurrence.id),
+        client
+          .from("event_rsvps")
+          .select("*", { count: "exact", head: true })
+          .eq("event_id", occurrence.id),
+      ]);
+      // Once someone's actually answered, changing the place/mode/invitees
+      // out from under them would invalidate what they answered — leave
+      // this occurrence's own options/invitees exactly as they are.
+      if ((voteCount ?? 0) > 0 || (rsvpCount ?? 0) > 0) continue;
+
+      const inviteeSet = new Set(series.invitee_ids);
+      if (series.kaki_id) {
+        const { data: members } = await client
+          .from("kaki_members")
+          .select("user_id")
+          .eq("kaki_id", series.kaki_id);
+        for (const m of (members ?? []) as { user_id: string }[]) {
+          inviteeSet.add(m.user_id);
+        }
+      }
+      inviteeSet.delete(series.host_id);
+
+      await client
+        .from("event_invitees")
+        .delete()
+        .eq("event_id", occurrence.id);
+      if (inviteeSet.size > 0) {
+        await client.from("event_invitees").insert(
+          [...inviteeSet].map((userId) => ({
+            event_id: occurrence.id,
+            user_id: userId,
+          }))
+        );
+      }
+      await client
+        .from("lunch_events")
+        .update({ kaki_id: series.kaki_id ?? null })
+        .eq("id", occurrence.id);
+
+      await client
+        .from("event_options")
+        .delete()
+        .eq("event_id", occurrence.id);
+      const placeIds =
+        series.mode === "fixed"
+          ? [series.fixed_place_id!]
+          : series.option_place_ids;
+      await client.from("event_options").insert(
+        placeIds.map((placeId) => ({
+          event_id: occurrence.id,
+          place_id: placeId,
+          added_by: hostId,
+        }))
+      );
+    }
+
+    return series;
+  },
+
   async generateDueOccurrences(hostId) {
     const client = await db();
     const { data: seriesRows, error } = await client
@@ -2243,8 +2375,7 @@ export const supabaseRepo: Repo = {
     if (due.length === 0) return 0;
 
     let generated = 0;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const today = sgtToday();
 
     for (const series of due) {
       const next = nextOccurrence(series.weekday, today);
@@ -2270,9 +2401,13 @@ export const supabaseRepo: Repo = {
       }
       inviteeSet.delete(series.host_id);
 
-      const [hh, mm] = series.time_of_day.split(":").map(Number);
-      const scheduledAt = new Date(next);
-      scheduledAt.setHours(hh, mm, 0, 0);
+      // `time_of_day` is a wall-clock time meant as Singapore local time —
+      // an explicit +08:00 offset parses to the correct instant regardless
+      // of what timezone this server process happens to be running in.
+      // `setHours` on a plain Date used the *runtime's* local timezone
+      // instead, silently writing e.g. "12:00" as 12:00 UTC (8pm SGT) —
+      // CHANGES_20260819b.md §2.
+      const scheduledAt = new Date(`${nextKey}T${series.time_of_day}+08:00`);
 
       const placeIds =
         series.mode === "fixed"
