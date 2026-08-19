@@ -24,7 +24,13 @@ export default function EventRow({ event }: { event: LunchEvent }) {
         ) : event.status === "closed" ? (
           event.winner_place_name || event.winner_label ? (
             <span className="text-sage">
-              Went to {event.winner_place_name ?? event.winner_label}
+              {/* Closed just means voting's locked, not that the lunch has
+                  actually happened — a Jio can be decided well ahead of its
+                  own date. Past tense only once scheduled_at itself has. */}
+              {new Date(event.scheduled_at).getTime() > Date.now()
+                ? "Going to"
+                : "Went to"}{" "}
+              {event.winner_place_name ?? event.winner_label}
             </span>
           ) : (
             "Closed without a winner"

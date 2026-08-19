@@ -241,10 +241,15 @@ export default function EventsPage() {
   // for the one Jio that actually matters most. Reads from the full `events`
   // set, not `filtered`, on purpose — it should not disappear just because
   // someone has "Hosting" selected.
+  //
+  // `status !== "cancelled"`, not `=== "open"` — same fix as Home's own
+  // "Upcoming" list: a closed Jio is decided, not necessarily over, and a
+  // decided-but-future Jio is exactly as "next" as one still being voted
+  // on. Only `cancelled` and still-polling Flexi Jios are excluded.
   const nextJio = events
     .filter(
       (e) =>
-        e.status === "open" &&
+        e.status !== "cancelled" &&
         e.date_phase !== "polling" &&
         new Date(e.scheduled_at).getTime() > now
     )
