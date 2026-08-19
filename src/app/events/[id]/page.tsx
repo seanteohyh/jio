@@ -628,37 +628,38 @@ export default function EventDetailPage({
 
       {/*
         --- RSVP ---
-        The action buttons are only meaningful while still open, but who
-        answered what stays visible after — CHANGES_20260819b.md: "esp once
-        confirmed everyone should be able to see who's going and who can't
-        make it," which the old version got backwards (the whole card,
-        breakdown included, vanished the moment a Jio closed). Not shown
-        during Flexi date-polling — nobody's answered "are you coming" to a
-        Jio with no fixed date yet.
+        Answerable, and who answered what stays visible, regardless of
+        open/closed — CHANGES_20260819b.md: "esp once confirmed everyone
+        should be able to see who's going and who can't make it," which the
+        old version got backwards (the whole card vanished the moment a Jio
+        closed). The buttons themselves used to close along with it too,
+        which quietly broke the companion feature right above this one — a
+        host can invite someone new after the Jio's already decided, but
+        they had no way to actually say "I'm in" once it was. Only
+        `cancelled` (nothing left to RSVP to) and Flexi date-polling
+        (no fixed date yet to be "coming" to) hide this card outright.
       */}
       {!isDatePolling && !isCancelled && (
         <Card>
           <SectionHeading>Who's coming</SectionHeading>
 
-          {isOpen && (
-            <div className="mb-3 flex gap-2">
-              {(["yes", "maybe", "no"] as RsvpResponse[]).map((response) => (
-                <Button
-                  key={response}
-                  size="sm"
-                  variant={viewer.myRsvp === response ? "primary" : "secondary"}
-                  onClick={() => sendRsvp(response)}
-                  disabled={busy}
-                >
-                  {response === "yes"
-                    ? "I'm in"
-                    : response === "maybe"
-                      ? "Maybe"
-                      : "Can't"}
-                </Button>
-              ))}
-            </div>
-          )}
+          <div className="mb-3 flex gap-2">
+            {(["yes", "maybe", "no"] as RsvpResponse[]).map((response) => (
+              <Button
+                key={response}
+                size="sm"
+                variant={viewer.myRsvp === response ? "primary" : "secondary"}
+                onClick={() => sendRsvp(response)}
+                disabled={busy}
+              >
+                {response === "yes"
+                  ? "I'm in"
+                  : response === "maybe"
+                    ? "Maybe"
+                    : "Can't"}
+              </Button>
+            ))}
+          </div>
 
           {event.rsvps.length > 0 ? (
             <div className="space-y-2.5">
