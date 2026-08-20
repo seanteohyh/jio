@@ -4,6 +4,7 @@ import {
   formatTime,
   relativeDayLabel,
   sgtDateKey,
+  sgtTimeOfDay,
   sgtToday,
 } from "@/lib/utils";
 
@@ -34,6 +35,15 @@ describe("formatDate", () => {
 describe("sgtDateKey", () => {
   it("rolls a late-UTC timestamp into the next SGT day", () => {
     expect(sgtDateKey("2026-08-17T23:00:00Z")).toBe("2026-08-18");
+  });
+});
+
+describe("sgtTimeOfDay", () => {
+  it("reads the Singapore wall-clock time, not the raw UTC hour", () => {
+    // 04:00 UTC is 12:00 in Singapore — the exact bug report (a Flexi Jio's
+    // confirmed date reading "8:00 am" because its bare date string parsed
+    // as UTC midnight).
+    expect(sgtTimeOfDay("2026-08-27T04:00:00.000Z")).toBe("12:00");
   });
 });
 

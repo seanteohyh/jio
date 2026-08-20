@@ -85,12 +85,15 @@ interface CreateEventBody {
   invitee_ids?: string[];
   /** Presence of this field (2+ entries) is what makes this a Flexi Jio. */
   candidate_dates?: string[];
+  /** Flexi Jio only — "HH:MM", Singapore local. Defaults to noon. */
+  time_of_day?: string;
   /** §14 — set only here, at creation. No edit path exists once a Jio has
    *  votes to hide. */
   hide_votes?: boolean;
 }
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 export async function POST(request: NextRequest) {
   const blocked = featureGate("events");
@@ -118,6 +121,9 @@ export async function POST(request: NextRequest) {
       if (dates.length < 2) {
         return badRequest("A Flexi Jio needs at least 2 candidate dates");
       }
+      if (body.time_of_day && !TIME_RE.test(body.time_of_day)) {
+        return badRequest("That does not look like a valid time");
+      }
 
       const event = await repo.createFlexiEvent(
         user.id,
@@ -126,7 +132,8 @@ export async function POST(request: NextRequest) {
         dates,
         kakiId,
         invitees,
-        body.hide_votes ?? false
+        body.hide_votes ?? false,
+        body.time_of_day
       );
       await notifyInvitees(repo, invitees, event.id, title);
       return json({ event }, 201);

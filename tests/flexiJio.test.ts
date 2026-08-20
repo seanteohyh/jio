@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { demoRepo, resetDemoStore } from "@/lib/data/demoRepo";
 import { DEFAULT_OFFICE, DEMO_USER_ID } from "@/lib/constants";
 import { DEMO_TEAMMATE_A, DEMO_TEAMMATE_B } from "@/lib/data/demoData";
+import { sgtDateKey, sgtTimeOfDay } from "@/lib/utils";
 
 /**
  * Flexi Jio: a second event type where the date itself is polled before
@@ -35,11 +36,29 @@ describe("Flexi Jio", () => {
     );
 
     expect(event.date_phase).toBe("polling");
-    // The earliest of the given dates, regardless of input order.
-    expect(event.scheduled_at).toBe(DATE_A);
+    // The earliest of the given dates, regardless of input order — as a
+    // real instant (noon SGT by default), not the bare date string, which
+    // always parses as UTC midnight (8am once shown in Singapore time).
+    expect(sgtDateKey(event.scheduled_at)).toBe(DATE_A);
+    expect(sgtTimeOfDay(event.scheduled_at)).toBe("12:00");
 
     const detail = await demoRepo.getEvent(event.id);
     expect(detail?.candidateDates.map((d) => d.date)).toEqual([DATE_A, DATE_B]);
+  });
+
+  it("uses the host-chosen time instead of the noon default when given one", async () => {
+    const event = await demoRepo.createFlexiEvent(
+      DEMO_USER_ID,
+      "Team lunch",
+      DEFAULT_OFFICE.id,
+      [DATE_A, DATE_B],
+      null,
+      [],
+      false,
+      "18:30"
+    );
+    expect(sgtDateKey(event.scheduled_at)).toBe(DATE_A);
+    expect(sgtTimeOfDay(event.scheduled_at)).toBe("18:30");
   });
 
   it("a regular Jio's date_phase is untouched", async () => {
@@ -127,13 +146,34 @@ describe("Flexi Jio", () => {
 
     const confirmed = await demoRepo.confirmEventDate(event.id, DEMO_USER_ID, DATE_B);
     expect(confirmed.date_phase).toBe("confirmed");
-    expect(confirmed.scheduled_at).toBe(DATE_B);
+    expect(sgtDateKey(confirmed.scheduled_at)).toBe(DATE_B);
 
     // Once confirmed, phase 2 behaviour (adding places) works exactly like
     // a regular Jio — addOptionToEvent isn't gated on date_phase at all.
     await demoRepo.addOptionToEvent(event.id, "demo-place-01", DEMO_USER_ID);
     const detail = await demoRepo.getEvent(event.id);
     expect(detail?.options.map((o) => o.place_id)).toContain("demo-place-01");
+  });
+
+  it("carries the originally-chosen time-of-day onto whichever date gets confirmed", async () => {
+    // The exact reported bug: a Flexi Jio's confirmed date read "8:00 am"
+    // because the bare date string it was stored as always parses as UTC
+    // midnight. Confirming a later candidate than the earliest one must
+    // still land on the host's chosen time, not silently reset to it.
+    const event = await demoRepo.createFlexiEvent(
+      DEMO_USER_ID,
+      "Lunch",
+      DEFAULT_OFFICE.id,
+      [DATE_A, DATE_B, DATE_C],
+      null,
+      [],
+      false,
+      "18:30"
+    );
+
+    const confirmed = await demoRepo.confirmEventDate(event.id, DEMO_USER_ID, DATE_C);
+    expect(sgtDateKey(confirmed.scheduled_at)).toBe(DATE_C);
+    expect(sgtTimeOfDay(confirmed.scheduled_at)).toBe("18:30");
   });
 
   it("refuses to confirm twice", async () => {
