@@ -5,6 +5,7 @@ import {
   generateToken,
   haversine,
   nextOccurrence,
+  sgtTimeOfDay,
   sgtToday,
   slugifyCuisine,
   sortPlacesForList,
@@ -1155,7 +1156,8 @@ export const supabaseRepo: Repo = {
     candidateDates,
     kakiId,
     inviteeIds,
-    hideVotes
+    hideVotes,
+    timeOfDay
   ) {
     const uniqueDates = Array.from(new Set(candidateDates));
     if (uniqueDates.length < 2) {
@@ -1164,13 +1166,19 @@ export const supabaseRepo: Repo = {
 
     const client = await db();
     const earliest = [...uniqueDates].sort()[0];
+    // A bare "YYYY-MM-DD" always parses as UTC midnight — 8am once
+    // formatted in Singapore time. An explicit +08:00 offset on a real
+    // (host-chosen, or noon-default) time avoids that entirely.
+    const scheduledAt = new Date(
+      `${earliest}T${timeOfDay || "12:00"}+08:00`
+    ).toISOString();
 
     const { data: eventRow, error } = await client
       .from("lunch_events")
       .insert({
         host_id: hostId,
         title,
-        scheduled_at: earliest,
+        scheduled_at: scheduledAt,
         office_id: officeId,
         kaki_id: kakiId ?? null,
         invite_token: generateToken(),
@@ -1997,12 +2005,16 @@ export const supabaseRepo: Repo = {
 
     const { data: eventRow } = await client
       .from("lunch_events")
-      .select("host_id, date_phase")
+      .select("host_id, date_phase, scheduled_at")
       .eq("id", eventId)
       .maybeSingle();
     if (!eventRow) throw new Error("Event not found");
 
-    const event = eventRow as { host_id: string; date_phase: string | null };
+    const event = eventRow as {
+      host_id: string;
+      date_phase: string | null;
+      scheduled_at: string;
+    };
     if (event.host_id !== hostId) {
       throw new Error("Only the host can confirm the date");
     }
@@ -2018,9 +2030,16 @@ export const supabaseRepo: Repo = {
       .maybeSingle();
     if (!candidateRow) throw new Error("That date was never a candidate");
 
+    // Carries the time-of-day the host originally set at creation onto
+    // whichever candidate date actually gets confirmed — same explicit
+    // +08:00 offset construction as createFlexiEvent, not a bare date
+    // string (which parses as UTC midnight, 8am once shown in SGT).
+    const timeOfDay = sgtTimeOfDay(event.scheduled_at);
+    const scheduledAt = new Date(`${date}T${timeOfDay}+08:00`).toISOString();
+
     const { data, error } = await client
       .from("lunch_events")
-      .update({ scheduled_at: date, date_phase: "confirmed" })
+      .update({ scheduled_at: scheduledAt, date_phase: "confirmed" })
       .eq("id", eventId)
       .select()
       .single();

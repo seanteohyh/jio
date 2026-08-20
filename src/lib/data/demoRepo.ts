@@ -10,6 +10,7 @@ import {
   generateToken,
   haversine,
   nextOccurrence,
+  sgtTimeOfDay,
   sgtToday,
   slugifyCuisine,
   sortPlacesForList,
@@ -955,7 +956,8 @@ export const demoRepo: Repo = {
     candidateDates,
     kakiId,
     inviteeIds,
-    hideVotes
+    hideVotes,
+    timeOfDay
   ) {
     const uniqueDates = Array.from(new Set(candidateDates));
     if (uniqueDates.length < 2) {
@@ -964,12 +966,18 @@ export const demoRepo: Repo = {
 
     const s = store();
     const earliest = [...uniqueDates].sort()[0];
+    // A bare "YYYY-MM-DD" always parses as UTC midnight — 8am once
+    // formatted in Singapore time. An explicit +08:00 offset on a real
+    // (host-chosen, or noon-default) time avoids that entirely.
+    const scheduledAt = new Date(
+      `${earliest}T${timeOfDay || "12:00"}+08:00`
+    ).toISOString();
     const event: LunchEvent = {
       id: `demo-event-${uuid().slice(0, 8)}`,
       office_id: officeId,
       host_id: hostId,
       title,
-      scheduled_at: earliest,
+      scheduled_at: scheduledAt,
       status: "open",
       invite_token: generateToken(),
       winner_place_id: null,
@@ -1470,9 +1478,14 @@ export const demoRepo: Repo = {
     );
     if (!isCandidate) throw new Error("That date was never a candidate");
 
+    // Carries the time-of-day the host originally set at creation onto
+    // whichever candidate date actually gets confirmed — same explicit
+    // +08:00 offset construction as createFlexiEvent, not a bare date
+    // string (which parses as UTC midnight, 8am once shown in SGT).
+    const timeOfDay = sgtTimeOfDay(event.scheduled_at);
     s.events[index] = {
       ...event,
-      scheduled_at: date,
+      scheduled_at: new Date(`${date}T${timeOfDay}+08:00`).toISOString(),
       date_phase: "confirmed",
     };
 

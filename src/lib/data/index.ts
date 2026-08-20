@@ -238,8 +238,12 @@ export interface Repo {
   /**
    * A Flexi Jio: date_phase starts 'polling' rather than skipping straight
    * to place voting. `candidateDates` needs at least 2 entries (enforced
-   * here). `scheduled_at` is seeded to the earliest of them as a
-   * provisional value — see the `LunchEvent.scheduled_at` doc comment.
+   * here). `scheduled_at` is seeded to the earliest of them, at `timeOfDay`
+   * (Singapore local, "HH:MM"; defaults to noon), as a provisional value —
+   * see the `LunchEvent.scheduled_at` doc comment. Built via an explicit
+   * `+08:00` offset, not a bare date string — a bare "YYYY-MM-DD" always
+   * parses as UTC midnight, which is what read as "8:00 am" once formatted
+   * in Singapore time.
    */
   createFlexiEvent(
     hostId: string,
@@ -248,7 +252,8 @@ export interface Repo {
     candidateDates: string[],
     kakiId?: string | null,
     inviteeIds?: string[],
-    hideVotes?: boolean
+    hideVotes?: boolean,
+    timeOfDay?: string
   ): Promise<LunchEvent>;
   getEvent(idOrToken: string): Promise<EventDetail | null>;
   listEvents(userId: string): Promise<LunchEvent[]>;

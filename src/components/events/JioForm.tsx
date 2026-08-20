@@ -68,6 +68,11 @@ export default function JioForm({
   const [when, setWhen] = useState(defaultDateTime());
   const [candidateDates, setCandidateDates] = useState<string[]>([]);
   const [newCandidateDate, setNewCandidateDate] = useState("");
+  // One shared time for whichever candidate date ends up confirmed — a
+  // Flexi Jio polls the *date*, not the time. Previously missing entirely:
+  // a confirmed date was stored as a bare "YYYY-MM-DD", which always parses
+  // as UTC midnight — 8am once shown in Singapore time.
+  const [flexiTime, setFlexiTime] = useState("12:00");
   const [selected, setSelected] = useState<string[]>(initialPlaceIds ?? []);
   const [invite, setInvite] = useState<InviteSelection>(
     initialInvite ?? { userIds: [], kakiIds: [] }
@@ -148,7 +153,11 @@ export default function JioForm({
         "/api/events",
         "POST",
         mode === "flexi"
-          ? { ...shared, candidate_dates: candidateDates }
+          ? {
+              ...shared,
+              candidate_dates: candidateDates,
+              time_of_day: flexiTime,
+            }
           : {
               ...shared,
               scheduled_at: new Date(when).toISOString(),
@@ -221,46 +230,60 @@ export default function JioForm({
               />
             </Field>
           ) : (
-            <Field
-              label="Candidate dates"
-              hint="At least 2. Everyone marks which ones they're free, then you confirm one."
-            >
-              <div className="flex items-center gap-2">
+            <>
+              <Field
+                label="Candidate dates"
+                hint="At least 2. Everyone marks which ones they're free, then you confirm one."
+              >
+                <div className="flex items-center gap-2">
+                  <input
+                    type="date"
+                    value={newCandidateDate}
+                    onChange={(e) => setNewCandidateDate(e.target.value)}
+                    className={inputClass}
+                  />
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={addCandidateDate}
+                    disabled={!newCandidateDate}
+                  >
+                    Add
+                  </Button>
+                </div>
+                {candidateDates.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {candidateDates.map((date) => (
+                      <button
+                        key={date}
+                        type="button"
+                        onClick={() =>
+                          setCandidateDates((prev) =>
+                            prev.filter((d) => d !== date)
+                          )
+                        }
+                        className="border-line text-stone rounded-full border px-2.5 py-1 text-xs hover:border-ember hover:text-ember"
+                      >
+                        {date} ×
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </Field>
+
+              <Field
+                label="Time"
+                hint="Same time whichever date gets confirmed."
+              >
                 <input
-                  type="date"
-                  value={newCandidateDate}
-                  onChange={(e) => setNewCandidateDate(e.target.value)}
+                  type="time"
+                  value={flexiTime}
+                  onChange={(e) => setFlexiTime(e.target.value)}
                   className={inputClass}
                 />
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  onClick={addCandidateDate}
-                  disabled={!newCandidateDate}
-                >
-                  Add
-                </Button>
-              </div>
-              {candidateDates.length > 0 && (
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  {candidateDates.map((date) => (
-                    <button
-                      key={date}
-                      type="button"
-                      onClick={() =>
-                        setCandidateDates((prev) =>
-                          prev.filter((d) => d !== date)
-                        )
-                      }
-                      className="border-line text-stone rounded-full border px-2.5 py-1 text-xs hover:border-ember hover:text-ember"
-                    >
-                      {date} ×
-                    </button>
-                  ))}
-                </div>
-              )}
-            </Field>
+              </Field>
+            </>
           )}
         </Wrapper>
 
