@@ -28,6 +28,14 @@ interface ShareResultCardProps {
    * all has nothing to break down.
    */
   standings?: ShareResultStanding[];
+  /**
+   * Google Maps link for the winning place, if it's a real one (a free-text
+   * winner has nothing to link to). Rides along as a line in the shared
+   * *text*, not drawn into the image itself — `Share…` is a `navigator.share`
+   * call with the PNG as a file, and pairing a file with a separate `url`
+   * isn't reliably honored across share targets, but `text` always is.
+   */
+  mapsUrl?: string;
 }
 
 const CARD_W = 1200;
@@ -294,10 +302,13 @@ export default function ShareResultCard(props: ShareResultCardProps) {
     const blob = await toBlob();
     if (!blob) return;
     const file = new File([blob], "jio-result.png", { type: "image/png" });
+    const text = props.mapsUrl
+      ? `${props.placeName} — ${props.title}\n${props.mapsUrl}`
+      : `${props.placeName} — ${props.title}`;
     try {
       await navigator.share({
         title: props.title,
-        text: `${props.placeName} — ${props.title}`,
+        text,
         files: [file],
       });
     } catch {

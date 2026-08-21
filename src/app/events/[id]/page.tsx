@@ -576,6 +576,11 @@ export default function EventDetailPage({
             placeName={event.winner_place_name ?? event.winner_label ?? ""}
             whenLabel={formatDateTime(event.scheduled_at)}
             standings={shareStandings}
+            mapsUrl={
+              event.winner_place
+                ? googleMapsPlaceUrl(event.winner_place)
+                : undefined
+            }
           />
         )}
 

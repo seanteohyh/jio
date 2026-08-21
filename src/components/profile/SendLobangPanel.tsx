@@ -14,6 +14,7 @@ import {
 } from "../ui";
 import ShareLink from "../ShareLink";
 import { fetcher, mutateJson } from "@/lib/fetcher";
+import { placeShareUrl } from "@/lib/shareUrl";
 import type { Kaki, Lobang, Place, ScoredPlace, TeamUser } from "@/types";
 
 interface SuggestResponse {
@@ -99,6 +100,15 @@ export default function SendLobangPanel({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [publicUrl, setPublicUrl] = useState<string | null>(null);
+  // A teammate/Kaki send is already in their in-app inbox and (if push is
+  // configured) on its way as a notification — but neither reaches someone
+  // who hasn't opened Jio in a while, so this holds just enough to offer a
+  // manual nudge of the sender's own choosing right after sending.
+  const [sentInfo, setSentInfo] = useState<{
+    placeId: string;
+    placeName: string;
+    toDisplayName?: string;
+  } | null>(null);
 
   const [search, setSearch] = useState("");
 
@@ -192,12 +202,19 @@ export default function SendLobangPanel({
       );
       // Public mode isn't "done" the moment the link exists — it needs to
       // actually be copied or shared, so this shows the link instead of
-      // closing the panel; teammates/Kaki modes still close immediately,
-      // unchanged from before this path existed.
+      // closing the panel. Teammates/Kaki modes now hold too, rather than
+      // closing immediately: the send already happened (it's in their inbox
+      // and, if push is set up, on its way as a notification), so this is
+      // purely an optional "let them know outside the app too" step, not a
+      // second confirmation the send itself is waiting on.
       if (mode === "public" && result.url) {
         setPublicUrl(result.url);
       } else {
-        onSent();
+        setSentInfo({
+          placeId,
+          placeName: result.lobang.place?.name ?? (selectedPlaceName || "this place"),
+          toDisplayName: result.lobang.to_display_name,
+        });
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not send that");
@@ -287,6 +304,36 @@ export default function SendLobangPanel({
       () => setAddError("Could not get your location — try the address field instead")
     );
   };
+
+  // Sent — offers a manual nudge (the place's own public page, no sign-in
+  // needed to view it) for anyone who won't notice the in-app inbox or a
+  // push right away. Optional: "Done" without sharing anything is a normal,
+  // complete outcome, same as it was before this step existed.
+  if (sentInfo) {
+    return (
+      <Card className="animate-fade-in space-y-3">
+        <p className="text-sm">
+          Sent{sentInfo.toDisplayName ? ` to ${sentInfo.toDisplayName}` : ""}.
+        </p>
+        <ShareLink
+          url={placeShareUrl(sentInfo.placeId)}
+          label="Let them know"
+          shareText={`Sent you a lobang for ${sentInfo.placeName} on Jio!`}
+        />
+        <div className="flex items-center gap-2">
+          <Button size="sm" onClick={() => onSent()}>
+            Done
+          </Button>
+          <Link
+            href={`/places/${sentInfo.placeId}`}
+            className="text-ember ml-auto text-xs underline"
+          >
+            View place
+          </Link>
+        </div>
+      </Card>
+    );
+  }
 
   // The public path isn't "done" until the link is actually copied or
   // shared — so once it exists, this replaces the whole composer with
