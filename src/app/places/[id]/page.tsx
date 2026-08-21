@@ -170,7 +170,7 @@ export default function PlaceDetailPage({
         rating,
         notes: notes.trim() || null,
         best_dishes: dishes
-          .split(",")
+          .split(/[,\n]+/)
           .map((d) => d.trim())
           .filter(Boolean),
         is_public: isPublic,
@@ -617,11 +617,21 @@ export default function PlaceDetailPage({
                 </div>
               </div>
 
-              <Field label="What did you have?" hint="Comma separated.">
-                <input
+              <Field label="What did you have?" hint="Comma or line separated.">
+                {/*
+                  A plain `<input>` submits its enclosing form on Enter —
+                  standard browser behaviour, and exactly what iOS's "Go"
+                  keyboard button does too. A one-line comma list invites
+                  exactly that keystroke while still typing the next dish,
+                  so this is a `<textarea>` instead: Enter makes a line
+                  break, never a submit. `submitVisit` already splits on
+                  either a comma or a newline.
+                */}
+                <textarea
                   value={dishes}
                   onChange={(e) => setDishes(e.target.value)}
-                  className={inputClass}
+                  className={`${inputClass} min-h-16`}
+                  rows={2}
                   placeholder="Bak chor mee"
                 />
               </Field>

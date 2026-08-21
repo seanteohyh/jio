@@ -209,7 +209,7 @@ export default function PlaceForm({
       custom_cuisine_tags: customCuisineTags,
       budget_tier: budget,
       best_dishes: dishes
-        .split(",")
+        .split(/[,\n]+/)
         .map((d) => d.trim())
         .filter(Boolean),
       notes: notes.trim() || null,
@@ -396,11 +396,21 @@ export default function PlaceForm({
           </div>
         </div>
 
-        <Field label="Best dishes" hint="Comma separated.">
-          <input
+        <Field label="Best dishes" hint="Comma or line separated.">
+          {/*
+            A plain `<input>` submits its enclosing form on Enter —
+            standard browser behaviour, and exactly what iOS's "Go"
+            keyboard button does too. A one-line comma list invites
+            exactly that keystroke while still typing the next dish, so
+            this is a `<textarea>` instead: Enter makes a line break,
+            never a submit. The split below already handles either a
+            comma or a newline.
+          */}
+          <textarea
             value={dishes}
             onChange={(e) => setDishes(e.target.value)}
-            className={inputClass}
+            className={`${inputClass} min-h-16`}
+            rows={2}
             placeholder="Bak chor mee, dumplings"
           />
         </Field>
