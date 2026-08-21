@@ -1,8 +1,9 @@
 "use client";
 
 import { use, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import useSWR from "swr";
-import { CheckCircle2 } from "lucide-react";
+import { CheckCircle2, MapPin } from "lucide-react";
 import {
   Avatar,
   Button,
@@ -23,7 +24,15 @@ import { eventInviteUrl } from "@/lib/shareUrl";
 import { googleCalendarUrl, canAddToCalendar } from "@/lib/calendar";
 import { subscribeToEventChanges } from "@/lib/realtime";
 import { features } from "@/lib/config";
-import { cn, formatDate, formatDateTime, placeDescriptor } from "@/lib/utils";
+import {
+  cn,
+  formatDate,
+  formatDateTime,
+  googleMapsPlaceUrl,
+  placeDescriptor,
+  sgtDateKey,
+  sgtTimeOfDay,
+} from "@/lib/utils";
 import type { EventDetail, Place, RsvpResponse } from "@/types";
 
 interface EventResponse {
@@ -72,6 +81,12 @@ export default function EventDetailPage({
     userIds: [],
     kakiIds: [],
   });
+  // CHANGES_20260819c.md §1/§2 — host-only corrections, available any time
+  // (reschedule) or only once closed (winner place).
+  const [reschedulingOpen, setReschedulingOpen] = useState(false);
+  const [rescheduleValue, setRescheduleValue] = useState("");
+  const [editingWinner, setEditingWinner] = useState(false);
+  const [winnerQuery, setWinnerQuery] = useState("");
 
   // Live updates while people vote. Falls back silently if realtime is off.
   useEffect(() => {
@@ -125,7 +140,10 @@ export default function EventDetailPage({
   }, [data, ballotTouched]);
 
   const { data: placesData } = useSWR<{ places: Place[] }>(
-    data?.viewer.canAddOptions ? "/api/places" : null,
+    data?.viewer.canAddOptions ||
+      (data?.viewer.isHost && data?.event.status === "closed")
+      ? "/api/places"
+      : null,
     fetcher
   );
 
@@ -349,6 +367,30 @@ export default function EventDetailPage({
       })
     );
 
+  // CHANGES_20260819c.md §1 — reschedule, host-only, any time short of
+  // cancelled. Typing a date/time directly finalizes a still-polling Flexi
+  // Jio the same way confirming a candidate does (handled server-side).
+  const reschedule = () =>
+    run(async () => {
+      if (!rescheduleValue) return;
+      await mutateJson(`/api/events/${id}`, "PATCH", {
+        scheduled_at: new Date(`${rescheduleValue}+08:00`).toISOString(),
+      });
+      setReschedulingOpen(false);
+      setRescheduleValue("");
+    });
+
+  // CHANGES_20260819c.md §2 — "where did you actually go?", host-only,
+  // closed Jios only. Deliberately small scope: only this Jio's own record.
+  const editWinner = (placeId: string) =>
+    run(async () => {
+      await mutateJson(`/api/events/${id}`, "PATCH", {
+        winner_place_id: placeId,
+      });
+      setEditingWinner(false);
+      setWinnerQuery("");
+    });
+
   const cancelJio = () => {
     if (
       !window.confirm(
@@ -368,6 +410,21 @@ export default function EventDetailPage({
   const maxPoints = Math.max(1, ...Object.values(tally));
   const voterCount =
     event.voter_count ?? new Set(event.votes.map((v) => v.user_id)).size;
+
+  // CHANGES_20260819c.md §3 — the share card's top-3 breakdown, from the
+  // same tally + options the in-app Standing list above already uses.
+  // Filtering to `points > 0` is what makes a Jio closed with no votes at
+  // all naturally end up with an empty array (the card omits its chart
+  // entirely rather than showing a zero-point bar).
+  const shareStandings = event.options
+    .map((o) => ({
+      name: o.place?.name ?? o.label ?? "Unknown place",
+      points: tally[o.place_id] ?? 0,
+      isWinner: event.winner_place_id === o.place_id,
+    }))
+    .filter((row) => row.points > 0)
+    .sort((a, b) => b.points - a.points)
+    .slice(0, 3);
   // §14 — hidden only while open; once closed this is the first time
   // anyone sees the result, same "DECIDED" moment as any other Jio.
   const hideStanding = isOpen && Boolean(event.hide_votes);
@@ -380,6 +437,17 @@ export default function EventDetailPage({
     .filter((p) => !event.options.some((o) => o.place_id === p.id))
     .filter((p) =>
       addQuery ? p.name.toLowerCase().includes(addQuery.toLowerCase()) : false
+    )
+    .slice(0, 6);
+
+  // CHANGES_20260819c.md §2 — not restricted to `event.options`, since the
+  // whole point is correcting to wherever the group actually ended up.
+  const winnerCandidates = (placesData?.places ?? [])
+    .filter((p) => p.id !== event.winner_place_id)
+    .filter((p) =>
+      winnerQuery
+        ? p.name.toLowerCase().includes(winnerQuery.toLowerCase())
+        : false
     )
     .slice(0, 6);
 
@@ -463,11 +531,31 @@ export default function EventDetailPage({
                   {event.winner_place_name ?? event.winner_label}
                 </p>
                 {/* A free-text option won with no places row behind it —
-                    the map link and walk-time below assume a real place, so
-                    they're skipped rather than shown broken. */}
+                    there's nothing to link to, so this is skipped rather
+                    than shown broken. */}
                 {!event.winner_place_name && event.winner_label && (
                   <p className="text-stone mt-0.5 text-xs">
                     Not in the places list yet.
+                  </p>
+                )}
+                {event.winner_place_name && event.winner_place_id && (
+                  <p className="mt-1 flex gap-3 text-xs">
+                    <Link
+                      href={`/places/${event.winner_place_id}`}
+                      className="text-ember underline"
+                    >
+                      View place
+                    </Link>
+                    {event.winner_place && (
+                      <a
+                        href={googleMapsPlaceUrl(event.winner_place)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-ember underline"
+                      >
+                        View on Google Maps
+                      </a>
+                    )}
                   </p>
                 )}
               </div>
@@ -487,11 +575,7 @@ export default function EventDetailPage({
             title={event.title}
             placeName={event.winner_place_name ?? event.winner_label ?? ""}
             whenLabel={formatDateTime(event.scheduled_at)}
-            points={
-              event.winner_place_id
-                ? event.tally?.[event.winner_place_id]
-                : undefined
-            }
+            standings={shareStandings}
           />
         )}
 
@@ -816,12 +900,32 @@ export default function EventDetailPage({
                   <span
                     className={isWinner ? "text-sage font-medium" : ""}
                   >
-                    {option.place?.name ?? option.label ?? "Unknown place"}
+                    {option.place ? (
+                      <Link
+                        href={`/places/${option.place.id}`}
+                        className="hover:underline"
+                      >
+                        {option.place.name}
+                      </Link>
+                    ) : (
+                      (option.label ?? "Unknown place")
+                    )}
                     {isWinner && " ✓"}
                     {option.is_suggested && (
                       <span className="bg-ember/15 text-ember ml-1.5 rounded-full px-1.5 py-0.5 text-[10px] font-medium">
                         Suggested
                       </span>
+                    )}
+                    {option.place && (
+                      <a
+                        href={googleMapsPlaceUrl(option.place)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        aria-label={`View ${option.place.name} on Google Maps`}
+                        className="text-stone hover:text-ember ml-1.5 inline-block align-middle"
+                      >
+                        <MapPin className="h-3.5 w-3.5" strokeWidth={2} />
+                      </a>
                     )}
                   </span>
                   {!hideStanding && (
@@ -879,8 +983,30 @@ export default function EventDetailPage({
                     {index + 1}
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm">
-                      {option?.place?.name ?? option?.label ?? "Unknown"}
+                    <span className="flex items-center gap-1.5 truncate text-sm">
+                      {option?.place ? (
+                        <Link
+                          href={`/places/${option.place.id}`}
+                          className="truncate hover:underline"
+                        >
+                          {option.place.name}
+                        </Link>
+                      ) : (
+                        <span className="truncate">
+                          {option?.label ?? "Unknown"}
+                        </span>
+                      )}
+                      {option?.place && (
+                        <a
+                          href={googleMapsPlaceUrl(option.place)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          aria-label={`View ${option.place.name} on Google Maps`}
+                          className="text-stone hover:text-ember shrink-0"
+                        >
+                          <MapPin className="h-3.5 w-3.5" strokeWidth={2} />
+                        </a>
+                      )}
                     </span>
                     {option?.place && placeDescriptor(option.place) && (
                       <span className="text-stone block truncate text-[11px]">
@@ -1036,6 +1162,109 @@ export default function EventDetailPage({
                     </button>
                   ))}
               </div>
+            </div>
+          )}
+        </Card>
+      )}
+
+      {/*
+        --- Edit this Jio --- (host only)
+        CHANGES_20260819c.md §1/§2 — corrections a host can make after the
+        fact: the date/time (any time short of cancelled — even after
+        closed, since a lunch's actual time can slip after it's decided),
+        and once closed, which place it actually ended up at. Deliberately
+        separate from "Close it" below: these are corrections to a Jio
+        that's already settled one way or another, not part of settling it.
+      */}
+      {viewer.isHost && !isCancelled && (
+        <Card className="space-y-3">
+          <SectionHeading>Edit this Jio</SectionHeading>
+
+          {reschedulingOpen ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                type="datetime-local"
+                value={rescheduleValue}
+                onChange={(e) => setRescheduleValue(e.target.value)}
+                className={inputClass}
+              />
+              <Button
+                size="sm"
+                onClick={reschedule}
+                disabled={busy || !rescheduleValue}
+              >
+                Save
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setReschedulingOpen(false)}
+              >
+                Cancel
+              </Button>
+            </div>
+          ) : (
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => {
+                setRescheduleValue(
+                  `${sgtDateKey(event.scheduled_at)}T${sgtTimeOfDay(event.scheduled_at)}`
+                );
+                setReschedulingOpen(true);
+              }}
+            >
+              Change date &amp; time
+            </Button>
+          )}
+
+          {!isOpen && (
+            <div className="border-line space-y-2 border-t pt-3">
+              <p className="text-stone text-xs">Where did you actually go?</p>
+              {editingWinner ? (
+                <div className="space-y-2">
+                  <input
+                    value={winnerQuery}
+                    onChange={(e) => setWinnerQuery(e.target.value)}
+                    className={inputClass}
+                    placeholder="Search places…"
+                  />
+                  {winnerCandidates.length > 0 && (
+                    <ul className="space-y-1">
+                      {winnerCandidates.map((place) => (
+                        <li key={place.id}>
+                          <button
+                            type="button"
+                            onClick={() => editWinner(place.id)}
+                            disabled={busy}
+                            className="hover:bg-paper flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-left text-sm"
+                          >
+                            <span className="truncate">{place.name}</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      setEditingWinner(false);
+                      setWinnerQuery("");
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => setEditingWinner(true)}
+                >
+                  Correct the winner
+                </Button>
+              )}
             </div>
           )}
         </Card>

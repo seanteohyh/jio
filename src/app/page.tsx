@@ -100,8 +100,13 @@ export default async function HomePage() {
     (e) => e.status !== "cancelled" && e.date_phase !== "polling"
   );
   const todaysJio = relevantEvents.find((e) => isSameSgtDay(e.scheduled_at, now));
+  // Today's Jio is deliberately *not* excluded here despite already being
+  // the headline above — eyes go to "Upcoming" out of habit regardless of
+  // how bold the headline is, so it needs to actually be in the list, not
+  // just above it. `EventRow` already self-labels a same-day row "Today,"
+  // so this needs no new UI, and the still-in-the-future filter below still
+  // drops it once it's actually passed, same as any other row.
   const upcomingList = relevantEvents
-    .filter((e) => e.id !== todaysJio?.id)
     .filter((e) => new Date(e.scheduled_at).getTime() > now.getTime())
     .sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at))
     .slice(0, 2);

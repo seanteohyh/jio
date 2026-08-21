@@ -1347,6 +1347,7 @@ export const supabaseRepo: Repo = {
       winner_place_name: winnerId
         ? placeById.get(winnerId)?.name ?? null
         : null,
+      winner_place: winnerId ? placeById.get(winnerId) ?? null : null,
       winner_label:
         winnerId && !placeById.get(winnerId)
           ? (optionRows.find((o) => o.place_id === winnerId)?.label ?? null)
@@ -2171,6 +2172,76 @@ export const supabaseRepo: Repo = {
 
     const detail = await supabaseRepo.getEvent(eventId);
     if (!detail) throw new Error("Event vanished while cancelling");
+    return detail;
+  },
+
+  async rescheduleEvent(eventId, hostId, newScheduledAt) {
+    const client = await db();
+
+    const { data: eventRow } = await client
+      .from("lunch_events")
+      .select("status, date_phase")
+      .eq("id", eventId)
+      .maybeSingle();
+    if (!eventRow) throw new Error("Event not found");
+    const event = eventRow as { status: string; date_phase: string | null };
+    if (event.status === "cancelled") {
+      throw new Error("A cancelled Jio has nothing to reschedule");
+    }
+
+    const updates: { scheduled_at: string; date_phase?: string } = {
+      scheduled_at: newScheduledAt,
+    };
+    // Typing a date/time directly finalizes a still-polling Flexi Jio the
+    // same way confirming a candidate does — just not restricted to the
+    // pre-listed candidates.
+    if (event.date_phase === "polling") updates.date_phase = "confirmed";
+
+    const { error, count } = await client
+      .from("lunch_events")
+      .update(updates)
+      .eq("id", eventId)
+      .eq("host_id", hostId);
+    if (error) fail("Could not change the date", error);
+    if (count === 0) throw new Error("Only the host can change the date");
+
+    const detail = await supabaseRepo.getEvent(eventId);
+    if (!detail) throw new Error("Event vanished while rescheduling");
+    return detail;
+  },
+
+  async editEventWinner(eventId, hostId, newPlaceId) {
+    const client = await db();
+
+    const { data: eventRow } = await client
+      .from("lunch_events")
+      .select("status")
+      .eq("id", eventId)
+      .maybeSingle();
+    if (!eventRow) throw new Error("Event not found");
+    if ((eventRow as { status: string }).status !== "closed") {
+      throw new Error("Only a closed Jio's result can be corrected");
+    }
+
+    const { data: placeRow } = await client
+      .from("places")
+      .select("id")
+      .eq("id", newPlaceId)
+      .maybeSingle();
+    if (!placeRow) throw new Error("That place does not exist");
+
+    const { error, count } = await client
+      .from("lunch_events")
+      .update({ winner_place_id: newPlaceId })
+      .eq("id", eventId)
+      .eq("host_id", hostId);
+    if (error) fail("Could not correct where this Jio went", error);
+    if (count === 0) {
+      throw new Error("Only the host can correct where this Jio went");
+    }
+
+    const detail = await supabaseRepo.getEvent(eventId);
+    if (!detail) throw new Error("Event vanished while correcting it");
     return detail;
   },
 
