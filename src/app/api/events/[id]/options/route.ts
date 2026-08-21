@@ -49,8 +49,9 @@ export async function POST(request: NextRequest, { params }: Params) {
 }
 
 /**
- * Upgrades a free-text option to a real place, once the "add it to the
- * pool?" prompt is accepted. See `attachPlaceToOption` for why this is its
+ * Upgrades a free-text option to a real place — once the "add it to the
+ * pool?" prompt is accepted, or via the persistent per-option link
+ * (CHANGES_20260819d.md §1). See `attachPlaceToOption` for why this is its
  * own gated path rather than a field on the plain PUT this route doesn't
  * even have.
  */

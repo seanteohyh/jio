@@ -209,7 +209,7 @@ describe("attachPlaceToOption", () => {
     ).rejects.toThrow();
   });
 
-  it("refuses someone who neither added the option nor hosts the Jio", async () => {
+  it("refuses a stranger with no relationship to the Jio at all", async () => {
     const event = await makeEvent();
     const option = await demoRepo.addFreeTextOptionToEvent(
       event.id,
@@ -222,9 +222,32 @@ describe("attachPlaceToOption", () => {
         event.id,
         option.place_id,
         "demo-place-02",
-        DEMO_TEAMMATE_B
+        STRANGER
       )
     ).rejects.toThrow();
+  });
+
+  // CHANGES_20260819d.md §1 — widened beyond host/adder-only, so anyone
+  // who can already see this Jio's ballot can help register a free-text
+  // option, not just whoever happened to type it in.
+  it("lets an invitee attach even if they didn't add the option or host it", async () => {
+    const event = await makeEvent();
+    const option = await demoRepo.addFreeTextOptionToEvent(
+      event.id,
+      "abc house",
+      DEMO_TEAMMATE_A
+    );
+
+    // DEMO_TEAMMATE_B is an invitee on this Jio (see makeEvent) but neither
+    // added this option nor hosts it.
+    await expect(
+      demoRepo.attachPlaceToOption(
+        event.id,
+        option.place_id,
+        "demo-place-02",
+        DEMO_TEAMMATE_B
+      )
+    ).resolves.not.toThrow();
   });
 
   it("lets the host attach even if someone else added the option", async () => {

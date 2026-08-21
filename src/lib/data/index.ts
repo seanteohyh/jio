@@ -329,13 +329,16 @@ export interface Repo {
     userId: string
   ): Promise<EventOption>;
   /**
-   * Upgrades a free-text option to a real place, after the non-blocking
-   * "add it to the pool?" prompt is accepted. Moves any votes already cast
-   * for the draft option along with it, so ranking it before it became a
-   * real place is not silently discarded. Only whoever added the option, or
-   * the host, may do this — same shape of gate as block/unblock in
-   * 017_admin_and_moderation.sql: a structural state change goes through a
-   * dedicated path, not a raw field write.
+   * Upgrades a free-text option to a real place — after the non-blocking
+   * "add it to the pool?" prompt is accepted, or via the persistent link any
+   * viewer gets next to a free-text option while the Jio is still open
+   * (CHANGES_20260819d.md §1). Moves any votes already cast for the draft
+   * option along with it, so ranking it before it became a real place is
+   * not silently discarded. Any Jio participant — host, kaki member, or
+   * invitee — may do this, not just whoever originally typed the option in
+   * (widened by migration 056; a structural state change like this still
+   * goes through a dedicated path, not a raw field write, same shape as
+   * block/unblock in 017_admin_and_moderation.sql).
    */
   attachPlaceToOption(
     eventId: string,

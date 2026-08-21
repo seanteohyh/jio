@@ -3,7 +3,7 @@
 import { use, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import useSWR from "swr";
-import { CheckCircle2, MapPin } from "lucide-react";
+import { CheckCircle2, CirclePlus, MapPin } from "lucide-react";
 import {
   Avatar,
   Button,
@@ -926,6 +926,27 @@ export default function EventDetailPage({
                       >
                         <MapPin className="h-3.5 w-3.5" strokeWidth={2} />
                       </a>
+                    )}
+                    {/*
+                      CHANGES_20260819d.md §1 — a free-text option (no
+                      `place` behind it) gets the same slot's opposite
+                      affordance: a permanent way for *any* viewer, not just
+                      whoever typed it in, to register it as a real place.
+                      The one-time `pendingPoolPrompt` nudge below is
+                      unaffected — this is additive, for anyone looking at
+                      the Standing later rather than only the adder in that
+                      one moment. Same /places/new flow either way.
+                      Scoped to `isOpen`, per the doc.
+                    */}
+                    {!option.place && isOpen && (
+                      <Link
+                        href={`/places/new?name=${encodeURIComponent(option.label ?? "")}&fromEvent=${id}&draftPlaceId=${encodeURIComponent(option.place_id)}`}
+                        aria-label={`Add "${option.label ?? "this"}" to Places`}
+                        title="Add to Places"
+                        className="text-stone hover:text-ember ml-1.5 inline-block align-middle"
+                      >
+                        <CirclePlus className="h-3.5 w-3.5" strokeWidth={2} />
+                      </Link>
                     )}
                   </span>
                   {!hideStanding && (
