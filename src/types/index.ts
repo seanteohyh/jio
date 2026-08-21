@@ -10,8 +10,12 @@
 // Primitives
 // ---------------------------------------------------------------------------
 
-/** 1 = under $8, 2 = $8-15, 3 = $15-30, 4 = over $30. */
-export type BudgetTier = 1 | 2 | 3 | 4;
+/**
+ * 1 = under $8, 2 = $8-15, 3 = $15-30, 4 = $30-50, 5 = $50-100, 6 = over
+ * $100. The top band used to be a single "over $30" tier — split into
+ * three (CHANGES_20260821.md §1) since it was too coarse.
+ */
+export type BudgetTier = 1 | 2 | 3 | 4 | 5 | 6;
 
 export type PlaceSource = "osm_seed" | "manual" | "discovery";
 export type PlaceStatus = "active" | "needs_review" | "blocked";

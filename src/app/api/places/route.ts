@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
     const baseFilters: Omit<Filters, "sortBy"> = {
       cuisines: listParam(params, "cuisines"),
       budgetMin: numberParam(params, "budgetMin", 1) as BudgetTier,
-      budgetMax: numberParam(params, "budgetMax", 4) as BudgetTier,
+      budgetMax: numberParam(params, "budgetMax", 6) as BudgetTier,
       maxWalkMinutes: numberParam(params, "maxWalk", 60),
       status: (params.get("status") as PlaceStatus | "all") ?? "active",
       search: params.get("q") ?? "",
@@ -157,8 +157,8 @@ export async function POST(request: NextRequest) {
     }
 
     const tier = body.budget_tier ?? 2;
-    if (tier < 1 || tier > 4) {
-      return badRequest("Budget tier must be between 1 and 4");
+    if (tier < 1 || tier > 6) {
+      return badRequest("Budget tier must be between 1 and 6");
     }
 
     const place = await repo.createPlace({

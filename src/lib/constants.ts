@@ -43,6 +43,14 @@ export const DEFAULT_CUISINE_SEED: Omit<CuisineOption, "added_by" | "created_at"
   { slug: "traditional", label: "Traditional" },
 ];
 
+/**
+ * CHANGES_20260821.md §1 — the old flat tier 4 ("over $30") split into
+ * three, since it was too coarse. 1–3 are unchanged; an existing tier-4
+ * place keeps its numeric tier (4) unchanged too, which is what actually
+ * carries it over to the new $30–50 band as the safe default — there's no
+ * stored price to re-derive a better answer from, since discovery has
+ * never assigned tier 4 automatically (see `budgetByAmenity` below).
+ */
 export const BUDGET_TIERS: {
   tier: BudgetTier;
   label: string;
@@ -51,7 +59,9 @@ export const BUDGET_TIERS: {
   { tier: 1, label: "$", description: "under $8" },
   { tier: 2, label: "$$", description: "$8 – $15" },
   { tier: 3, label: "$$$", description: "$15 – $30" },
-  { tier: 4, label: "$$$$", description: "over $30" },
+  { tier: 4, label: "$$$$", description: "$30 – $50" },
+  { tier: 5, label: "$$$$$", description: "$50 – $100" },
+  { tier: 6, label: "$$$$$$", description: "over $100" },
 ];
 
 /** Radius in metres used when discovering nearby POIs. */
@@ -80,6 +90,6 @@ export const DEMO_USER = {
 };
 
 export function budgetLabel(tier: number): string {
-  const rounded = Math.max(1, Math.min(4, Math.round(tier)));
+  const rounded = Math.max(1, Math.min(6, Math.round(tier)));
   return "$".repeat(rounded);
 }

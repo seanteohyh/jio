@@ -180,6 +180,15 @@ describe("budgetFitScore", () => {
       C.budget.inRange
     );
   });
+
+  it("falls back to the new top tier (6), not the old one (4), when a stale prefs row has no budget_max", () => {
+    const stalePrefs = prefs({
+      budget_max: undefined as unknown as BudgetTier,
+    });
+    expect(
+      budgetFitScore(place({ id: "p1", budget_tier: 6 }), stalePrefs)
+    ).toBe(C.budget.inRange);
+  });
 });
 
 describe("walkPenaltyScore", () => {
