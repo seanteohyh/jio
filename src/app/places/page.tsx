@@ -43,10 +43,19 @@ export default function PlacesPage() {
   // CHANGES_20260819e.md §2 — fetched here (not just inside the tab's own
   // content) so the tab label can show a count without waiting for the
   // viewer to click into it, same as Saved's own count.
-  const { data: lobangData, isLoading: lobangsLoading } = useSWR<{
+  const {
+    data: lobangData,
+    isLoading: lobangsLoading,
+    mutate: mutateLobangs,
+  } = useSWR<{
     lobangs: Lobang[];
   }>(features.lobangs ? "/api/lobangs?direction=received" : null, fetcher);
   const receivedLobangs = lobangData?.lobangs ?? [];
+  // The tab badge is an "acknowledge me" count, not a running total — Saved's
+  // count stays total-forever because a save has no seen/unseen state, but a
+  // lobang does, and a number that never goes away even after you've looked
+  // stops meaning anything.
+  const unseenLobangCount = receivedLobangs.filter((l) => !l.seen_at).length;
 
   const tabs = [
     ["all", "All"] as [Tab, string],
@@ -62,7 +71,7 @@ export default function PlacesPage() {
       ? [
           [
             "lobangs",
-            `Lobangs${receivedLobangs.length ? ` (${receivedLobangs.length})` : ""}`,
+            `Lobangs${unseenLobangCount ? ` (${unseenLobangCount})` : ""}`,
           ] as [Tab, string],
         ]
       : []),
@@ -128,6 +137,7 @@ export default function PlacesPage() {
           lobangs={receivedLobangs}
           loading={lobangsLoading}
           onBrowse={() => setTab("all")}
+          onChanged={() => mutateLobangs()}
         />
       ) : (
         <BrowseList />
@@ -189,21 +199,39 @@ function LobangsList({
   lobangs,
   loading,
   onBrowse,
+  onChanged,
 }: {
   lobangs: Lobang[];
   loading: boolean;
   onBrowse: () => void;
+  onChanged: () => void;
 }) {
   const marked = useRef(new Set<string>());
   useEffect(() => {
     const unseen = lobangs.filter((l) => !l.seen_at && !marked.current.has(l.id));
-    for (const l of unseen) {
-      marked.current.add(l.id);
-      mutateJson(`/api/lobangs/${l.id}`, "PUT").catch(() => {
-        marked.current.delete(l.id);
-      });
-    }
+    if (unseen.length === 0) return;
+    for (const l of unseen) marked.current.add(l.id);
+    Promise.all(
+      unseen.map((l) =>
+        mutateJson(`/api/lobangs/${l.id}`, "PUT").catch(() => {
+          marked.current.delete(l.id);
+        })
+      )
+      // Revalidate once, after the whole batch settles, rather than once per
+      // item — this is what turns "(2)" back into a plain "Lobangs" on the
+      // tab itself without waiting for the viewer to leave and come back.
+    ).then(onChanged);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lobangs]);
+
+  // Not interested in a place a teammate recommended — the same private
+  // dismiss `LobangInbox` already offers, just from this side of the app.
+  // The sender is never told; this only ever touches the recipient's own
+  // copy of the send.
+  const remove = async (id: string) => {
+    await mutateJson(`/api/lobangs/${id}`, "DELETE").catch(() => {});
+    onChanged();
+  };
 
   if (loading) return <SkeletonRows count={3} />;
 
@@ -233,7 +261,18 @@ function LobangsList({
               <PlaceCard
                 place={l.place}
                 why={`${l.from_display_name ?? "A teammate"} recommends this${l.note ? `: "${l.note}"` : ""}`}
-                action={<SaveButton placeId={l.place.id} />}
+                action={
+                  <span className="flex shrink-0 items-center gap-2">
+                    <SaveButton placeId={l.place.id} />
+                    <button
+                      type="button"
+                      onClick={() => remove(l.id)}
+                      className="text-stone hover:text-ink text-xs underline"
+                    >
+                      Not interested
+                    </button>
+                  </span>
+                }
               />
             </li>
           ))}
