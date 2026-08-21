@@ -27,8 +27,15 @@ export function usePersonalInviteLink() {
         "/api/personal-invite",
         "POST"
       );
+      // `result.url` is already absolute — `/api/personal-invite` builds it
+      // with `personalInviteUrl()`, which resolves the real origin
+      // server-side (see `siteOrigin()` in `shareUrl.ts`). Prepending
+      // `window.location.origin` unconditionally, like the sibling
+      // recovery-link flows do, double-glued the origin on
+      // (https://host + https://host/u/token) since those flows'
+      // `/api/recovery-link` returns a bare path and this one doesn't.
       setUrl(
-        typeof window !== "undefined"
+        typeof window !== "undefined" && !/^https?:\/\//i.test(result.url)
           ? `${window.location.origin}${result.url}`
           : result.url
       );

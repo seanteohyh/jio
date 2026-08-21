@@ -697,6 +697,19 @@ everything tied to the old one. Middleware is the one place in the request
 pipeline that *can* persist a refreshed cookie before a Server Component
 ever runs, which is also why this couldn't have been fixed anywhere else.
 
+**The personal invite link (`/u/[token]`) used to glue two origins together
+once `NEXT_PUBLIC_SITE_URL` was actually set.** `personalInviteUrl()`
+already returns a fully absolute URL server-side (see `siteOrigin()`
+above) — but the client-side hook that displays it (`usePersonalInviteLink`
+in `PersonalInvitePanel.tsx`) unconditionally prepended
+`window.location.origin` on top anyway, the same pattern the sibling
+recovery-link flows correctly use since *their* API returns a bare path.
+Result on any deployment with the env var configured: a shared link that
+read `https://your-apphttps://your-app/u/token`, broken for anyone who
+tapped it. Fixed by only prepending the origin when the API's response
+isn't already absolute — the same absolute-URL check `ShareLink`'s own
+`resolved` fallback already uses.
+
 **Following an event's own invite link now actually registers the visit.**
 `join_event_via_invite` (migration 036) is `SECURITY DEFINER` because
 `event_invitees_insert`'s RLS policy is host-only by design — a visitor
