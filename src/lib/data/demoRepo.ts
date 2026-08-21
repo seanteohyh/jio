@@ -1245,10 +1245,13 @@ export const demoRepo: Repo = {
       throw new Error("That option is already a real place");
     }
 
-    if (event.host_id !== userId && option.added_by !== userId) {
-      throw new Error(
-        "Only whoever added this option, or the host, can attach a place to it"
-      );
+    // CHANGES_20260819d.md §1 — widened from host/adder-only so anyone who
+    // can already see this Jio's ballot (host, kaki member, invitee) can
+    // help register one of its free-text options as a real place, not just
+    // whoever happened to type it in. Mirrors migration 056's Postgres
+    // function.
+    if (!canAddOption(event, userId)) {
+      throw new Error("Only the host, kaki members or invitees can add places");
     }
 
     const place = s.places.find((p) => p.id === newPlaceId);
