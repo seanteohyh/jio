@@ -49,7 +49,7 @@ interface RawPlace {
   lat: number;
   lng: number;
   cuisine: string[];
-  budget_tier: 1 | 2 | 3 | 4;
+  budget_tier: 1 | 2 | 3 | 4 | 5 | 6;
   best_dishes?: string[];
   notes?: string;
 }

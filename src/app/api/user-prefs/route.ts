@@ -24,7 +24,7 @@ export async function PUT(request: NextRequest) {
     if (!body) return badRequest("Expected a JSON body");
 
     const budgetMin = (body.budget_min ?? 1) as BudgetTier;
-    const budgetMax = (body.budget_max ?? 4) as BudgetTier;
+    const budgetMax = (body.budget_max ?? 6) as BudgetTier;
     if (budgetMin > budgetMax) {
       return badRequest("Minimum budget cannot exceed the maximum");
     }

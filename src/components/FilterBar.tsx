@@ -25,7 +25,7 @@ export interface FilterState {
 export const DEFAULT_FILTERS: FilterState = {
   search: "",
   cuisines: [],
-  budgetMax: 4,
+  budgetMax: 6,
   maxWalk: 30,
   sortBy: "walk",
   kakiFavouritesOnly: false,
@@ -167,7 +167,7 @@ export default function FilterBar({
         </label>
 
         {(value.cuisines.length > 0 ||
-          value.budgetMax !== 4 ||
+          value.budgetMax !== 6 ||
           value.maxWalk !== 30 ||
           value.sortBy !== "walk" ||
           value.kakiFavouritesOnly ||

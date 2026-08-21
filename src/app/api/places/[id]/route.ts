@@ -55,9 +55,9 @@ export async function PUT(request: NextRequest, { params }: Params) {
 
     if (
       typeof body.budget_tier === "number" &&
-      (body.budget_tier < 1 || body.budget_tier > 4)
+      (body.budget_tier < 1 || body.budget_tier > 6)
     ) {
-      return badRequest("Budget tier must be between 1 and 4");
+      return badRequest("Budget tier must be between 1 and 6");
     }
 
     const place = await repo.updatePlace(id, body);

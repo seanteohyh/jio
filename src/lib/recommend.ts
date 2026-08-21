@@ -108,7 +108,7 @@ export function budgetFitScore(place: Place, prefs: UserPrefs | null): number {
   if (!prefs) return C.budget.inRange;
 
   const min = prefs.budget_min ?? 1;
-  const max = prefs.budget_max ?? 4;
+  const max = prefs.budget_max ?? 6;
   const tier = place.budget_tier;
 
   if (tier >= min && tier <= max) return C.budget.inRange;

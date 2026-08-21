@@ -99,7 +99,7 @@ export default function ProfilePage() {
   const [likes, setLikes] = useState<string[]>([]);
   const [dislikes, setDislikes] = useState<string[]>([]);
   const [budgetMin, setBudgetMin] = useState<BudgetTier>(1);
-  const [budgetMax, setBudgetMax] = useState<BudgetTier>(4);
+  const [budgetMax, setBudgetMax] = useState<BudgetTier>(6);
   const [officeId, setOfficeId] = useState("");
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -115,7 +115,7 @@ export default function ProfilePage() {
     setLikes(prefs.cuisine_likes ?? []);
     setDislikes(prefs.cuisine_dislikes ?? []);
     setBudgetMin((prefs.budget_min ?? 1) as BudgetTier);
-    setBudgetMax((prefs.budget_max ?? 4) as BudgetTier);
+    setBudgetMax((prefs.budget_max ?? 6) as BudgetTier);
     setOfficeId(prefs.default_office_id ?? "");
   }, [prefsData]);
 
