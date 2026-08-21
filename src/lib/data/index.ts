@@ -526,6 +526,11 @@ export interface Repo {
    * a member of that Kaki. Throws if a teammates/Kaki send resolves to an
    * empty recipient list; a public send has no such check, since it never
    * had one to begin with.
+   *
+   * Returns the resolved `recipient_ids` alongside the hydrated lobang
+   * (CHANGES_20260819e.md §1) so the API route can push a "you got a
+   * lobang" notification without re-deriving Kaki membership itself —
+   * empty for a public send, which has nobody to notify.
    */
   sendLobang(
     fromUserId: string,
@@ -533,7 +538,7 @@ export interface Repo {
     placeId: string,
     note?: string | null,
     eventId?: string | null
-  ): Promise<Lobang>;
+  ): Promise<Lobang & { recipient_ids: string[] }>;
   /** Never includes a public send (`public_token is not null`) — nobody
    *  "received" it, so it belongs in neither inbox. */
   listLobangsReceived(userId: string, limit?: number): Promise<Lobang[]>;

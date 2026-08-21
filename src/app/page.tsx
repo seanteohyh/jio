@@ -5,6 +5,7 @@ import { getRepoAsync } from "@/lib/data/repo";
 import { config, features } from "@/lib/config";
 import StartJioWizard from "@/components/home/StartJioWizard";
 import NeedsAvailability from "@/components/home/NeedsAvailability";
+import UnseenLobangCard from "@/components/home/UnseenLobangCard";
 import StreakBanner from "@/components/home/StreakBanner";
 import EventRow from "@/components/events/EventRow";
 import AddToHomeScreenCard from "@/components/profile/AddToHomeScreenCard";
@@ -209,6 +210,8 @@ export default async function HomePage() {
       {isNewerUser && <AddToHomeScreenCard standalone />}
 
       {features.events && <NeedsAvailability />}
+
+      {features.lobangs && <UnseenLobangCard />}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import useSWR from "swr";
 import PlaceCard from "@/components/PlaceCard";
@@ -19,13 +19,13 @@ import {
   SkeletonRows,
 } from "@/components/ui";
 import HintCard from "@/components/HintCard";
-import { fetcher } from "@/lib/fetcher";
+import { fetcher, mutateJson } from "@/lib/fetcher";
 import { features } from "@/lib/config";
-import type { Place, WishlistEntry } from "@/types";
+import type { Lobang, Place, WishlistEntry } from "@/types";
 
 const PAGE_SIZE = 15;
 
-type Tab = "all" | "saved";
+type Tab = "all" | "saved" | "lobangs";
 
 export default function PlacesPage() {
   const [tab, setTab] = useState<Tab>("all");
@@ -39,6 +39,34 @@ export default function PlacesPage() {
   const savedPlaces = (wishlistData?.wishlist ?? [])
     .map((entry) => entry.place)
     .filter((place): place is Place => Boolean(place));
+
+  // CHANGES_20260819e.md §2 — fetched here (not just inside the tab's own
+  // content) so the tab label can show a count without waiting for the
+  // viewer to click into it, same as Saved's own count.
+  const { data: lobangData, isLoading: lobangsLoading } = useSWR<{
+    lobangs: Lobang[];
+  }>(features.lobangs ? "/api/lobangs?direction=received" : null, fetcher);
+  const receivedLobangs = lobangData?.lobangs ?? [];
+
+  const tabs = [
+    ["all", "All"] as [Tab, string],
+    ...(features.wishlist
+      ? [
+          [
+            "saved",
+            `Saved${savedPlaces.length ? ` (${savedPlaces.length})` : ""}`,
+          ] as [Tab, string],
+        ]
+      : []),
+    ...(features.lobangs
+      ? [
+          [
+            "lobangs",
+            `Lobangs${receivedLobangs.length ? ` (${receivedLobangs.length})` : ""}`,
+          ] as [Tab, string],
+        ]
+      : []),
+  ];
 
   return (
     <div className="space-y-5">
@@ -68,17 +96,9 @@ export default function PlacesPage() {
         bookmark anywhere you want to find again fast.
       </HintCard>
 
-      {features.wishlist && (
+      {tabs.length > 1 && (
         <div className="border-line flex gap-1 rounded-full border p-1 text-sm">
-          {(
-            [
-              ["all", "All"],
-              [
-                "saved",
-                `Saved${savedPlaces.length ? ` (${savedPlaces.length})` : ""}`,
-              ],
-            ] as [Tab, string][]
-          ).map(([key, label]) => (
+          {tabs.map(([key, label]) => (
             <button
               key={key}
               type="button"
@@ -101,6 +121,12 @@ export default function PlacesPage() {
         <SavedList
           places={savedPlaces}
           loading={wishlistLoading}
+          onBrowse={() => setTab("all")}
+        />
+      ) : tab === "lobangs" ? (
+        <LobangsList
+          lobangs={receivedLobangs}
+          loading={lobangsLoading}
           onBrowse={() => setTab("all")}
         />
       ) : (
@@ -143,6 +169,83 @@ function SavedList({
         </li>
       ))}
     </ul>
+  );
+}
+
+/**
+ * CHANGES_20260819e.md §2 — received lobangs, right where the "where should
+ * we eat" decision actually happens rather than buried in "You." Same
+ * `PlaceCard` shape every other list here uses, with the sender's note in
+ * the existing `why` slot ("recommender's reason"). Sent lobangs stay off
+ * this tab entirely — a lobang you sent isn't a place recommended to *you*,
+ * so it doesn't belong in this card shape; the line below points at the
+ * full sent+received history instead.
+ *
+ * Viewing this tab marks its unseen lobangs seen, identical to Profile's
+ * `LobangInbox` and `/lobangs` itself — "viewing is seeing," no separate
+ * mark-as-read control.
+ */
+function LobangsList({
+  lobangs,
+  loading,
+  onBrowse,
+}: {
+  lobangs: Lobang[];
+  loading: boolean;
+  onBrowse: () => void;
+}) {
+  const marked = useRef(new Set<string>());
+  useEffect(() => {
+    const unseen = lobangs.filter((l) => !l.seen_at && !marked.current.has(l.id));
+    for (const l of unseen) {
+      marked.current.add(l.id);
+      mutateJson(`/api/lobangs/${l.id}`, "PUT").catch(() => {
+        marked.current.delete(l.id);
+      });
+    }
+  }, [lobangs]);
+
+  if (loading) return <SkeletonRows count={3} />;
+
+  if (lobangs.length === 0) {
+    return (
+      <EmptyState
+        title="No lobangs yet"
+        description="Tips teammates send you show up here as soon as they land."
+        action={
+          <Button variant="secondary" onClick={onBrowse}>
+            Browse places
+          </Button>
+        }
+      />
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <ul className="space-y-2">
+        {lobangs
+          .filter((l): l is Lobang & { place: NonNullable<Lobang["place"]> } =>
+            Boolean(l.place)
+          )
+          .map((l) => (
+            <li key={l.id}>
+              <PlaceCard
+                place={l.place}
+                why={`${l.from_display_name ?? "A teammate"} recommends this${l.note ? `: "${l.note}"` : ""}`}
+                action={<SaveButton placeId={l.place.id} />}
+              />
+            </li>
+          ))}
+      </ul>
+      <p className="text-stone text-xs">
+        Sent lobangs of your own?{" "}
+        <Link href="/lobangs" className="text-ember underline">
+          See your full history
+        </Link>
+        .
+      </p>
+    </div>
   );
 }
 
