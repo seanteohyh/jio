@@ -408,6 +408,33 @@ export interface Repo {
    * rather than a plain status write.
    */
   cancelEvent(eventId: string, hostId: string): Promise<EventDetail>;
+  /**
+   * CHANGES_20260819c.md §1 — a host-only correction to when a Jio actually
+   * is, available at any time (including after it's closed) except once
+   * cancelled. Push reminders and calendar export need no separate sync —
+   * both read `scheduled_at` live off the event. A still-polling Flexi
+   * Jio's date finalizes the same way confirming a candidate does (moves
+   * `date_phase` to `confirmed`), just not restricted to the pre-listed
+   * candidates, since the host is typing a date directly.
+   */
+  rescheduleEvent(
+    eventId: string,
+    hostId: string,
+    newScheduledAt: string
+  ): Promise<EventDetail>;
+  /**
+   * CHANGES_20260819c.md §2 — "where did you actually go?", host-only, only
+   * once a Jio is `closed`. Deliberately small scope: corrects the Jio's
+   * own record (`PastJios`, the lobang-send default, calendar export) but
+   * does not touch anyone's `visits` row — nothing currently connects a
+   * Jio's outcome to personal metrics, so this alone won't move anyone's
+   * stats, which is expected, not a bug to chase.
+   */
+  editEventWinner(
+    eventId: string,
+    hostId: string,
+    newPlaceId: string
+  ): Promise<EventDetail>;
 
   // ---- Recurring series ("Recurring Jios", CHANGES_20260801.md §10) ----
   createRecurringSeries(
@@ -740,6 +767,8 @@ export const REPO_METHODS = [
   "claimVotePushWindow",
   "remindDueEvents",
   "cancelEvent",
+  "rescheduleEvent",
+  "editEventWinner",
   "createRecurringSeries",
   "listRecurringSeries",
   "cancelRecurringSeries",

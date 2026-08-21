@@ -3,6 +3,18 @@
 import { useEffect, useRef, useState } from "react";
 import { Button, ErrorNote } from "./ui";
 
+/** One row of the top-3 vote breakdown — CHANGES_20260819c.md §3. */
+export interface ShareResultStanding {
+  name: string;
+  points: number;
+  /** True for the row matching the Jio's actual winner, if it's among the
+   *  top 3 shown — a roulette spin or a host's `editEventWinner` correction
+   *  can leave the winner outside the top-voted places, in which case no
+   *  row is highlighted, which is fine: this chart is showing how the vote
+   *  broke down, not re-litigating what happened. */
+  isWinner: boolean;
+}
+
 interface ShareResultCardProps {
   /** The Jio's title, e.g. "Friday team lunch". */
   title: string;
@@ -10,12 +22,16 @@ interface ShareResultCardProps {
   placeName: string;
   /** Formatted date/time string, already localized — this component does no date math. */
   whenLabel: string;
-  /** The winner's final Borda tally, if known. Omitted rather than shown as 0. */
-  points?: number;
+  /**
+   * Top 3 (or fewer) options by Borda points, winner-first-if-present. Empty
+   * or omitted skips the chart entirely — e.g. a Jio closed with no votes at
+   * all has nothing to break down.
+   */
+  standings?: ShareResultStanding[];
 }
 
 const CARD_W = 1200;
-const CARD_H = 630;
+const CARD_H = 760;
 
 const COLOR = {
   paper: "#fbf6ef",
@@ -28,6 +44,9 @@ const COLOR = {
   sage: "#567b57",
   sageTint: "#e4eee5",
   line: "#ece5d8",
+  /** Neutral bar fill for a non-winning row — one hue means "this one won,"
+   *  not one color per row, so every other row shares this same tone. */
+  muted: "#c9bfae",
 };
 
 /** Wraps `text` to fit `maxWidth`, returning at most `maxLines` lines (the
@@ -75,7 +94,7 @@ function wrapText(
 
 function draw(
   canvas: HTMLCanvasElement,
-  { title, placeName, whenLabel, points }: ShareResultCardProps
+  { title, placeName, whenLabel, standings = [] }: ShareResultCardProps
 ) {
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
@@ -105,13 +124,13 @@ function draw(
 
   // Place name — the headline.
   ctx.fillStyle = COLOR.ink;
-  ctx.font = "800 76px system-ui, -apple-system, sans-serif";
+  ctx.font = "800 74px system-ui, -apple-system, sans-serif";
   ctx.textBaseline = "alphabetic";
   const nameLines = wrapText(ctx, placeName, CARD_W - pad * 2, 2);
-  let y = 300;
+  let y = 292;
   for (const line of nameLines) {
     ctx.fillText(line, pad, y);
-    y += 84;
+    y += 80;
   }
 
   // Jio title + time.
@@ -119,21 +138,64 @@ function draw(
   ctx.font = "500 32px system-ui, -apple-system, sans-serif";
   const subLine = `${title} · ${whenLabel}`;
   const subLines = wrapText(ctx, subLine, CARD_W - pad * 2, 1);
-  ctx.fillText(subLines[0] ?? subLine, pad, y + 20);
+  const subBaseline = y + 20;
+  ctx.fillText(subLines[0] ?? subLine, pad, subBaseline);
 
-  // Points tally, bottom-left, only when known.
-  if (typeof points === "number") {
-    ctx.fillStyle = COLOR.emberTint;
-    roundRect(ctx, pad, CARD_H - pad - 56, 220, 56, 16);
-    ctx.fill();
-    ctx.fillStyle = COLOR.ember;
-    ctx.font = "700 26px system-ui, -apple-system, sans-serif";
-    ctx.textBaseline = "middle";
-    ctx.fillText(
-      `${points} point${points === 1 ? "" : "s"}`,
-      pad + 20,
-      CARD_H - pad - 28
-    );
+  // Top-3 vote breakdown — a compact horizontal bar chart, winner's row in
+  // full ember (its points folded into the same pill this card used to show
+  // standalone), the rest in one shared muted tone. Skipped entirely when
+  // there's nothing to show (a Jio closed with no votes at all).
+  if (standings.length > 0) {
+    const ROW_H = 40;
+    const ROW_GAP = 12;
+    const barWidth = CARD_W - pad * 2;
+    const maxPoints = Math.max(1, ...standings.map((s) => s.points));
+    let rowY = subBaseline + 40;
+
+    for (const row of standings.slice(0, 3)) {
+      const pointsLabel = `${row.points} pt${row.points === 1 ? "" : "s"}`;
+
+      ctx.textBaseline = "alphabetic";
+      ctx.font = row.isWinner
+        ? "700 26px system-ui, -apple-system, sans-serif"
+        : "500 24px system-ui, -apple-system, sans-serif";
+      ctx.fillStyle = row.isWinner ? COLOR.ink : COLOR.stone;
+      const labelLines = wrapText(ctx, row.name, barWidth - 150, 1);
+      ctx.fillText(labelLines[0] ?? row.name, pad, rowY + 18);
+
+      if (row.isWinner) {
+        ctx.font = "700 20px system-ui, -apple-system, sans-serif";
+        const textWidth = ctx.measureText(pointsLabel).width;
+        const pillW = textWidth + 28;
+        const pillH = 32;
+        const pillX = CARD_W - pad - pillW;
+        const pillY2 = rowY - 8;
+        ctx.fillStyle = COLOR.emberTint;
+        roundRect(ctx, pillX, pillY2, pillW, pillH, pillH / 2);
+        ctx.fill();
+        ctx.fillStyle = COLOR.ember;
+        ctx.textBaseline = "middle";
+        ctx.fillText(pointsLabel, pillX + 14, pillY2 + pillH / 2);
+      } else {
+        ctx.font = "500 20px system-ui, -apple-system, sans-serif";
+        ctx.fillStyle = COLOR.stone;
+        ctx.textAlign = "right";
+        ctx.fillText(pointsLabel, CARD_W - pad, rowY + 16);
+        ctx.textAlign = "left";
+      }
+
+      const barY = rowY + 26;
+      const barH = 10;
+      ctx.fillStyle = COLOR.line;
+      roundRect(ctx, pad, barY, barWidth, barH, barH / 2);
+      ctx.fill();
+      const fillWidth = Math.max(barH, (row.points / maxPoints) * barWidth);
+      ctx.fillStyle = row.isWinner ? COLOR.ember : COLOR.muted;
+      roundRect(ctx, pad, barY, fillWidth, barH, barH / 2);
+      ctx.fill();
+
+      rowY += ROW_H + ROW_GAP;
+    }
   }
 
   // "jio" wordmark, bottom-right — brand attribution on a card that will
@@ -185,7 +247,7 @@ export default function ShareResultCard(props: ShareResultCardProps) {
   useEffect(() => {
     if (canvasRef.current) draw(canvasRef.current, props);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [props.title, props.placeName, props.whenLabel, props.points]);
+  }, [props.title, props.placeName, props.whenLabel, props.standings]);
 
   useEffect(() => {
     setCanCopyImage(

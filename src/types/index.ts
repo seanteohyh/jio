@@ -302,6 +302,14 @@ export interface LunchEvent {
    * record behind it — the label to show in place of `winner_place_name`.
    */
   winner_label?: string | null;
+  /**
+   * Derived, event-detail fetches only (not the list view). The full record
+   * behind `winner_place_id`, so the Decided banner can link to it and build
+   * a Google Maps link — CHANGES_20260819c.md §4. A host-corrected winner
+   * (`editEventWinner`) isn't necessarily one of `options`, so this can't be
+   * assumed to already be sitting in the options list.
+   */
+  winner_place?: Place | null;
   /** Derived. Only meaningful for a polling Flexi Jio — has the requesting
    *  user already marked any availability on it? Powers the home page's
    *  "Needs your availability" list without a full per-event fetch. */

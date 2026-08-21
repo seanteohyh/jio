@@ -1047,6 +1047,12 @@ export const demoRepo: Repo = {
       winner_place_name: event.winner_place_id
         ? s.places.find((p) => p.id === event.winner_place_id)?.name ?? null
         : null,
+      winner_place: event.winner_place_id
+        ? (() => {
+            const place = s.places.find((p) => p.id === event.winner_place_id);
+            return place ? enrich(place, event.office_id) : null;
+          })()
+        : null,
       winner_label:
         event.winner_place_id &&
         !s.places.find((p) => p.id === event.winner_place_id)
@@ -1611,6 +1617,57 @@ export const demoRepo: Repo = {
 
     const detail = await demoRepo.getEvent(eventId);
     if (!detail) throw new Error("Event vanished while cancelling");
+    return detail;
+  },
+
+  async rescheduleEvent(eventId, hostId, newScheduledAt) {
+    const s = store();
+    const index = s.events.findIndex((e) => e.id === eventId);
+    if (index === -1) throw new Error("Event not found");
+    const event = s.events[index];
+
+    if (event.host_id !== hostId) {
+      throw new Error("Only the host can change the date");
+    }
+    if (event.status === "cancelled") {
+      throw new Error("A cancelled Jio has nothing to reschedule");
+    }
+
+    s.events[index] = {
+      ...event,
+      scheduled_at: newScheduledAt,
+      // Typing a date/time directly finalizes a still-polling Flexi Jio
+      // the same way confirming a candidate does — just not restricted to
+      // the pre-listed candidates.
+      date_phase:
+        event.date_phase === "polling" ? "confirmed" : event.date_phase,
+    };
+
+    const detail = await demoRepo.getEvent(eventId);
+    if (!detail) throw new Error("Event vanished while rescheduling");
+    return detail;
+  },
+
+  async editEventWinner(eventId, hostId, newPlaceId) {
+    const s = store();
+    const index = s.events.findIndex((e) => e.id === eventId);
+    if (index === -1) throw new Error("Event not found");
+    const event = s.events[index];
+
+    if (event.host_id !== hostId) {
+      throw new Error("Only the host can correct where this Jio went");
+    }
+    if (event.status !== "closed") {
+      throw new Error("Only a closed Jio's result can be corrected");
+    }
+    if (!s.places.some((p) => p.id === newPlaceId)) {
+      throw new Error("That place does not exist");
+    }
+
+    s.events[index] = { ...event, winner_place_id: newPlaceId };
+
+    const detail = await demoRepo.getEvent(eventId);
+    if (!detail) throw new Error("Event vanished while correcting it");
     return detail;
   },
 
