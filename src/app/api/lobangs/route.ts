@@ -4,6 +4,9 @@ import { getRepoAsync } from "@/lib/data/repo";
 import { badRequest, errorResponse, json, numberParam, readJson } from "@/lib/api";
 import { featureGate } from "@/lib/config";
 import { lobangShareUrl } from "@/lib/shareUrl";
+import { sendPushToUsers } from "@/lib/push";
+import type { Repo } from "@/lib/data";
+import type { Lobang } from "@/types";
 
 /**
  * Lobangs: a personalized recommendation sent to specific teammates, a
@@ -38,6 +41,29 @@ export async function GET(request: NextRequest) {
     return json({ lobangs, direction });
   } catch (error) {
     return errorResponse(error);
+  }
+}
+
+/**
+ * CHANGES_20260819e.md §1 — the one notification type that had never
+ * pushed at all, despite everything else the app sends (Jio invites,
+ * votes, the 30-min reminder, decisions, review likes, the weekly recap)
+ * already doing so. Never fires for a public send — `recipient_ids` is
+ * empty for one, since there is nobody specific to notify.
+ */
+async function notifyOfLobang(
+  repo: Repo,
+  lobang: Lobang & { recipient_ids: string[] }
+): Promise<void> {
+  if (lobang.recipient_ids.length === 0) return;
+  try {
+    await sendPushToUsers(repo, lobang.recipient_ids, {
+      title: `${lobang.from_display_name ?? "Someone"} sent you a lobang`,
+      body: lobang.place?.name ?? "Take a look",
+      url: "/lobangs",
+    });
+  } catch {
+    // Logged inside sendPushToUsers already; a lobang must never fail on this.
   }
 }
 
@@ -87,6 +113,8 @@ export async function POST(request: NextRequest) {
       body.note?.trim() || null,
       body.event_id ?? null
     );
+
+    await notifyOfLobang(repo, lobang);
 
     const url = lobang.public_token
       ? lobangShareUrl(lobang.public_token)

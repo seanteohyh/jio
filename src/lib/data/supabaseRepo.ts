@@ -2823,7 +2823,7 @@ export const supabaseRepo: Repo = {
     }
 
     const hydrated = await hydrateSentLobangs(client, [lobang]);
-    return hydrated[0];
+    return { ...hydrated[0], recipient_ids: recipientIds };
   },
 
   async listLobangsReceived(userId, limit = 20) {

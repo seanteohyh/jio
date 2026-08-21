@@ -149,6 +149,38 @@ describe("lobangs", () => {
     expect(sentLobang?.to_display_name).toBe("LazadaOne Lunch Kakis");
   });
 
+  // CHANGES_20260819e.md §1 — the API route pushes to these directly
+  // rather than re-deriving Kaki membership itself.
+  it("returns recipient_ids for a teammate send", async () => {
+    const lobang = await demoRepo.sendLobang(
+      DEMO_TEAMMATE_A,
+      toOne(DEMO_USER_ID),
+      "demo-place-12"
+    );
+    expect(lobang.recipient_ids).toEqual([DEMO_USER_ID]);
+  });
+
+  it("returns recipient_ids for every Kaki member except the sender", async () => {
+    const lobang = await demoRepo.sendLobang(
+      DEMO_USER_ID,
+      { type: "kaki", kakiId: DEMO_KAKI_ID },
+      "demo-place-12"
+    );
+    expect(lobang.recipient_ids).not.toContain(DEMO_USER_ID);
+    expect(lobang.recipient_ids).toEqual(
+      expect.arrayContaining([DEMO_TEAMMATE_A, DEMO_TEAMMATE_B])
+    );
+  });
+
+  it("returns an empty recipient_ids for a public send", async () => {
+    const lobang = await demoRepo.sendLobang(
+      DEMO_USER_ID,
+      { type: "public" },
+      "demo-place-12"
+    );
+    expect(lobang.recipient_ids).toEqual([]);
+  });
+
   it("refuses a group send to a Kaki the sender isn't a member of", async () => {
     await expect(
       demoRepo.sendLobang(

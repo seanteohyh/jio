@@ -2046,7 +2046,7 @@ export const demoRepo: Repo = {
       s.lobangRecipients.push({ lobang_id: lobang.id, user_id: userId, seen_at: null });
     }
 
-    return hydrateSentLobang(lobang);
+    return { ...hydrateSentLobang(lobang), recipient_ids: recipientIds };
   },
 
   async listLobangsReceived(userId, limit = 20) {
