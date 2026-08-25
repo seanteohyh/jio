@@ -438,6 +438,21 @@ export interface Repo {
     hostId: string,
     newPlaceId: string
   ): Promise<EventDetail>;
+  /**
+   * Undoes a close — host-only, only from `closed`, and only while the
+   * scheduled time is still in the future (reopening a lunch that's already
+   * happened doesn't mean anything). Existing ballots are left exactly as
+   * they were, same as `cancelEvent` leaves everything else about the row
+   * alone: a vote already persists until its owner recasts it, so "reopen"
+   * just means "accept new/changed ballots again," not "start over." Clears
+   * `winner_place_id` and `closed_at` since neither describes reality once
+   * voting is live again — closing later recomputes both.
+   *
+   * A structural state change, so this goes through a dedicated function
+   * (058_reopen_event.sql) rather than a plain status write, same reasoning
+   * 030_cancel_event.sql lays out for `cancelled`.
+   */
+  reopenEvent(eventId: string, hostId: string): Promise<EventDetail>;
 
   // ---- Recurring series ("Recurring Jios", CHANGES_20260801.md §10) ----
   createRecurringSeries(
@@ -777,6 +792,7 @@ export const REPO_METHODS = [
   "cancelEvent",
   "rescheduleEvent",
   "editEventWinner",
+  "reopenEvent",
   "createRecurringSeries",
   "listRecurringSeries",
   "cancelRecurringSeries",

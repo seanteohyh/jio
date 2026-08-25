@@ -1674,6 +1674,34 @@ export const demoRepo: Repo = {
     return detail;
   },
 
+  async reopenEvent(eventId, hostId) {
+    const s = store();
+    const index = s.events.findIndex((e) => e.id === eventId);
+    if (index === -1) throw new Error("Event not found");
+    const event = s.events[index];
+
+    if (event.host_id !== hostId) {
+      throw new Error("Only the host can reopen this Jio for voting");
+    }
+    if (event.status !== "closed") {
+      throw new Error("Only a closed Jio can be reopened for voting");
+    }
+    if (new Date(event.scheduled_at).getTime() <= Date.now()) {
+      throw new Error("Can't reopen voting for a Jio that's already happened");
+    }
+
+    s.events[index] = {
+      ...event,
+      status: "open",
+      winner_place_id: null,
+      closed_at: null,
+    };
+
+    const detail = await demoRepo.getEvent(eventId);
+    if (!detail) throw new Error("Event vanished while reopening it");
+    return detail;
+  },
+
   // ---- Recurring series ----
 
   async createRecurringSeries(data) {
