@@ -30,10 +30,13 @@ interface ShareResultCardProps {
   standings?: ShareResultStanding[];
   /**
    * Google Maps link for the winning place, if it's a real one (a free-text
-   * winner has nothing to link to). Rides along as a line in the shared
-   * *text*, not drawn into the image itself — `Share…` is a `navigator.share`
-   * call with the PNG as a file, and pairing a file with a separate `url`
-   * isn't reliably honored across share targets, but `text` always is.
+   * winner has nothing to link to). NOT folded into `Share…`'s text: a
+   * shared link in the caption reliably makes at least one common share
+   * target (WhatsApp) drop the attached image entirely and show only a link
+   * preview — worse than the image alone, since the whole point of this
+   * card is the image. Offered instead as its own small "Copy Maps link"
+   * action, so someone who wants both still can, as two messages rather
+   * than a single share that might silently lose the image.
    */
   mapsUrl?: string;
 }
@@ -249,6 +252,9 @@ export default function ShareResultCard(props: ShareResultCardProps) {
   const [copyState, setCopyState] = useState<"idle" | "copied" | "error">(
     "idle"
   );
+  const [mapsLinkCopyState, setMapsLinkCopyState] = useState<
+    "idle" | "copied" | "error"
+  >("idle");
   const [canCopyImage, setCanCopyImage] = useState(false);
   const [canShareFiles, setCanShareFiles] = useState(false);
 
@@ -278,6 +284,12 @@ export default function ShareResultCard(props: ShareResultCardProps) {
     return () => clearTimeout(timer);
   }, [copyState]);
 
+  useEffect(() => {
+    if (mapsLinkCopyState !== "copied") return;
+    const timer = setTimeout(() => setMapsLinkCopyState("idle"), 2000);
+    return () => clearTimeout(timer);
+  }, [mapsLinkCopyState]);
+
   const toBlob = (): Promise<Blob | null> =>
     new Promise((resolve) =>
       canvasRef.current
@@ -302,17 +314,26 @@ export default function ShareResultCard(props: ShareResultCardProps) {
     const blob = await toBlob();
     if (!blob) return;
     const file = new File([blob], "jio-result.png", { type: "image/png" });
-    const text = props.mapsUrl
-      ? `${props.placeName} — ${props.title}\n${props.mapsUrl}`
-      : `${props.placeName} — ${props.title}`;
     try {
       await navigator.share({
         title: props.title,
-        text,
+        text: `Jio confirmed! ${props.placeName} — ${props.title}`,
         files: [file],
       });
     } catch {
       // Includes the user dismissing the sheet. Not an error.
+    }
+  };
+
+  /** See `mapsUrl`'s doc comment — deliberately its own action, not folded
+   *  into `shareImage`'s text. */
+  const copyMapsLink = async () => {
+    if (!props.mapsUrl) return;
+    try {
+      await navigator.clipboard.writeText(props.mapsUrl);
+      setMapsLinkCopyState("copied");
+    } catch {
+      setMapsLinkCopyState("error");
     }
   };
 
@@ -351,10 +372,18 @@ export default function ShareResultCard(props: ShareResultCardProps) {
         <Button size="sm" variant="ghost" onClick={downloadImage}>
           Download
         </Button>
+        {props.mapsUrl && (
+          <Button size="sm" variant="ghost" onClick={copyMapsLink}>
+            {mapsLinkCopyState === "copied" ? "Copied" : "Copy Maps link"}
+          </Button>
+        )}
       </div>
 
       {copyState === "error" && (
         <ErrorNote>Could not copy the image — try Download instead.</ErrorNote>
+      )}
+      {mapsLinkCopyState === "error" && (
+        <ErrorNote>Could not copy the link.</ErrorNote>
       )}
     </div>
   );
