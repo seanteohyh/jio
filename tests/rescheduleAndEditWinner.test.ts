@@ -6,7 +6,9 @@ import { DEMO_TEAMMATE_A } from "@/lib/data/demoData";
 /**
  * CHANGES_20260819c.md §1/§2 — host-only corrections available after the
  * fact: moving a Jio's date/time (any time short of cancelled), and once
- * closed, correcting which place it actually ended up at.
+ * closed, correcting which place it actually ended up at. Also covers
+ * reopenEvent, a third correction in the same family: undoing a close
+ * entirely and putting a Jio back into voting.
  */
 
 const TOMORROW = new Date(Date.now() + 86400000).toISOString();
@@ -143,6 +145,77 @@ describe("editEventWinner", () => {
     await demoRepo.closeEvent(event.id, DEMO_USER_ID, "demo-place-01");
     await expect(
       demoRepo.editEventWinner(event.id, DEMO_USER_ID, "not-a-real-place")
+    ).rejects.toThrow();
+  });
+});
+
+describe("reopenEvent", () => {
+  it("puts a closed Jio back into voting, clearing the winner", async () => {
+    const event = await makeEvent();
+    await demoRepo.closeEvent(event.id, DEMO_USER_ID, "demo-place-01");
+    const reopened = await demoRepo.reopenEvent(event.id, DEMO_USER_ID);
+    expect(reopened.status).toBe("open");
+    expect(reopened.winner_place_id).toBeNull();
+  });
+
+  it("leaves existing ballots in place rather than clearing them", async () => {
+    const event = await makeEvent();
+    await demoRepo.castBallot(event.id, DEMO_TEAMMATE_A, ["demo-place-01"]);
+    await demoRepo.closeEvent(event.id, DEMO_USER_ID, "demo-place-01");
+    const reopened = await demoRepo.reopenEvent(event.id, DEMO_USER_ID);
+    expect(
+      reopened.votes.some(
+        (v) => v.user_id === DEMO_TEAMMATE_A && v.place_id === "demo-place-01"
+      )
+    ).toBe(true);
+  });
+
+  it("accepts a fresh or changed ballot once reopened", async () => {
+    const event = await makeEvent();
+    await demoRepo.closeEvent(event.id, DEMO_USER_ID, "demo-place-01");
+    await demoRepo.reopenEvent(event.id, DEMO_USER_ID);
+    await expect(
+      demoRepo.castBallot(event.id, DEMO_TEAMMATE_A, ["demo-place-01"])
+    ).resolves.not.toThrow();
+  });
+
+  it("refuses while the Jio is still open", async () => {
+    const event = await makeEvent();
+    await expect(
+      demoRepo.reopenEvent(event.id, DEMO_USER_ID)
+    ).rejects.toThrow();
+  });
+
+  it("refuses once the Jio is cancelled", async () => {
+    const event = await makeEvent();
+    await demoRepo.cancelEvent(event.id, DEMO_USER_ID);
+    await expect(
+      demoRepo.reopenEvent(event.id, DEMO_USER_ID)
+    ).rejects.toThrow();
+  });
+
+  it("refuses anyone but the host", async () => {
+    const event = await makeEvent();
+    await demoRepo.closeEvent(event.id, DEMO_USER_ID, "demo-place-01");
+    await expect(
+      demoRepo.reopenEvent(event.id, DEMO_TEAMMATE_A)
+    ).rejects.toThrow();
+  });
+
+  it("refuses once the Jio's scheduled time has already passed", async () => {
+    const past = new Date(Date.now() - 86400000).toISOString();
+    const event = await demoRepo.createEvent(
+      DEMO_USER_ID,
+      "Already happened",
+      past,
+      DEFAULT_OFFICE.id,
+      ["demo-place-01"],
+      null,
+      []
+    );
+    await demoRepo.closeEvent(event.id, DEMO_USER_ID, "demo-place-01");
+    await expect(
+      demoRepo.reopenEvent(event.id, DEMO_USER_ID)
     ).rejects.toThrow();
   });
 });

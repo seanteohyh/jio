@@ -2245,6 +2245,18 @@ export const supabaseRepo: Repo = {
     return detail;
   },
 
+  async reopenEvent(eventId, _hostId) {
+    const client = await db();
+    const { error } = await client.rpc("reopen_event", {
+      p_event_id: eventId,
+    });
+    if (error) fail("Could not reopen that Jio for voting", error);
+
+    const detail = await supabaseRepo.getEvent(eventId);
+    if (!detail) throw new Error("Event vanished while reopening it");
+    return detail;
+  },
+
   // ---- Recurring series ----
 
   async createRecurringSeries(data) {

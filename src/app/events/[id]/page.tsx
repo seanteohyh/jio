@@ -155,6 +155,9 @@ export default function EventDetailPage({
   const isOpen = event.status === "open";
   const isCancelled = event.status === "cancelled";
   const isDatePolling = event.date_phase === "polling";
+  const isClosed = event.status === "closed";
+  const canReopen =
+    isClosed && new Date(event.scheduled_at).getTime() > Date.now();
 
   const myAvailability = new Set(
     event.dateVotes.filter((v) => v.user_id === viewer.id).map((v) => v.date)
@@ -400,6 +403,19 @@ export default function EventDetailPage({
       return;
     }
     run(() => mutateJson(`/api/events/${id}/cancel`, "POST"));
+  };
+
+  // Undoes a close. Existing ballots are left as-is — see reopenEvent's
+  // doc comment in src/lib/data/index.ts.
+  const reopenVoting = () => {
+    if (
+      !window.confirm(
+        "Reopen this Jio for voting? Everyone will be able to vote again, and the current winner is cleared until it's closed once more."
+      )
+    ) {
+      return;
+    }
+    run(() => mutateJson(`/api/events/${id}/reopen`, "POST"));
   };
 
   const optionPlaces = event.options
@@ -1291,6 +1307,24 @@ export default function EventDetailPage({
                   Correct the winner
                 </Button>
               )}
+            </div>
+          )}
+
+          {canReopen && (
+            <div className="border-line space-y-2 border-t pt-3">
+              <p className="text-stone text-xs">
+                Change your mind? Put it back to a vote — the current winner
+                is cleared until it's closed again, and everyone's existing
+                vote still counts unless they change it.
+              </p>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={reopenVoting}
+                disabled={busy}
+              >
+                Reopen for voting
+              </Button>
             </div>
           )}
         </Card>
