@@ -23,7 +23,13 @@ import SendLobangPanel from "@/components/profile/SendLobangPanel";
 import ShareLink from "@/components/ShareLink";
 import { placeShareUrl } from "@/lib/shareUrl";
 import { config, features } from "@/lib/config";
-import { formatCuisine, formatDate, googleMapsPlaceUrl } from "@/lib/utils";
+import {
+  formatCuisine,
+  formatDate,
+  googleMapsPlaceUrl,
+  socialsLabel,
+} from "@/lib/utils";
+import SocialsIcon from "@/components/SocialsIcon";
 import type { AuthUser, FlagReason, Place, Visit } from "@/types";
 
 interface PlaceResponse {
@@ -456,6 +462,19 @@ export default function PlaceDetailPage({
           >
             View on Google Maps
           </LinkButton>
+          {place.socials_url && (
+            <LinkButton
+              href={place.socials_url}
+              variant="secondary"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <span className="flex items-center gap-1.5">
+                <SocialsIcon url={place.socials_url} className="h-3.5 w-3.5" />
+                {socialsLabel(place.socials_url)}
+              </span>
+            </LinkButton>
+          )}
           {place.status === "active" && features.lobangs && !!me?.user && (
             <Button
               variant="secondary"

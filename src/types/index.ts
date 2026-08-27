@@ -54,6 +54,15 @@ export interface Place {
   status: PlaceStatus;
   best_dishes: string[];
   notes?: string | null;
+  /**
+   * CHANGES_20260821b.md §1 — an optional link to the place's Instagram,
+   * Facebook, or anything else, stored as the full URL exactly as pasted
+   * rather than normalized to one platform's handle format. Freely editable
+   * by anyone who can edit the place at all, same class as `notes` — not
+   * system-resolved (no third-party API exists to look one up by business
+   * name the way Google Places resolution does), so this is manual-only.
+   */
+  socials_url?: string | null;
   created_by?: string | null;
   created_at?: string;
   updated_at?: string;

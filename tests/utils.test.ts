@@ -2,10 +2,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   formatDate,
   formatTime,
+  instagramSearchUrl,
   relativeDayLabel,
   sgtDateKey,
   sgtTimeOfDay,
   sgtToday,
+  socialsHost,
+  socialsLabel,
 } from "@/lib/utils";
 
 /**
@@ -77,5 +80,54 @@ describe("relativeDayLabel", () => {
   it("still says Tomorrow once it genuinely is the next SGT day", () => {
     const now = new Date("2026-08-18T04:00:00Z"); // Today, noon SGT
     expect(relativeDayLabel("2026-08-19T04:00:00Z", now)).toBe("Tomorrow");
+  });
+});
+
+/**
+ * CHANGES_20260821b.md §1 — `socials_url` stores whatever full URL was
+ * pasted, so the domain is sniffed at display time rather than requiring
+ * one platform's own field.
+ */
+describe("socialsHost", () => {
+  it("recognizes an Instagram profile link", () => {
+    expect(socialsHost("https://www.instagram.com/somecafe")).toBe(
+      "instagram"
+    );
+  });
+
+  it("recognizes a Facebook page link, with or without www", () => {
+    expect(socialsHost("https://facebook.com/somecafe")).toBe("facebook");
+    expect(socialsHost("https://www.facebook.com/somecafe")).toBe("facebook");
+  });
+
+  it("falls back to 'other' for anything else", () => {
+    expect(socialsHost("https://somecafe.example.com")).toBe("other");
+  });
+
+  it("falls back to 'other' rather than throwing on an unparseable URL", () => {
+    expect(socialsHost("not a url")).toBe("other");
+  });
+});
+
+describe("socialsLabel", () => {
+  it("labels Instagram and Facebook links by name", () => {
+    expect(socialsLabel("https://instagram.com/somecafe")).toBe(
+      "View on Instagram"
+    );
+    expect(socialsLabel("https://facebook.com/somecafe")).toBe(
+      "View on Facebook"
+    );
+  });
+
+  it("uses a generic label for anything else", () => {
+    expect(socialsLabel("https://somecafe.example.com")).toBe("View socials");
+  });
+});
+
+describe("instagramSearchUrl", () => {
+  it("builds an Instagram keyword-search link for the place's name", () => {
+    expect(instagramSearchUrl("Ministry Of Food")).toBe(
+      "https://www.instagram.com/explore/search/keyword/?q=Ministry%20Of%20Food"
+    );
   });
 });

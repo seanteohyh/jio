@@ -19,6 +19,7 @@ import RouletteWheel from "@/components/RouletteWheel";
 import ShareLink from "@/components/ShareLink";
 import ShareResultCard from "@/components/ShareResultCard";
 import InvitePicker, { type InviteSelection } from "@/components/InvitePicker";
+import SocialsIcon from "@/components/SocialsIcon";
 import {
   LEAD_TIME_OPTIONS,
   leadTimeLabel,
@@ -36,6 +37,7 @@ import {
   placeDescriptor,
   sgtDateKey,
   sgtTimeOfDay,
+  socialsLabel,
 } from "@/lib/utils";
 import type { EventDetail, Place, RsvpResponse } from "@/types";
 
@@ -1046,6 +1048,20 @@ export default function EventDetailPage({
                         <MapPin className="h-3.5 w-3.5" strokeWidth={2} />
                       </a>
                     )}
+                    {option.place?.socials_url && (
+                      <a
+                        href={option.place.socials_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        aria-label={socialsLabel(option.place.socials_url)}
+                        className="text-stone hover:text-ember ml-1.5 inline-block align-middle"
+                      >
+                        <SocialsIcon
+                          url={option.place.socials_url}
+                          className="h-3.5 w-3.5"
+                        />
+                      </a>
+                    )}
                     {/*
                       CHANGES_20260819d.md §1 — a free-text option (no
                       `place` behind it) gets the same slot's opposite
@@ -1145,6 +1161,20 @@ export default function EventDetailPage({
                           className="text-stone hover:text-ember shrink-0"
                         >
                           <MapPin className="h-3.5 w-3.5" strokeWidth={2} />
+                        </a>
+                      )}
+                      {option?.place?.socials_url && (
+                        <a
+                          href={option.place.socials_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          aria-label={socialsLabel(option.place.socials_url)}
+                          className="text-stone hover:text-ember shrink-0"
+                        >
+                          <SocialsIcon
+                            url={option.place.socials_url}
+                            className="h-3.5 w-3.5"
+                          />
                         </a>
                       )}
                     </span>
