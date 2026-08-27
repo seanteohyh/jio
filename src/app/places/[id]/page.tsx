@@ -636,7 +636,7 @@ export default function PlaceDetailPage({
                 </div>
               </div>
 
-              <Field label="What did you have?" hint="Comma or line separated.">
+              <Field label="What would you recommend?" hint="Comma or line separated.">
                 {/*
                   A plain `<input>` submits its enclosing form on Enter —
                   standard browser behaviour, and exactly what iOS's "Go"
@@ -655,7 +655,7 @@ export default function PlaceDetailPage({
                 />
               </Field>
 
-              <Field label="Notes">
+              <Field label="Your review">
                 <textarea
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
