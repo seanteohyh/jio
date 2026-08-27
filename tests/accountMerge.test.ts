@@ -171,6 +171,8 @@ describe("mergeUserAccounts — reassignment", () => {
       budget_min: 1,
       budget_max: 4,
       blocklist: [],
+      reminders_enabled: true,
+      reminder_lead_minutes: 30,
     });
     await demoRepo.upsertUserPrefs({
       user_id: DEMO_TEAMMATE_B,
@@ -179,6 +181,8 @@ describe("mergeUserAccounts — reassignment", () => {
       budget_min: 1,
       budget_max: 4,
       blocklist: [],
+      reminders_enabled: true,
+      reminder_lead_minutes: 30,
     });
 
     await demoRepo.mergeUserAccounts(DEMO_TEAMMATE_A, DEMO_TEAMMATE_A, DEMO_TEAMMATE_B);
@@ -197,6 +201,8 @@ describe("mergeUserAccounts — reassignment", () => {
       budget_min: 1,
       budget_max: 4,
       blocklist: [],
+      reminders_enabled: true,
+      reminder_lead_minutes: 30,
     });
 
     await demoRepo.mergeUserAccounts(STRANGER, STRANGER, DEMO_TEAMMATE_B);

@@ -64,6 +64,8 @@ describe("listAllUsers — §4.1 filtering and office scoping", () => {
       budget_min: 1,
       budget_max: 4,
       blocklist: [],
+      reminders_enabled: true,
+      reminder_lead_minutes: 30,
       default_office_id: "some-other-office",
     });
 

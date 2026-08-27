@@ -85,6 +85,8 @@ describe("previewCuisineMerge / mergeCuisines", () => {
       budget_min: 1,
       budget_max: 4,
       blocklist: [],
+      reminders_enabled: true,
+      reminder_lead_minutes: 30,
     });
 
     const [preview] = await demoRepo.previewCuisineMerge(["peranakan"]);
@@ -117,6 +119,8 @@ describe("previewCuisineMerge / mergeCuisines", () => {
       budget_min: 1,
       budget_max: 4,
       blocklist: [],
+      reminders_enabled: true,
+      reminder_lead_minutes: 30,
     });
 
     await demoRepo.mergeCuisines(DEMO_USER_ID, "korean", "korean_bbq");

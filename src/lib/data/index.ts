@@ -405,6 +405,43 @@ export interface Repo {
     userId: string
   ): Promise<Array<{ eventId: string; title: string; recipientIds: string[] }>>;
   /**
+   * CHANGES_20260821c.md §1 — this event's per-Jio reminder override for
+   * `userId`, if they've set one (`null` means "using their `user_prefs`
+   * default"). A genuinely different feature from `remindDueEvents` above,
+   * not a variant: confirmed-going only, per-person configurable, one-shot
+   * per (event, user) rather than per event.
+   */
+  getEventReminderOverride(
+    eventId: string,
+    userId: string
+  ): Promise<number | null>;
+  /** Sets or clears (`null`) `userId`'s per-Jio lead-time override for this
+   *  event. Never touches whether it's already fired. */
+  setEventReminderOverride(
+    eventId: string,
+    userId: string,
+    leadMinutes: number | null
+  ): Promise<void>;
+  /**
+   * The scheduled "starting soon" scan — hit by an external scheduler
+   * (README's cron-job.org pattern), not Vercel's own cron, since it needs
+   * to run far more often than Hobby's once-a-day limit allows. Scans
+   * every non-cancelled, still-upcoming Jio's confirmed-going (RSVP `yes`)
+   * attendees, works out each one's effective lead time (their per-Jio
+   * override, else their `user_prefs` default), atomically claims and
+   * returns whoever is due and hasn't been sent yet — the caller (the cron
+   * route) is responsible for actually sending the push, same division of
+   * labour as `remindDueEvents`.
+   */
+  listAndClaimDueReminders(): Promise<
+    Array<{
+      eventId: string;
+      userId: string;
+      title: string;
+      scheduledAt: string;
+    }>
+  >;
+  /**
    * Calls off an open Jio — a new terminal state, not a reuse of `closed`
    * (CHANGES_20260801.md §9). Host only, and only from `open`; see
    * 030_cancel_event.sql for why this goes through a dedicated function
@@ -789,6 +826,9 @@ export const REPO_METHODS = [
   "closeEvent",
   "claimVotePushWindow",
   "remindDueEvents",
+  "getEventReminderOverride",
+  "setEventReminderOverride",
+  "listAndClaimDueReminders",
   "cancelEvent",
   "rescheduleEvent",
   "editEventWinner",
