@@ -64,6 +64,8 @@ function prefs(overrides: Partial<UserPrefs> = {}): UserPrefs {
     budget_max: 4,
     blocklist: [],
     default_office_id: null,
+    reminders_enabled: true,
+    reminder_lead_minutes: 30,
     ...overrides,
   };
 }

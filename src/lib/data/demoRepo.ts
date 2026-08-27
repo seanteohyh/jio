@@ -52,6 +52,7 @@ import type {
   EventCandidateDate,
   EventDateVote,
   EventDetail,
+  EventReminderState,
   EventInvitee,
   EventOption,
   EventRsvp,
@@ -129,6 +130,7 @@ interface DemoStore {
   recoveryTokens: { user_id: string; token: string }[];
   cuisines: CuisineOption[];
   discoveryTokens: { user_id: string; token: string }[];
+  eventReminders: EventReminderState[];
 }
 
 const globalStore = globalThis as typeof globalThis & {
@@ -163,6 +165,7 @@ function seed(): DemoStore {
     recoveryTokens: [],
     cuisines: DEFAULT_CUISINE_SEED.map((c) => ({ ...c })),
     discoveryTokens: [],
+    eventReminders: [],
   };
 }
 
@@ -1595,6 +1598,97 @@ export const demoRepo: Repo = {
       if (recipientIds.length > 0) {
         results.push({ eventId: event.id, title: event.title, recipientIds });
       }
+    }
+
+    return results;
+  },
+
+  async getEventReminderOverride(eventId, userId) {
+    const s = store();
+    const row = s.eventReminders.find(
+      (r) => r.event_id === eventId && r.user_id === userId
+    );
+    return row?.lead_minutes ?? null;
+  },
+
+  async setEventReminderOverride(eventId, userId, leadMinutes) {
+    const s = store();
+    const index = s.eventReminders.findIndex(
+      (r) => r.event_id === eventId && r.user_id === userId
+    );
+    if (index === -1) {
+      s.eventReminders.push({
+        event_id: eventId,
+        user_id: userId,
+        lead_minutes: leadMinutes,
+        sent_at: null,
+      });
+    } else {
+      s.eventReminders[index] = {
+        ...s.eventReminders[index],
+        lead_minutes: leadMinutes,
+      };
+    }
+  },
+
+  async listAndClaimDueReminders() {
+    const s = store();
+    const now = Date.now();
+
+    const candidates = s.rsvps.filter((r) => r.response === "yes");
+    const results: Array<{
+      eventId: string;
+      userId: string;
+      title: string;
+      scheduledAt: string;
+    }> = [];
+
+    for (const { event_id: eventId, user_id: userId } of candidates) {
+      const event = s.events.find((e) => e.id === eventId);
+      if (!event || event.status === "cancelled") continue;
+      if (new Date(event.scheduled_at).getTime() <= now) continue;
+
+      let stateIndex = s.eventReminders.findIndex(
+        (r) => r.event_id === eventId && r.user_id === userId
+      );
+      if (stateIndex !== -1 && s.eventReminders[stateIndex].sent_at) continue;
+
+      const prefs = s.prefs.find((p) => p.user_id === userId);
+      // A missing prefs row means nobody has ever touched their
+      // preferences — the same defaults the migration's column defaults
+      // give everyone else, not a reason to skip them.
+      const remindersEnabled = prefs?.reminders_enabled ?? true;
+      if (!remindersEnabled) continue;
+
+      const leadMinutes =
+        (stateIndex !== -1 ? s.eventReminders[stateIndex].lead_minutes : null) ??
+        prefs?.reminder_lead_minutes ??
+        30;
+
+      const dueAt = new Date(event.scheduled_at).getTime() - leadMinutes * 60_000;
+      if (dueAt > now) continue;
+
+      const sentAt = new Date(now).toISOString();
+      if (stateIndex === -1) {
+        s.eventReminders.push({
+          event_id: eventId,
+          user_id: userId,
+          lead_minutes: null,
+          sent_at: sentAt,
+        });
+      } else {
+        s.eventReminders[stateIndex] = {
+          ...s.eventReminders[stateIndex],
+          sent_at: sentAt,
+        };
+      }
+
+      results.push({
+        eventId,
+        userId,
+        title: event.title,
+        scheduledAt: event.scheduled_at,
+      });
     }
 
     return results;

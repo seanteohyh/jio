@@ -52,6 +52,7 @@ When you are ready to make it real, see [Going live](#going-live).
 | **First-visit hints** | A one-line, dismissible card — icon circle, one sentence, an X to dismiss — shown once on a user's first visit to Home, Places, You, Kakis, Lobangs, and Start a Jio, sitting directly below each page's own header. Deliberately not a tour: no sequence, no "next," nothing blocking, matching `/welcome`'s existing "single field, not a wizard" stance. Two pages explain the app's own vocabulary (Kaki, Lobang) or a voting term (Borda count) rather than a feature; the rest point at something on that page worth noticing early (Home's two ways to get lunch, Places' filters and bookmarking, You's QR shortcut and Taste preferences). Tracked with one `localStorage` flag per page, same mechanism `AddToHomeScreenPrompt` uses for visit counting — no backend, and independent of that banner's own global, count-gated logic, so the two never conflict. |
 | **Recurring Jios** | A standing weekly Jio — same place every time (auto-confirmed, no vote needed) or a vote over the same option pool each week. Generates its next occurrence lazily, a few days ahead, when the host loads Home or Jios; invitees are expanded fresh from current kaki membership every time, not frozen at series creation. The configured time is anchored to Singapore's fixed UTC+8 offset explicitly at generation time, not the server process's own local timezone — the write-side counterpart to the display-only timezone bug above: a 12:00 series used to generate at 12:00 UTC (8pm SGT) instead of the intended 04:00 UTC. Editable, not just stoppable — an "Edit" link reuses the same create form, prefilled. Changes to the weekday only ever affect what generates from then on; time, place/mode and invitees also propagate onto an occurrence the series already generated, but only while it's still open and nobody's voted or RSVP'd on it yet — once someone has, that one occurrence is left exactly as it was, so an edit can never invalidate an answer someone already gave. |
 | **Push notifications** | Opt in from "You": get notified when you're invited to a Jio, when someone votes on one you're hosting (throttled to at most one push per event per ~10 minutes), when a Jio you're in is starting in 30 minutes and you haven't voted or RSVP'd, when one you're in gets decided, when someone sends you a lobang, when someone likes a review you shared (same ~10 minute throttle, skipped for liking your own review), and a weekly recap of how many likes your reviews picked up, sent only if that count is above zero. iOS only ever delivers push to an installed PWA, never a browser tab, so the app also nudges toward "Add to Home Screen" after a few visits — dismissible with "remind me later," not a one-shot ask — plus an always-available "Add to home screen" card in "You" for anyone who dismissed that prompt but changes their mind later. In `name` mode, a successful install is also followed by an offer to attach an email, since installing the icon is the moment a second, independent signed-in context is about to exist. |
+| **Jio reminders** | A separate, configurable "starting soon" reminder (CHANGES_20260821c.md §1) — not the fixed 30-minute non-responder nudge above, which only ever pushes people who haven't voted or RSVP'd. This one is for anyone confirmed going (RSVP "Yes"), whether or not they've already voted, at a lead time you actually choose. "You" carries the on/off default and the default lead time, right below the push toggle; a Jio you're confirmed for shows its own reminder card, collapsed to "using your default" with a "Change for this Jio" override that only that Jio ever sees. Fires once per person per Jio, same one-shot idea as the fixed reminder above — reopening a Jio for voting or changing your RSVP doesn't matter to it either way. |
 | **Admin** | Moderation (reports, block/unblock), an analytics dashboard (growth, Jio outcomes, top places, Kaki activity, moderation and wishlist trends, a same-day participation funnel), office management, and an accounts screen for merging duplicate identities (auto-surfaced by shared name, or search any account) and issuing recovery links — all reachable from "You", no dedicated nav icon, since admins are the one group that needs it least often. The dashboard's two chart primitives — a sparkline and a horizontal-bar distribution — print their key numbers as visible text by default rather than only on hover: a sparkline shows its date range plus the peak and latest values always, with a tap-or-hover readout per bar for the rest; a distribution bar shows a 0→max scale and an "N total" line, in one consistent color rather than cycling through decorative hues that don't encode anything. |
 
 ---
@@ -296,7 +297,7 @@ Roughly 30 minutes end to end. Everything below stays on a free tier.
    `service_role` key. The last one is a secret; it bypasses all access
    control.
 3. **SQL Editor** — run every file in `supabase/migrations/` in numeric order,
-   001 through 058. They are idempotent, so re-running is harmless.
+   001 through 059. They are idempotent, so re-running is harmless.
 4. **Authentication → Providers → Anonymous sign-ins** — turn this on. It is
    what makes name-only sign-in work.
 5. **Authentication → URL Configuration** — set the Site URL to your deployed
@@ -411,6 +412,17 @@ every Monday — comfortably under the once-a-day-per-job limit since it
 only fires once a week. For anything more frequent than once a day, point
 an external scheduler such as [cron-job.org](https://cron-job.org) at the
 route with the same bearer token.
+
+**The "starting soon" reminder (CHANGES_20260821c.md §1) is the first thing
+that actually needs this.** `GET /api/cron/event-reminders` is deliberately
+left out of `vercel.json` — a per-person, per-Jio configurable lead time
+(as opposed to discovery's daily sweep) has to be checked every few
+minutes to fire anywhere close to on time, which Hobby's own cron can't
+do. Point an external scheduler at it every 5 minutes or so, same
+`Authorization: Bearer $CRON_SECRET` header as the two cron jobs above.
+Without it configured, per-Jio reminders are still fully functional to
+set — they just never actually fire, the same "silently does nothing"
+failure mode a misconfigured VAPID key already has elsewhere.
 
 **Multi-office discovery is paced, not parallel.** With more than one office,
 the cron sweeps them one after another with a 2s gap between each — not to
@@ -772,6 +784,26 @@ so it's the one push in this app that genuinely needs a scheduled sweep
 rather than firing off a user action. That's what earns it the second
 `vercel.json` cron entry rather than a third inline claim function.
 
+**The "starting soon" reminder (CHANGES_20260821c.md §1) needed a real
+scheduled sweep too, but couldn't reuse the weekly recap's shape as-is.**
+A per-person, per-Jio configurable lead time has to be checked far more
+often than once a week to fire anywhere near on time — frequently enough
+that it can't sit in `vercel.json` at all (see Free-tier realities above),
+so `listAndClaimDueReminders` runs off an external scheduler instead of
+either Vercel cron path. It also can't reuse a `SECURITY DEFINER` RPC the
+way `claim_vote_push_window`/`claim_event_reminder` do: the external
+scheduler's request carries only a bearer token, no `auth.uid()` at all,
+so a function gated on "the caller must be the row's own user" has no
+caller identity to check. Granting a cross-user RPC like that to `anon`
+instead — the only other option for a no-session caller — would hand
+"who's confirmed going to what, across every user" to anyone holding the
+public anon key. So this reaches for the service-role client instead
+(same reasoning as `listReviewLikesSince`), and claims each due
+(event, user) pair with a plain conditional `UPDATE … WHERE sent_at IS
+NULL` — the same one-purpose atomic-claim shape as the RPCs above, just
+run as a table operation the service role doesn't need a grant to use,
+rather than a function it would.
+
 **Account merge writes across two different `auth.uid()`s, so it has to be
 `SECURITY DEFINER` — and it has to check *which* two.** `merge_user_accounts`
 (migration 040) moves every row a `user_id`-owned table has for one account
@@ -960,7 +992,7 @@ does the reassignment, not the authorization check.
 ## Tests
 
 ```bash
-npm test          # 497 tests across 41 files
+npm test          # 511 tests across 42 files
 npm run typecheck
 npm run lint
 ```
@@ -970,6 +1002,7 @@ npm run lint
 | `recommend.test.ts` | Every scoring component, exclusions, ranking, boosts, group mode |
 | `blogImport.test.ts` | HTML extraction and the full SSRF matrix |
 | `eventAdditions.test.ts` | Who can add, remove, invite, vote and close; joining via an invite link makes a stranger a real invitee, not just visible; the vote-push throttle window; the starting-soon reminder's timing, one-shot firing, and non-responder targeting |
+| `eventReminders.test.ts` | The configurable per-Jio "starting soon" reminder (CHANGES_20260821c.md §1) — a genuinely different feature from the row above's non-responder nudge: per-Jio override set/read/clear; `listAndClaimDueReminders` firing only for confirmed-going (RSVP `yes`) attendees within their effective lead time (override, else their `user_prefs` default), one-shot per (event, user), skipping cancelled Jios, already-passed Jios, and anyone with reminders turned off — including someone with no `user_prefs` row at all, who still gets the column defaults rather than being silently skipped |
 | `accountMerge.test.ts` | Duplicate-name grouping; merge authorization (self vs. admin vs. neither); row reassignment and collision handling across every owned table; recovery-token generation, resolution, regeneration, and cleanup after a merge; listing every admin |
 | `metrics.test.ts` | User and group statistics, cuisine streaks |
 | `discovery.test.ts` | OSM normalisation and deduplication |

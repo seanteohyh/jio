@@ -20,6 +20,7 @@ import LobangInbox from "@/components/profile/LobangInbox";
 import AttachEmailPanel from "@/components/profile/AttachEmailPanel";
 import MyFlagsList from "@/components/profile/MyFlagsList";
 import PushNotificationToggle from "@/components/profile/PushNotificationToggle";
+import ReminderSettingsPanel from "@/components/profile/ReminderSettingsPanel";
 import AddToHomeScreenCard from "@/components/profile/AddToHomeScreenCard";
 import RecoveryLinkPanel from "@/components/profile/RecoveryLinkPanel";
 import PersonalInvitePanel, {
@@ -439,6 +440,12 @@ export default function ProfilePage() {
           <div className="py-3 first:pt-0 last:pb-0">
             <PushNotificationToggle />
           </div>
+
+          {features.events && (
+            <div className="py-3 first:pt-0 last:pb-0">
+              <ReminderSettingsPanel />
+            </div>
+          )}
 
           <div className="py-3 first:pt-0 last:pb-0">
             <PersonalInvitePanel {...personalInvite} />

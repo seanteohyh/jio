@@ -19,6 +19,10 @@ import RouletteWheel from "@/components/RouletteWheel";
 import ShareLink from "@/components/ShareLink";
 import ShareResultCard from "@/components/ShareResultCard";
 import InvitePicker, { type InviteSelection } from "@/components/InvitePicker";
+import {
+  LEAD_TIME_OPTIONS,
+  leadTimeLabel,
+} from "@/components/profile/ReminderSettingsPanel";
 import { fetcher, mutateJson } from "@/lib/fetcher";
 import { eventInviteUrl } from "@/lib/shareUrl";
 import { googleCalendarUrl, canAddToCalendar } from "@/lib/calendar";
@@ -43,6 +47,12 @@ interface EventResponse {
     canAddOptions: boolean;
     myVote: string[];
     myRsvp: RsvpResponse | null;
+    /** Only populated when `myRsvp === "yes"` — see the route. */
+    reminder: {
+      enabled: boolean;
+      defaultLeadMinutes: number;
+      overrideLeadMinutes: number | null;
+    } | null;
   };
 }
 
@@ -87,6 +97,7 @@ export default function EventDetailPage({
   const [rescheduleValue, setRescheduleValue] = useState("");
   const [editingWinner, setEditingWinner] = useState(false);
   const [winnerQuery, setWinnerQuery] = useState("");
+  const [editingReminder, setEditingReminder] = useState(false);
 
   // Live updates while people vote. Falls back silently if realtime is off.
   useEffect(() => {
@@ -158,6 +169,7 @@ export default function EventDetailPage({
   const isClosed = event.status === "closed";
   const canReopen =
     isClosed && new Date(event.scheduled_at).getTime() > Date.now();
+  const isUpcoming = new Date(event.scheduled_at).getTime() > Date.now();
 
   const myAvailability = new Set(
     event.dateVotes.filter((v) => v.user_id === viewer.id).map((v) => v.date)
@@ -418,6 +430,16 @@ export default function EventDetailPage({
     run(() => mutateJson(`/api/events/${id}/reopen`, "POST"));
   };
 
+  // CHANGES_20260821c.md §1 — a per-Jio override on top of the "You"-page
+  // default. `null` clears it back to "use my default."
+  const setReminderLead = (leadMinutes: number | null) =>
+    run(async () => {
+      await mutateJson(`/api/events/${id}/reminder`, "PUT", {
+        lead_minutes: leadMinutes,
+      });
+      setEditingReminder(false);
+    });
+
   const optionPlaces = event.options
     .map((o) => o.place)
     .filter((p): p is Place => Boolean(p));
@@ -638,6 +660,82 @@ export default function EventDetailPage({
           >
             Download .ics
           </a>
+        </div>
+      )}
+
+      {/*
+        CHANGES_20260821c.md §1 — confirmed-going only (RSVP "yes"), same
+        gate the API enforces server-side. Not a Flexi Jio date question —
+        this is about the lunch itself starting soon, so it's fine for a
+        decided Jio too, not just open ones.
+      */}
+      {!isCancelled && isUpcoming && viewer.myRsvp === "yes" && viewer.reminder && (
+        <div className="border-line bg-cream space-y-2 rounded-xl border p-3">
+          <p className="text-ink text-sm font-medium">Reminder</p>
+          {!viewer.reminder.enabled ? (
+            <p className="text-stone text-xs">
+              Reminders are off.{" "}
+              <Link href="/profile" className="text-ember underline">
+                Turn them on under You
+              </Link>{" "}
+              to get a heads-up before this Jio starts.
+            </p>
+          ) : editingReminder ? (
+            <div className="flex flex-wrap items-center gap-2">
+              {LEAD_TIME_OPTIONS.map((minutes) => (
+                <Button
+                  key={minutes}
+                  size="sm"
+                  variant={
+                    viewer.reminder?.overrideLeadMinutes === minutes
+                      ? "primary"
+                      : "secondary"
+                  }
+                  onClick={() => setReminderLead(minutes)}
+                  disabled={busy}
+                >
+                  {leadTimeLabel(minutes)}
+                </Button>
+              ))}
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setReminderLead(null)}
+                disabled={busy || viewer.reminder.overrideLeadMinutes === null}
+              >
+                Use my default
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setEditingReminder(false)}
+              >
+                Cancel
+              </Button>
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-stone text-xs">
+                We&apos;ll remind you{" "}
+                {leadTimeLabel(
+                  viewer.reminder.overrideLeadMinutes ??
+                    viewer.reminder.defaultLeadMinutes
+                )}{" "}
+                before
+                {viewer.reminder.overrideLeadMinutes === null
+                  ? " (your default)"
+                  : " (just for this Jio)"}
+                .
+              </p>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setEditingReminder(true)}
+              >
+                Change for this Jio
+              </Button>
+            </div>
+          )}
         </div>
       )}
 

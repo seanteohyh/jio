@@ -159,6 +159,32 @@ export interface UserPrefs {
   budget_max: BudgetTier;
   blocklist: string[];
   default_office_id?: string | null;
+  /**
+   * CHANGES_20260821c.md §1 — the default for the "starting soon" reminder
+   * below, distinct from `notify_events` (the master push on/off on
+   * `profiles`): this is specifically whether *this* reminder type fires at
+   * all, on top of whichever push types the master toggle already allows.
+   */
+  reminders_enabled: boolean;
+  /** Default lead time in minutes, overridable per-Jio (see
+   *  `EventReminderState`). */
+  reminder_lead_minutes: number;
+}
+
+/**
+ * CHANGES_20260821c.md §1 — one row per (event, confirmed-going user),
+ * since a single event-level flag (the existing `reminder_sent_at`/
+ * `claim_event_reminder` non-responder nudge) can't hold a per-person lead
+ * time or a per-person sent flag. `lead_minutes` null means "use my
+ * `user_prefs.reminder_lead_minutes` default"; set is a per-Jio override.
+ * `sent_at` null means not yet fired — same one-shot idea as the existing
+ * reminder's own column, just scoped per person instead of per event.
+ */
+export interface EventReminderState {
+  event_id: string;
+  user_id: string;
+  lead_minutes: number | null;
+  sent_at: string | null;
 }
 
 export interface Profile {

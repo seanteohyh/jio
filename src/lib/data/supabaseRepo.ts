@@ -2161,6 +2161,170 @@ export const supabaseRepo: Repo = {
     return results;
   },
 
+  async getEventReminderOverride(eventId, userId) {
+    const client = await db();
+    const { data, error } = await client
+      .from("event_reminder_state")
+      .select("lead_minutes")
+      .eq("event_id", eventId)
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (error) fail("Could not load your reminder setting", error);
+    return (data as { lead_minutes: number | null } | null)?.lead_minutes ?? null;
+  },
+
+  async setEventReminderOverride(eventId, userId, leadMinutes) {
+    const client = await db();
+    const { error } = await client
+      .from("event_reminder_state")
+      .upsert(
+        { event_id: eventId, user_id: userId, lead_minutes: leadMinutes },
+        { onConflict: "event_id,user_id" }
+      );
+    if (error) fail("Could not save your reminder setting", error);
+  },
+
+  /**
+   * The scheduled scan (see the interface doc comment in `index.ts`). Runs
+   * with no user session — the external scheduler hits this with only a
+   * bearer token, not a signed-in cookie — so this reaches for the
+   * service-role client rather than a SECURITY DEFINER RPC granted to
+   * `anon`, same reasoning as `listReviewLikesSince`: granting `anon`
+   * execute on a function that reads who's confirmed going to what, across
+   * every user, would hand that cross-user join to anyone holding the
+   * public anon key, not just this cron.
+   */
+  async listAndClaimDueReminders() {
+    const { createServiceRoleClient } = await import(
+      "@/lib/supabase/serviceClient"
+    );
+    const admin = createServiceRoleClient();
+
+    const nowIso = new Date().toISOString();
+    const { data: eventRows, error: eventError } = await admin
+      .from("lunch_events")
+      .select("id, title, scheduled_at")
+      .neq("status", "cancelled")
+      .gt("scheduled_at", nowIso);
+    if (eventError) fail("Could not scan for due reminders", eventError);
+
+    const events = (eventRows ?? []) as {
+      id: string;
+      title: string;
+      scheduled_at: string;
+    }[];
+    if (events.length === 0) return [];
+
+    const eventIds = events.map((e) => e.id);
+    const eventById = new Map(events.map((e) => [e.id, e]));
+
+    const [
+      { data: rsvpRows, error: rsvpError },
+      { data: stateRows, error: stateError },
+    ] = await Promise.all([
+      admin
+        .from("event_rsvps")
+        .select("event_id, user_id")
+        .eq("response", "yes")
+        .in("event_id", eventIds),
+      admin
+        .from("event_reminder_state")
+        .select("event_id, user_id, lead_minutes, sent_at")
+        .in("event_id", eventIds),
+    ]);
+    if (rsvpError) fail("Could not scan for due reminders", rsvpError);
+    if (stateError) fail("Could not scan for due reminders", stateError);
+
+    const rsvps = (rsvpRows ?? []) as { event_id: string; user_id: string }[];
+    if (rsvps.length === 0) return [];
+
+    const stateByKey = new Map(
+      (
+        (stateRows ?? []) as {
+          event_id: string;
+          user_id: string;
+          lead_minutes: number | null;
+          sent_at: string | null;
+        }[]
+      ).map((r) => [`${r.event_id}:${r.user_id}`, r])
+    );
+
+    const userIds = [...new Set(rsvps.map((r) => r.user_id))];
+    const { data: prefRows, error: prefError } = await admin
+      .from("user_prefs")
+      .select("user_id, reminders_enabled, reminder_lead_minutes")
+      .in("user_id", userIds);
+    if (prefError) fail("Could not scan for due reminders", prefError);
+
+    const prefsByUser = new Map(
+      (
+        (prefRows ?? []) as {
+          user_id: string;
+          reminders_enabled: boolean;
+          reminder_lead_minutes: number;
+        }[]
+      ).map((p) => [p.user_id, p])
+    );
+
+    const now = Date.now();
+    const results: Array<{
+      eventId: string;
+      userId: string;
+      title: string;
+      scheduledAt: string;
+    }> = [];
+
+    for (const { event_id: eventId, user_id: userId } of rsvps) {
+      const state = stateByKey.get(`${eventId}:${userId}`);
+      if (state?.sent_at) continue; // already fired
+
+      const prefs = prefsByUser.get(userId);
+      // A missing user_prefs row means nobody has ever touched their
+      // preferences — the column defaults (enabled, 30 min) are the
+      // intended behaviour, so this isn't skipped just for lacking a row.
+      const remindersEnabled = prefs?.reminders_enabled ?? true;
+      if (!remindersEnabled) continue;
+
+      const leadMinutes =
+        state?.lead_minutes ?? prefs?.reminder_lead_minutes ?? 30;
+      const event = eventById.get(eventId);
+      if (!event) continue;
+
+      const dueAt =
+        new Date(event.scheduled_at).getTime() - leadMinutes * 60_000;
+      if (dueAt > now) continue; // not due yet
+
+      // Ensure a row exists (no-op if one already does), then atomically
+      // claim it — a single conditional UPDATE, immune to a concurrent
+      // scan run claiming the same row first.
+      await admin
+        .from("event_reminder_state")
+        .upsert(
+          { event_id: eventId, user_id: userId },
+          { onConflict: "event_id,user_id", ignoreDuplicates: true }
+        );
+
+      const { data: claimedRows, error: claimError } = await admin
+        .from("event_reminder_state")
+        .update({ sent_at: new Date().toISOString() })
+        .eq("event_id", eventId)
+        .eq("user_id", userId)
+        .is("sent_at", null)
+        .select();
+      if (claimError) fail("Could not claim a due reminder", claimError);
+      if (!claimedRows || claimedRows.length === 0) continue; // lost the race
+
+      results.push({
+        eventId,
+        userId,
+        title: event.title,
+        scheduledAt: event.scheduled_at,
+      });
+    }
+
+    return results;
+  },
+
   // `hostId` isn't passed to the RPC — cancel_event checks auth.uid()
   // against host_id itself, same reasoning as attach_place_to_option.
   async cancelEvent(eventId, _hostId) {

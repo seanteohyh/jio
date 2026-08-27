@@ -381,6 +381,8 @@ export const demoUserPrefs: UserPrefs[] = [
     budget_max: 3,
     blocklist: [],
     default_office_id: DEFAULT_OFFICE.id,
+    reminders_enabled: true,
+    reminder_lead_minutes: 30,
   },
   {
     user_id: DEMO_TEAMMATE_A,
@@ -390,6 +392,8 @@ export const demoUserPrefs: UserPrefs[] = [
     budget_max: 2,
     blocklist: [],
     default_office_id: DEFAULT_OFFICE.id,
+    reminders_enabled: true,
+    reminder_lead_minutes: 30,
   },
   {
     user_id: DEMO_TEAMMATE_B,
@@ -399,6 +403,8 @@ export const demoUserPrefs: UserPrefs[] = [
     budget_max: 4,
     blocklist: [],
     default_office_id: DEFAULT_OFFICE.id,
+    reminders_enabled: true,
+    reminder_lead_minutes: 30,
   },
 ];
 
