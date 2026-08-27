@@ -56,7 +56,8 @@ export default function AddToHomeScreenCard({
               strokeWidth={1.75}
               aria-hidden="true"
             />{" "}
-            Share, then{" "}
+            Share (look for <span aria-hidden="true">•••</span> or "More"
+            first if you don't see it), then{" "}
             <PlusSquare
               className="mx-0.5 inline h-3.5 w-3.5 -translate-y-px"
               strokeWidth={1.75}
