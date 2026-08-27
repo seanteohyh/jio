@@ -36,6 +36,7 @@ async function seedPlace(createdBy = "somebody-else") {
     status: "active",
     best_dishes: ["kopi"],
     notes: "original notes",
+    socials_url: "https://instagram.com/kopitiamtest",
     created_by: createdBy,
   });
 }
@@ -69,6 +70,7 @@ describe("updatePlace", () => {
     expect(updated.budget_tier).toBe(2);
     expect(updated.best_dishes).toEqual(["kopi"]);
     expect(updated.notes).toBe("original notes");
+    expect(updated.socials_url).toBe("https://instagram.com/kopitiamtest");
   });
 
   it("round-trips every field the create form collects", async () => {
@@ -83,10 +85,19 @@ describe("updatePlace", () => {
       budget_tier: 3 as const,
       best_dishes: ["chicken rice", "kaya toast"],
       notes: "updated notes",
+      socials_url: "https://facebook.com/editedplace",
     };
     const updated = await demoRepo.updatePlace(place.id, patch);
 
     expect(updated).toMatchObject(patch);
+  });
+
+  it("lets a socials link be cleared back to null", async () => {
+    const place = await seedPlace();
+    const updated = await demoRepo.updatePlace(place.id, {
+      socials_url: null,
+    });
+    expect(updated.socials_url).toBeNull();
   });
 
   it("cannot move status through a plain edit", async () => {

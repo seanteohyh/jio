@@ -12,7 +12,7 @@ import {
   inputClass,
 } from "@/components/ui";
 import { BUDGET_TIERS } from "@/lib/constants";
-import { formatCuisine, slugifyCuisine } from "@/lib/utils";
+import { formatCuisine, instagramSearchUrl, slugifyCuisine } from "@/lib/utils";
 import { fetcher, mutateJson } from "@/lib/fetcher";
 import type { BudgetTier, CuisineOption, Place } from "@/types";
 
@@ -59,6 +59,7 @@ export default function PlaceForm({
   const [budget, setBudget] = useState<BudgetTier>(place?.budget_tier ?? 2);
   const [dishes, setDishes] = useState((place?.best_dishes ?? []).join(", "));
   const [notes, setNotes] = useState(place?.notes ?? "");
+  const [socialsUrl, setSocialsUrl] = useState(place?.socials_url ?? "");
   const [busy, setBusy] = useState(false);
   const [geocoding, setGeocoding] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -213,6 +214,7 @@ export default function PlaceForm({
         .map((d) => d.trim())
         .filter(Boolean),
       notes: notes.trim() || null,
+      socials_url: socialsUrl.trim() || null,
     };
 
     setBusy(true);
@@ -422,6 +424,34 @@ export default function PlaceForm({
             className={`${inputClass} min-h-20`}
             placeholder="Closed Mondays. Queue is worst 12:15–12:45."
           />
+        </Field>
+
+        <Field
+          label="Socials"
+          hint="Instagram, Facebook, anything — paste the link as-is."
+        >
+          <input
+            value={socialsUrl}
+            onChange={(e) => setSocialsUrl(e.target.value)}
+            className={inputClass}
+            placeholder="https://instagram.com/..."
+          />
+          {/*
+            CHANGES_20260821b.md §1 — no API can look one up by business
+            name (unlike Google Places), so this is a shortcut to go find
+            one by hand, not an auto-resolve attempt. Instagram-specific on
+            purpose, even though the field itself takes any platform's link.
+          */}
+          {!socialsUrl.trim() && name.trim() && (
+            <a
+              href={instagramSearchUrl(name.trim())}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-ember mt-1 inline-block text-xs underline"
+            >
+              Search Instagram for &quot;{name.trim()}&quot;
+            </a>
+          )}
         </Field>
       </Card>
 

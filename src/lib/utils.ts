@@ -210,6 +210,60 @@ export function googleMapsPlaceUrl(place: {
 }
 
 /**
+ * CHANGES_20260821b.md §1 — `socials_url` is stored as whatever full URL
+ * was pasted, not normalized to one platform. Sniffing the domain at
+ * display time is what lets one field cover Instagram, Facebook, or
+ * anything else without a per-platform set of fields to fill in.
+ */
+/** Rejects anything that isn't a plain http(s) link — `socials_url` ends up
+ *  rendered as a real `href`, so a `javascript:`/`data:` value pasted in
+ *  (accidentally or not) should never make it past validation. */
+export function isHttpUrl(value: string): boolean {
+  try {
+    return /^https?:$/.test(new URL(value).protocol);
+  } catch {
+    return false;
+  }
+}
+
+export type SocialsHost = "instagram" | "facebook" | "other";
+
+export function socialsHost(url: string): SocialsHost {
+  try {
+    const hostname = new URL(url).hostname.replace(/^www\./, "").toLowerCase();
+    if (hostname === "instagram.com") return "instagram";
+    if (hostname === "facebook.com") return "facebook";
+  } catch {
+    // Not a parseable URL — falls through to the generic label/icon.
+  }
+  return "other";
+}
+
+export function socialsLabel(url: string): string {
+  switch (socialsHost(url)) {
+    case "instagram":
+      return "View on Instagram";
+    case "facebook":
+      return "View on Facebook";
+    default:
+      return "View socials";
+  }
+}
+
+/**
+ * The empty-state search-assist — Instagram-specific per CHANGES_20260821b.md
+ * §1's decision, even though the field itself isn't locked to one platform:
+ * Instagram is still the most likely place someone's actually looking one
+ * up. Instagram's own keyword-search URL, not a third-party search engine —
+ * there's no lookup-by-business-name API to call instead (see the doc's
+ * citation trail), so this is a shortcut to look it up by hand, not a
+ * resolution attempt.
+ */
+export function instagramSearchUrl(placeName: string): string {
+  return `https://www.instagram.com/explore/search/keyword/?q=${encodeURIComponent(placeName)}`;
+}
+
+/**
  * True when the app should use the in-memory demo store.
  * Kept as a standalone function because both server and client code read it.
  */

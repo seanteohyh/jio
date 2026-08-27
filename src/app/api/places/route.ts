@@ -13,6 +13,7 @@ import { DEFAULT_OFFICE } from "@/lib/constants";
 import { isEnabled } from "@/lib/config";
 import { computeKakiRatingByPlace, countKakiVisitsByPlace } from "@/lib/metrics";
 import { resolveAndStoreGooglePlaceId } from "@/lib/googlePlaces";
+import { isHttpUrl } from "@/lib/utils";
 import type { BudgetTier, Filters, Place, PlaceStatus } from "@/types";
 
 /** A lone review shouldn't read as group consensus — CHANGES_20260807c.md §2. */
@@ -141,6 +142,7 @@ interface CreatePlaceBody {
   budget_tier?: number;
   best_dishes?: string[];
   notes?: string;
+  socials_url?: string;
   status?: PlaceStatus;
 }
 
@@ -161,6 +163,11 @@ export async function POST(request: NextRequest) {
       return badRequest("Budget tier must be between 1 and 6");
     }
 
+    const socialsUrl = body.socials_url?.trim() || null;
+    if (socialsUrl && !isHttpUrl(socialsUrl)) {
+      return badRequest("Socials link must be a valid http(s) URL");
+    }
+
     const place = await repo.createPlace({
       name: body.name.trim(),
       address: body.address?.trim() || null,
@@ -174,6 +181,7 @@ export async function POST(request: NextRequest) {
       status: body.status ?? "active",
       best_dishes: body.best_dishes ?? [],
       notes: body.notes?.trim() || null,
+      socials_url: socialsUrl,
       created_by: user.id,
     } as Omit<Place, "id" | "created_at" | "updated_at" | "google_place_id">);
 

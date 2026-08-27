@@ -10,6 +10,7 @@ import {
   readJson,
 } from "@/lib/api";
 import { resolveAndStoreGooglePlaceId } from "@/lib/googlePlaces";
+import { isHttpUrl } from "@/lib/utils";
 import type { Place } from "@/types";
 
 // Next 15+ hands route params in as a Promise.
@@ -58,6 +59,17 @@ export async function PUT(request: NextRequest, { params }: Params) {
       (body.budget_tier < 1 || body.budget_tier > 6)
     ) {
       return badRequest("Budget tier must be between 1 and 6");
+    }
+
+    if (
+      typeof body.socials_url === "string" &&
+      body.socials_url.trim() &&
+      !isHttpUrl(body.socials_url.trim())
+    ) {
+      return badRequest("Socials link must be a valid http(s) URL");
+    }
+    if (typeof body.socials_url === "string") {
+      body.socials_url = body.socials_url.trim() || null;
     }
 
     const place = await repo.updatePlace(id, body);
