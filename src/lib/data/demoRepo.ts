@@ -18,14 +18,21 @@ import {
 } from "@/lib/utils";
 import { pickCommitteeSuggestions } from "@/lib/suggestCommittee";
 import { computeWinner } from "@/lib/voting";
+import { computeUserMetrics } from "@/lib/metrics";
 import { rankPlaces } from "@/lib/recommend";
 import { DISCOVERY_CONFIG } from "@/lib/discoveryConfig";
 import {
   bucketByDay,
   bucketByWeek,
+  bucketDistinctUsersByDay,
+  bucketDistinctUsersByWeek,
+  bucketDistinctUsersByMonth,
   bucketWalkMinutes,
   isSameSgtDay,
   median,
+  sgtDateKey,
+  sgtWeekKey,
+  type UserActivity,
 } from "@/lib/adminAnalytics";
 import {
   DEMO_TEAMMATE_A,
@@ -47,6 +54,7 @@ import {
 } from "./demoData";
 import type { Repo } from "./index";
 import type {
+  AdminEngagementWeights,
   CuisineMergePreview,
   CuisineOption,
   EventCandidateDate,
@@ -131,6 +139,10 @@ interface DemoStore {
   cuisines: CuisineOption[];
   discoveryTokens: { user_id: string; token: string }[];
   eventReminders: EventReminderState[];
+  /** Part 1 §B — the composite engagement score's per-signal weights,
+   *  equal by default but admin-editable (`updateEngagementWeights`), same
+   *  singleton-row shape as `admin_engagement_weights` in live mode. */
+  engagementWeights: AdminEngagementWeights;
 }
 
 const globalStore = globalThis as typeof globalThis & {
@@ -166,6 +178,15 @@ function seed(): DemoStore {
     cuisines: DEFAULT_CUISINE_SEED.map((c) => ({ ...c })),
     discoveryTokens: [],
     eventReminders: [],
+    engagementWeights: {
+      hosted: 1,
+      voted: 1,
+      rsvp: 1,
+      visit: 1,
+      review: 1,
+      lobang: 1,
+      updatedAt: null,
+    },
   };
 }
 
@@ -437,6 +458,78 @@ function resolveEventParticipants(event: LunchEvent): string[] {
   }
 
   return Array.from(ids);
+}
+
+/**
+ * Part 1 §E — resolves one segment's membership, for `getAdminAnalytics`'s
+ * optional `segment` filter. Deliberately a separate, standalone
+ * computation rather than a refactor of `getAdminUsersData`'s own segment
+ * logic below — that logic already shipped and is tested; duplicating six
+ * `if` branches here is cheaper than risking a regression there to share
+ * them. Mirrors migration 065's `admin_segment_member_ids` in live mode.
+ */
+function resolveSegmentMemberIds(
+  s: DemoStore,
+  days: number,
+  segment: string
+): Set<string> {
+  const now = new Date();
+  const cutoff = new Date(now.getTime() - days * 24 * 60 * 60 * 1000).toISOString();
+  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const inWindow = (iso?: string | null) => Boolean(iso) && iso! >= cutoff;
+
+  const members = new Set<string>();
+  for (const p of s.profiles) {
+    const uid = p.user_id;
+    const hostedCount = s.events.filter(
+      (e) => e.host_id === uid && inWindow(e.created_at)
+    ).length;
+    const votedCount = new Set(
+      s.votes
+        .filter((v) => v.user_id === uid && inWindow(v.created_at))
+        .map((v) => v.event_id)
+    ).size;
+    const rsvpCount = s.rsvps.filter((r) => r.user_id === uid).length;
+    const visitCount = s.visits.filter(
+      (v) => v.user_id === uid && inWindow(v.created_at)
+    ).length;
+    const reviewCount = s.visits.filter(
+      (v) => v.user_id === uid && v.is_public && inWindow(v.created_at)
+    ).length;
+    const lobangCount = s.lobangs.filter(
+      (l) => l.from_user_id === uid && inWindow(l.created_at)
+    ).length;
+    const activityTimestamps = [
+      ...s.events.filter((e) => e.host_id === uid).map((e) => e.created_at),
+      ...s.votes.filter((v) => v.user_id === uid).map((v) => v.created_at),
+      ...s.visits.filter((v) => v.user_id === uid).map((v) => v.created_at),
+      ...s.wishlist.filter((w) => w.user_id === uid).map((w) => w.created_at),
+      ...s.lobangs.filter((l) => l.from_user_id === uid).map((l) => l.created_at),
+      ...s.placeFlags.filter((f) => f.flagged_by === uid).map((f) => f.created_at),
+    ].filter((ts): ts is string => Boolean(ts));
+    const lastActiveAt =
+      activityTimestamps.length > 0
+        ? activityTimestamps.reduce((max, ts) => (ts > max ? ts : max))
+        : null;
+
+    let matches = false;
+    if (segment === "powerHosts") matches = hostedCount >= 3 && votedCount <= 1;
+    else if (segment === "activeVoters") matches = votedCount >= 3 && hostedCount <= 1;
+    else if (segment === "rsvpOnlyLurkers")
+      matches = rsvpCount >= 3 && votedCount === 0 && hostedCount === 0;
+    else if (segment === "reviewers") matches = reviewCount >= 2;
+    else if (segment === "dormant")
+      matches = !lastActiveAt || lastActiveAt < thirtyDaysAgo;
+    else if (segment === "newAndActive")
+      matches = Boolean(
+        p.created_at &&
+          p.created_at >= thirtyDaysAgo &&
+          hostedCount + votedCount + visitCount + lobangCount > 0
+      );
+
+    if (matches) members.add(uid);
+  }
+  return members;
 }
 
 // ---------------------------------------------------------------------------
@@ -2407,11 +2500,12 @@ export const demoRepo: Repo = {
       }));
   },
 
-  async getAdminAnalytics(days = 90) {
+  async getAdminAnalytics(days = 90, segment = null) {
     const s = store();
     const now = new Date();
     const cutoff = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
     const inWindow = (iso?: string | null) => Boolean(iso) && iso! >= cutoff.toISOString();
+    const segmentMembers = segment ? resolveSegmentMemberIds(s, days, segment) : null;
 
     // ---- funnel (today, Asia/Singapore) ----
     const today = (iso?: string | null) => Boolean(iso) && isSameSgtDay(iso!, now);
@@ -2442,10 +2536,153 @@ export const demoRepo: Repo = {
       ...flaggedToday,
     ]);
 
+    // ---- performance: same six "did anything" signals as the funnel
+    // above, over the whole window instead of collapsed to today.
+    const activityInWindow: UserActivity[] = [
+      ...s.votes
+        .filter((v) => inWindow(v.created_at))
+        .map((v) => ({ userId: v.user_id, createdAt: v.created_at! })),
+      ...s.events
+        .filter((e) => inWindow(e.created_at))
+        .map((e) => ({ userId: e.host_id, createdAt: e.created_at! })),
+      ...s.visits
+        .filter((v) => inWindow(v.created_at))
+        .map((v) => ({ userId: v.user_id, createdAt: v.created_at! })),
+      ...s.wishlist
+        .filter((w) => inWindow(w.created_at))
+        .map((w) => ({ userId: w.user_id, createdAt: w.created_at! })),
+      ...s.places
+        .filter((p) => p.created_by && inWindow(p.created_at))
+        .map((p) => ({ userId: p.created_by!, createdAt: p.created_at! })),
+      ...s.placeFlags
+        .filter((f) => inWindow(f.created_at))
+        .map((f) => ({ userId: f.flagged_by, createdAt: f.created_at! })),
+    ];
+    const dauPerDay = bucketDistinctUsersByDay(activityInWindow);
+    const wauPerWeek = bucketDistinctUsersByWeek(activityInWindow);
+    const mauPerMonth = bucketDistinctUsersByMonth(activityInWindow);
+
+    // ---- funnel steps (Part 1 §D): real invited -> responded -> voted ->
+    // attended -> reviewed conversion, scoped to decided Jios (closed with
+    // a winner) in the window — a Jio that never resolved has nothing to
+    // attend or review.
+    const decidedEventsInWindow = s.events.filter(
+      (e) =>
+        inWindow(e.created_at) &&
+        e.status === "closed" &&
+        e.winner_place_id &&
+        (!segmentMembers || segmentMembers.has(e.host_id))
+    );
+    type FunnelRow = {
+      eventCreatedAt: string;
+      responded: boolean;
+      voted: boolean;
+      attended: boolean;
+      reviewed: boolean;
+      signupAt?: string;
+    };
+    const funnelRows: FunnelRow[] = [];
+    for (const e of decidedEventsInWindow) {
+      for (const uid of resolveEventParticipants(e)) {
+        const rsvp = s.rsvps.find((r) => r.event_id === e.id && r.user_id === uid);
+        const responded = Boolean(rsvp);
+        const attended = rsvp?.response === "yes";
+        const voted = s.votes.some((v) => v.event_id === e.id && v.user_id === uid);
+        const reviewed = Boolean(
+          attended &&
+            e.closed_at &&
+            s.visits.some(
+              (v) =>
+                v.user_id === uid &&
+                v.place_id === e.winner_place_id &&
+                v.created_at &&
+                v.created_at >= e.closed_at!
+            )
+        );
+        const signupAt = s.profiles.find((p) => p.user_id === uid)?.created_at;
+        funnelRows.push({
+          eventCreatedAt: e.created_at!,
+          responded,
+          voted,
+          attended,
+          reviewed,
+          signupAt,
+        });
+      }
+    }
+    const funnelSteps = {
+      steps: [
+        { step: "invited" as const, count: funnelRows.length },
+        { step: "responded" as const, count: funnelRows.filter((r) => r.responded).length },
+        { step: "voted" as const, count: funnelRows.filter((r) => r.voted).length },
+        { step: "attended" as const, count: funnelRows.filter((r) => r.attended).length },
+        { step: "reviewed" as const, count: funnelRows.filter((r) => r.reviewed).length },
+      ],
+      trend: {
+        invitedPerWeek: bucketByWeek(funnelRows.map((r) => r.eventCreatedAt)),
+        respondedPerWeek: bucketByWeek(
+          funnelRows.filter((r) => r.responded).map((r) => r.eventCreatedAt)
+        ),
+        votedPerWeek: bucketByWeek(
+          funnelRows.filter((r) => r.voted).map((r) => r.eventCreatedAt)
+        ),
+        attendedPerWeek: bucketByWeek(
+          funnelRows.filter((r) => r.attended).map((r) => r.eventCreatedAt)
+        ),
+        reviewedPerWeek: bucketByWeek(
+          funnelRows.filter((r) => r.reviewed).map((r) => r.eventCreatedAt)
+        ),
+      },
+      cohortBySignupWeek: (() => {
+        const byWeek = new Map<
+          string,
+          { invited: number; responded: number; voted: number; attended: number; reviewed: number }
+        >();
+        for (const r of funnelRows) {
+          if (!r.signupAt) continue;
+          const week = sgtWeekKey(r.signupAt);
+          const c = byWeek.get(week) ?? {
+            invited: 0,
+            responded: 0,
+            voted: 0,
+            attended: 0,
+            reviewed: 0,
+          };
+          c.invited += 1;
+          if (r.responded) c.responded += 1;
+          if (r.voted) c.voted += 1;
+          if (r.attended) c.attended += 1;
+          if (r.reviewed) c.reviewed += 1;
+          byWeek.set(week, c);
+        }
+        return Array.from(byWeek.entries())
+          .map(([weekStart, c]) => ({ weekStart, ...c }))
+          .sort((a, b) => a.weekStart.localeCompare(b.weekStart));
+      })(),
+    };
+
     // ---- growth ----
     const newUsersPerDay = bucketByDay(
       s.profiles.filter((p) => inWindow(p.created_at)).map((p) => p.created_at!)
     );
+    // Who actually joined each day (Part 1 §E) — powers the "new users"
+    // sparkline's click-through, not just its count.
+    const newUsersDetail = (() => {
+      const byDay = new Map<string, { id: string; name: string }[]>();
+      for (const p of s.profiles) {
+        if (!inWindow(p.created_at)) continue;
+        const day = sgtDateKey(p.created_at!);
+        const list = byDay.get(day) ?? [];
+        list.push({ id: p.user_id, name: p.display_name });
+        byDay.set(day, list);
+      }
+      return Array.from(byDay.entries())
+        .map(([date, users]) => ({
+          date,
+          users: users.sort((a, b) => a.name.localeCompare(b.name)),
+        }))
+        .sort((a, b) => a.date.localeCompare(b.date));
+    })();
     const jiosCreatedPerDay = bucketByDay(
       s.events.filter((e) => inWindow(e.created_at)).map((e) => e.created_at!)
     );
@@ -2457,7 +2694,9 @@ export const demoRepo: Repo = {
     );
 
     // ---- Jio outcomes ----
-    const eventsInWindow = s.events.filter((e) => inWindow(e.created_at));
+    const eventsInWindow = s.events.filter(
+      (e) => inWindow(e.created_at) && (!segmentMembers || segmentMembers.has(e.host_id))
+    );
     const decided = eventsInWindow.filter(
       (e) => e.status === "closed" && e.winner_place_id
     ).length;
@@ -2613,6 +2852,7 @@ export const demoRepo: Repo = {
     return {
       windowDays: days,
       generatedAt: now.toISOString(),
+      appliedSegment: segment ?? null,
       funnel: {
         participatingDau: participatingToday.size,
         respondedToInviteTotal: s.rsvps.length,
@@ -2621,6 +2861,7 @@ export const demoRepo: Repo = {
       },
       growth: {
         newUsersPerDay,
+        newUsersDetail,
         jiosCreatedPerDay,
         placesAddedPerDay,
         kakiGroupsCreatedPerDay,
@@ -2655,6 +2896,297 @@ export const demoRepo: Repo = {
         savesPerWeek,
         mostSavedPlaces,
       },
+      performance: {
+        dauPerDay,
+        wauPerWeek,
+        mauPerMonth,
+      },
+      funnelSteps,
+    };
+  },
+
+  async getAdminPlaceDetail(placeId) {
+    const s = store();
+    const place = s.places.find((p) => p.id === placeId);
+    if (!place) return null;
+
+    const placeVisits = s.visits.filter((v) => v.place_id === placeId);
+
+    const visitCountByUser = new Map<string, number>();
+    for (const v of placeVisits) {
+      visitCountByUser.set(v.user_id, (visitCountByUser.get(v.user_id) ?? 0) + 1);
+    }
+    const visitors = Array.from(visitCountByUser.entries())
+      .map(([userId, count]) => ({
+        id: userId,
+        name: s.profiles.find((p) => p.user_id === userId)?.display_name ?? "Unknown",
+        count,
+      }))
+      .sort((a, b) => b.count - a.count);
+
+    const ratedVisits = placeVisits.filter(
+      (v) => typeof v.rating === "number" && v.created_at
+    );
+    const ratingByWeek = new Map<string, { sum: number; count: number }>();
+    for (const v of ratedVisits) {
+      const week = sgtWeekKey(v.created_at!);
+      const entry = ratingByWeek.get(week) ?? { sum: 0, count: 0 };
+      entry.sum += v.rating;
+      entry.count += 1;
+      ratingByWeek.set(week, entry);
+    }
+    const ratingTrend = Array.from(ratingByWeek.entries())
+      .map(([date, { sum, count }]) => ({
+        date,
+        avgRating: Math.round((sum / count) * 100) / 100,
+        count,
+      }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    const wishlistSaveCount = s.wishlist.filter((w) => w.place_id === placeId).length;
+    const lobangMentionCount = s.lobangs.filter((l) => l.place_id === placeId).length;
+
+    const distinctVisitorIds = Array.from(visitCountByUser.keys());
+    const visitorPrefs = distinctVisitorIds
+      .map((uid) => s.prefs.find((p) => p.user_id === uid))
+      .filter((p): p is NonNullable<typeof p> => Boolean(p));
+
+    const withCuisineLikes = visitorPrefs.filter((p) => p.cuisine_likes.length > 0);
+    const cuisineAlignmentPct =
+      withCuisineLikes.length > 0
+        ? Math.round(
+            (100 *
+              withCuisineLikes.filter((p) =>
+                p.cuisine_likes.some((c) => place.cuisine.includes(c))
+              ).length) /
+              withCuisineLikes.length
+          )
+        : null;
+
+    const budgetAlignmentPct =
+      visitorPrefs.length > 0
+        ? Math.round(
+            (100 *
+              visitorPrefs.filter(
+                (p) =>
+                  place.budget_tier >= p.budget_min && place.budget_tier <= p.budget_max
+              ).length) /
+              visitorPrefs.length
+          )
+        : null;
+
+    return {
+      placeId,
+      visitors,
+      ratingTrend,
+      wishlistSaveCount,
+      lobangMentionCount,
+      cuisineAlignmentPct,
+      budgetAlignmentPct,
+    };
+  },
+
+  async getAdminUsersData(days = 90) {
+    const s = store();
+    const now = new Date();
+    const cutoff = new Date(now.getTime() - days * 24 * 60 * 60 * 1000).toISOString();
+    const thirtyDaysAgo = new Date(
+      now.getTime() - 30 * 24 * 60 * 60 * 1000
+    ).toISOString();
+    const inWindow = (iso?: string | null) => Boolean(iso) && iso! >= cutoff;
+
+    const weights = s.engagementWeights;
+
+    const rows = s.profiles.map((p) => {
+      const uid = p.user_id;
+
+      const hostedCount = s.events.filter(
+        (e) => e.host_id === uid && inWindow(e.created_at)
+      ).length;
+      const votedEventIds = new Set(
+        s.votes
+          .filter((v) => v.user_id === uid && inWindow(v.created_at))
+          .map((v) => v.event_id)
+      );
+      const votedCount = votedEventIds.size;
+      // Lifetime, not windowed — event_rsvps has no timestamp column, the
+      // same schema gap as funnel.respondedToInviteTotal.
+      const rsvpCount = s.rsvps.filter((r) => r.user_id === uid).length;
+      const visitCount = s.visits.filter(
+        (v) => v.user_id === uid && inWindow(v.created_at)
+      ).length;
+      const reviewCount = s.visits.filter(
+        (v) => v.user_id === uid && v.is_public && inWindow(v.created_at)
+      ).length;
+      const lobangCount = s.lobangs.filter(
+        (l) => l.from_user_id === uid && inWindow(l.created_at)
+      ).length;
+
+      const activityTimestamps = [
+        ...s.events.filter((e) => e.host_id === uid).map((e) => e.created_at),
+        ...s.votes.filter((v) => v.user_id === uid).map((v) => v.created_at),
+        ...s.visits.filter((v) => v.user_id === uid).map((v) => v.created_at),
+        ...s.wishlist.filter((w) => w.user_id === uid).map((w) => w.created_at),
+        ...s.lobangs.filter((l) => l.from_user_id === uid).map((l) => l.created_at),
+        ...s.placeFlags.filter((f) => f.flagged_by === uid).map((f) => f.created_at),
+      ].filter((ts): ts is string => Boolean(ts));
+      const lastActiveAt =
+        activityTimestamps.length > 0
+          ? activityTimestamps.reduce((max, ts) => (ts > max ? ts : max))
+          : null;
+
+      const score =
+        hostedCount * weights.hosted +
+        votedCount * weights.voted +
+        rsvpCount * weights.rsvp +
+        visitCount * weights.visit +
+        reviewCount * weights.review +
+        lobangCount * weights.lobang;
+
+      return {
+        uid,
+        name: p.display_name,
+        signupAt: p.created_at,
+        hostedCount,
+        votedCount,
+        rsvpCount,
+        visitCount,
+        reviewCount,
+        lobangCount,
+        lastActiveAt,
+        score,
+      };
+    });
+
+    const toSummary = (r: (typeof rows)[number]) => ({
+      id: r.uid,
+      name: r.name,
+      score: Math.round(r.score * 10) / 10,
+      hostedCount: r.hostedCount,
+      votedCount: r.votedCount,
+      rsvpCount: r.rsvpCount,
+      visitCount: r.visitCount,
+      reviewCount: r.reviewCount,
+      lobangCount: r.lobangCount,
+    });
+
+    const leaderboard = rows
+      .filter((r) => r.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 20)
+      .map(toSummary);
+
+    return {
+      windowDays: days,
+      weights: { ...weights },
+      leaderboard,
+      segments: {
+        powerHosts: rows
+          .filter((r) => r.hostedCount >= 3 && r.votedCount <= 1)
+          .sort((a, b) => b.hostedCount - a.hostedCount)
+          .map(toSummary),
+        activeVoters: rows
+          .filter((r) => r.votedCount >= 3 && r.hostedCount <= 1)
+          .sort((a, b) => b.votedCount - a.votedCount)
+          .map(toSummary),
+        rsvpOnlyLurkers: rows
+          .filter((r) => r.rsvpCount >= 3 && r.votedCount === 0 && r.hostedCount === 0)
+          .sort((a, b) => b.rsvpCount - a.rsvpCount)
+          .map(toSummary),
+        reviewers: rows
+          .filter((r) => r.reviewCount >= 2)
+          .sort((a, b) => b.reviewCount - a.reviewCount)
+          .map(toSummary),
+        dormant: rows
+          .filter((r) => !r.lastActiveAt || r.lastActiveAt < thirtyDaysAgo)
+          .sort((a, b) => a.name.localeCompare(b.name))
+          .map(toSummary),
+        newAndActive: rows
+          .filter(
+            (r) =>
+              r.signupAt &&
+              r.signupAt >= thirtyDaysAgo &&
+              r.hostedCount + r.votedCount + r.visitCount + r.lobangCount > 0
+          )
+          .sort((a, b) => a.name.localeCompare(b.name))
+          .map(toSummary),
+      },
+    };
+  },
+
+  async updateEngagementWeights(weights) {
+    const s = store();
+    s.engagementWeights = { ...weights, updatedAt: new Date().toISOString() };
+    return { ...s.engagementWeights };
+  },
+
+  async getAdminUserDetail(userId) {
+    const s = store();
+    const profile = s.profiles.find((p) => p.user_id === userId);
+    if (!profile) return null;
+
+    const visits = s.visits.filter((v) => v.user_id === userId);
+    const hostedCount = s.events.filter((e) => e.host_id === userId).length;
+
+    const kakiIds = new Set(
+      s.kakiMembers.filter((m) => m.user_id === userId).map((m) => m.kaki_id)
+    );
+    const kakiMemberships = s.kakis
+      .filter((k) => kakiIds.has(k.id))
+      .map((k) => ({ id: k.id, name: k.name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    const lobangsSent = s.lobangs.filter((l) => l.from_user_id === userId).length;
+    const lobangsReceived = s.lobangs.filter((l) => l.to_user_id === userId).length;
+
+    const activityTimestamps = [
+      ...s.events.filter((e) => e.host_id === userId).map((e) => e.created_at),
+      ...s.votes.filter((v) => v.user_id === userId).map((v) => v.created_at),
+      ...s.visits.filter((v) => v.user_id === userId).map((v) => v.created_at),
+      ...s.wishlist.filter((w) => w.user_id === userId).map((w) => w.created_at),
+      ...s.lobangs.filter((l) => l.from_user_id === userId).map((l) => l.created_at),
+      ...s.placeFlags.filter((f) => f.flagged_by === userId).map((f) => f.created_at),
+    ].filter((ts): ts is string => Boolean(ts));
+    const lastActiveAt =
+      activityTimestamps.length > 0
+        ? activityTimestamps.reduce((max, ts) => (ts > max ? ts : max))
+        : null;
+
+    // Lifetime — every event this person was ever a participant in (host,
+    // Kaki member, or explicit invitee), the same resolution
+    // resolveEventParticipants() does for one event, run here across every
+    // event this person could ever have been part of.
+    const invitedEventIds = new Set<string>();
+    for (const e of s.events) {
+      if (e.host_id === userId) invitedEventIds.add(e.id);
+      else if (e.kaki_id && kakiIds.has(e.kaki_id)) invitedEventIds.add(e.id);
+    }
+    for (const invitee of s.invitees) {
+      if (invitee.user_id === userId) invitedEventIds.add(invitee.event_id);
+    }
+    const rsvpResponsivenessPct =
+      invitedEventIds.size > 0
+        ? Math.round(
+            (100 *
+              Array.from(invitedEventIds).filter((eventId) =>
+                s.rsvps.some((r) => r.event_id === eventId && r.user_id === userId)
+              ).length) /
+              invitedEventIds.size
+          )
+        : null;
+
+    const metrics = computeUserMetrics(visits, s.places);
+
+    return {
+      userId,
+      name: profile.display_name,
+      metrics,
+      hostedCount,
+      kakiMemberships,
+      lobangsSent,
+      lobangsReceived,
+      lastActiveAt,
+      rsvpResponsivenessPct,
     };
   },
 

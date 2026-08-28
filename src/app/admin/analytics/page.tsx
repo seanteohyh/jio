@@ -1,93 +1,89 @@
 "use client";
 
+import { useState } from "react";
 import useSWR from "swr";
-import { EmptyState, ErrorNote, SkeletonDetail } from "@/components/ui";
+import { ErrorNote, SkeletonDetail } from "@/components/ui";
 import {
-  ContentSection,
   FunnelSection,
+  FunnelStepsSection,
   GrowthSection,
   JioOutcomesSection,
-  ModerationSection,
-  PerformanceSection,
-  SocialSection,
-  WishlistSection,
 } from "@/components/admin/AdminAnalyticsCharts";
+import { useAnalyticsDays } from "@/components/admin/AdminDateRangePicker";
 import { fetcher } from "@/lib/fetcher";
-import type { AdminAnalytics, AuthUser } from "@/types";
+import type { AdminAnalytics, AdminUserSegmentKey } from "@/types";
 
-interface MeResponse {
-  user: (AuthUser & { is_admin: boolean }) | null;
-}
+const SEGMENT_LABELS: Record<AdminUserSegmentKey, string> = {
+  powerHosts: "Power hosts",
+  activeVoters: "Active voters",
+  rsvpOnlyLurkers: "RSVP-only lurkers",
+  reviewers: "Reviewers",
+  dormant: "Dormant",
+  newAndActive: "New & active",
+};
 
-/**
- * §13 admin analytics dashboard, Phase 1 (in-app). Real enforcement is
- * server-side — `/api/admin/analytics` 403s a non-admin, and in live mode
- * `get_admin_analytics` checks admin status itself before it will read
- * across every user's data. The `is_admin` check here just avoids flashing
- * business metrics at someone who can't actually load them.
+/** Overview — the sections every other view builds on: today's activity
+ *  snapshot, the real decided-Jio step funnel, growth over the window, and
+ *  how Jios have been resolving.
  *
- * Fixed 90-day window, no date-range picker in v1 (§13c) — revisit if a
- * second office arrives, alongside office-scoped breakdowns.
- */
-export default function AdminAnalyticsPage() {
-  const { data: me, isLoading: meLoading } = useSWR<MeResponse>(
-    "/api/me",
-    fetcher
-  );
-  const isAdmin = me?.user?.is_admin ?? false;
-
+ *  Part 1 §E — the segment filter re-slices Jio Outcomes and the real
+ *  funnel to just Jios hosted by the chosen segment's members. Growth and
+ *  the same-day funnel snapshot stay unfiltered on purpose: a segment like
+ *  "power host" is earned by activity a brand-new signup hasn't had time
+ *  to accumulate, so filtering "new users" by it wouldn't have a coherent
+ *  reading. */
+export default function AdminAnalyticsOverviewPage() {
+  const days = useAnalyticsDays();
+  const [segment, setSegment] = useState<AdminUserSegmentKey | "">("");
   const { data, error, isLoading } = useSWR<{ analytics: AdminAnalytics }>(
-    isAdmin ? "/api/admin/analytics?days=90" : null,
+    `/api/admin/analytics?days=${days}${segment ? `&segment=${segment}` : ""}`,
     fetcher
   );
 
-  if (meLoading) return <SkeletonDetail />;
-  if (!me?.user) return null;
-
-  if (!isAdmin) {
-    return (
-      <EmptyState
-        title="Admins only"
-        description="This view is restricted to Jio admins."
-      />
-    );
-  }
+  if (error) return <ErrorNote>{error.message}</ErrorNote>;
+  if (isLoading) return <SkeletonDetail />;
+  if (!data?.analytics) return null;
 
   return (
-    <div className="space-y-5">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight">Analytics</h1>
-        <p className="text-stone mt-1 text-sm">
-          Last 90 days. Phase 1 — in-app, fixed charts; a self-hosted
-          Metabase connected to the same database is the planned Phase 2
-          for ad-hoc slicing.
-        </p>
-      </header>
+    <>
+      <FunnelSection funnel={data.analytics.funnel} />
 
-      {error && <ErrorNote>{error.message}</ErrorNote>}
-      {isLoading && <SkeletonDetail />}
+      <div className="flex items-center gap-2 text-sm">
+        <label htmlFor="segment-filter" className="text-stone">
+          Slice Jio Outcomes + the real funnel by segment:
+        </label>
+        <select
+          id="segment-filter"
+          value={segment}
+          onChange={(e) => setSegment(e.target.value as AdminUserSegmentKey | "")}
+          className="border-line bg-paper text-ink rounded-lg border px-2 py-1"
+        >
+          <option value="">All</option>
+          {(Object.keys(SEGMENT_LABELS) as AdminUserSegmentKey[]).map((key) => (
+            <option key={key} value={key}>
+              {SEGMENT_LABELS[key]}
+            </option>
+          ))}
+        </select>
+      </div>
 
-      {data?.analytics && (
-        <>
-          <FunnelSection funnel={data.analytics.funnel} />
-          <GrowthSection
-            growth={data.analytics.growth}
-            windowDays={data.analytics.windowDays}
-          />
-          <JioOutcomesSection outcomes={data.analytics.jioOutcomes} />
-          <ContentSection content={data.analytics.content} />
-          <SocialSection social={data.analytics.social} />
-          <ModerationSection
-            moderation={data.analytics.moderation}
-            windowDays={data.analytics.windowDays}
-          />
-          <WishlistSection
-            wishlist={data.analytics.wishlist}
-            windowDays={data.analytics.windowDays}
-          />
-          <PerformanceSection />
-        </>
-      )}
-    </div>
+      <FunnelStepsSection
+        funnelSteps={data.analytics.funnelSteps}
+        windowDays={data.analytics.windowDays}
+        appliedSegmentLabel={
+          data.analytics.appliedSegment ? SEGMENT_LABELS[data.analytics.appliedSegment] : null
+        }
+      />
+      <GrowthSection
+        growth={data.analytics.growth}
+        windowDays={data.analytics.windowDays}
+      />
+      <JioOutcomesSection
+        outcomes={data.analytics.jioOutcomes}
+        appliedSegmentLabel={
+          data.analytics.appliedSegment ? SEGMENT_LABELS[data.analytics.appliedSegment] : null
+        }
+      />
+    </>
   );
 }

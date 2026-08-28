@@ -43,6 +43,50 @@ export function bucketByWeek(timestamps: string[]): DateCount[] {
   return bucketBy(timestamps, sgtWeekKey);
 }
 
+/** ISO date of the 1st of the Asia/Singapore month a timestamp falls in. */
+export function sgtMonthKey(iso: string): string {
+  const shifted = new Date(new Date(iso).getTime() + SGT_OFFSET_MS);
+  return `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, "0")}-01`;
+}
+
+/** One user's activity timestamp — the unit `bucketDistinctUsersBy*` groups
+ *  and de-duplicates, for DAU/WAU/MAU-style "how many distinct people did
+ *  *anything*" trends (CHANGES_20260821_combined.md Part 1 §F). Unlike
+ *  `bucketByDay`/`bucketByWeek` above (which count *events*), the same
+ *  user acting twice in one bucket must still count once. */
+export interface UserActivity {
+  userId: string;
+  createdAt: string;
+}
+
+function bucketDistinctUsersBy(
+  entries: UserActivity[],
+  keyOf: (iso: string) => string
+): DateCount[] {
+  const byBucket = new Map<string, Set<string>>();
+  for (const { userId, createdAt } of entries) {
+    const key = keyOf(createdAt);
+    const set = byBucket.get(key) ?? new Set<string>();
+    set.add(userId);
+    byBucket.set(key, set);
+  }
+  return Array.from(byBucket.entries())
+    .map(([date, set]) => ({ date, count: set.size }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+export function bucketDistinctUsersByDay(entries: UserActivity[]): DateCount[] {
+  return bucketDistinctUsersBy(entries, sgtDateKey);
+}
+
+export function bucketDistinctUsersByWeek(entries: UserActivity[]): DateCount[] {
+  return bucketDistinctUsersBy(entries, sgtWeekKey);
+}
+
+export function bucketDistinctUsersByMonth(entries: UserActivity[]): DateCount[] {
+  return bucketDistinctUsersBy(entries, sgtMonthKey);
+}
+
 /** Median of a numeric array. `null` for empty input — a median of "no
  *  data" is not a median of zero. */
 export function median(values: number[]): number | null {

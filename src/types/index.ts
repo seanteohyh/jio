@@ -781,6 +781,10 @@ export interface NamedCount {
 export interface AdminAnalytics {
   windowDays: number;
   generatedAt: string;
+  /** Part 1 §E — the segment (if any) `jioOutcomes`/`funnelSteps` are
+   *  currently restricted to (Jios hosted by that segment's members).
+   *  `null` means unfiltered, the normal case. */
+  appliedSegment: AdminUserSegmentKey | null;
 
   funnel: {
     /** Today only (Asia/Singapore), not a window total — a funnel is a
@@ -798,6 +802,10 @@ export interface AdminAnalytics {
 
   growth: {
     newUsersPerDay: DateCount[];
+    /** Part 1 §E — who actually joined each day, powering the "new users"
+     *  sparkline's click-through. Sparse like `newUsersPerDay` itself: a
+     *  day with no signups has no entry. */
+    newUsersDetail: { date: string; users: { id: string; name: string }[] }[];
     jiosCreatedPerDay: DateCount[];
     /**
      * All places created, any path. The Growth table asked for a split
@@ -850,6 +858,180 @@ export interface AdminAnalytics {
     savesPerWeek: DateCount[];
     mostSavedPlaces: NamedCount[];
   };
+
+  /**
+   * In-app usage trend (CHANGES_20260821_combined.md Part 1 §F) — distinct
+   * users per bucket across the same six "did anything" signals `funnel.
+   * participatingDau` already uses for today, extended over the full
+   * trailing window instead of just today. This is deliberately separate
+   * from Vercel's page-view analytics (still linked from the Performance
+   * view) — this is "how many people used the app," not "how many pages
+   * were requested."
+   */
+  performance: {
+    dauPerDay: DateCount[];
+    wauPerWeek: DateCount[];
+    mauPerMonth: DateCount[];
+  };
+
+  /**
+   * The real step funnel (Part 1 §D) — replaces `funnel`'s four same-day
+   * counts (never a true funnel: no shared population, no drop-off) with an
+   * actual invited → responded → voted → attended → reviewed conversion
+   * over every *decided* Jio (closed with a winner) in the window. A Jio
+   * that never resolved has nothing to attend or review, so the population
+   * is scoped to decided Jios only — unlike `funnel.participatingDau` above,
+   * which counts any activity regardless of outcome.
+   *
+   * "Attended" = RSVP'd yes (decided in §2 of the source doc — the app's
+   * own explicit signal, higher coverage than requiring a logged visit).
+   * "Reviewed" is the one approximation the schema forces: `visits` has no
+   * `event_id`, so it can't be tied to *which* Jio prompted it — this counts
+   * a participant as reviewed if they logged any visit to the winning place
+   * at or after the Jio's `closed_at`. A person who separately visits the
+   * same place for an unrelated reason shortly after could be miscounted;
+   * worth adding `visits.event_id` if this funnel becomes a priority.
+   */
+  funnelSteps: {
+    steps: {
+      step: "invited" | "responded" | "voted" | "attended" | "reviewed";
+      count: number;
+    }[];
+    /** Each series bucketed by the *Jio's* creation week, so a trend reads
+     *  "of the Jios created that week, how many invite-instances eventually
+     *  reached this step" — not when the RSVP/vote/visit itself happened. */
+    trend: {
+      invitedPerWeek: DateCount[];
+      respondedPerWeek: DateCount[];
+      votedPerWeek: DateCount[];
+      attendedPerWeek: DateCount[];
+      reviewedPerWeek: DateCount[];
+    };
+    /** One row per Asia/Singapore week a participant signed up in, showing
+     *  how that signup cohort converted across every decided Jio they were
+     *  part of in the window — not just Jios created that week. */
+    cohortBySignupWeek: {
+      weekStart: string;
+      invited: number;
+      responded: number;
+      voted: number;
+      attended: number;
+      reviewed: number;
+    }[];
+  };
+}
+
+/**
+ * Part 1 §C — a single place's drill-down behind the Places view's
+ * click-through (same pattern as the Users view's per-person drill-down).
+ * `null` from `getAdminPlaceDetail` means the place id doesn't exist —
+ * distinct from a real place with zero of everything.
+ */
+export interface AdminPlaceDetail {
+  placeId: string;
+  /** Everyone who's logged a visit here, ranked by visit count. */
+  visitors: NamedCount[];
+  /** Weekly average rating — a trend, not just `Place.avg_rating`'s single
+   *  current number. Only weeks with at least one rated visit appear. */
+  ratingTrend: { date: string; avgRating: number; count: number }[];
+  wishlistSaveCount: number;
+  /** How many `lobangs` (personal "you should try this" tip-offs) named
+   *  this place, from anyone to anyone. */
+  lobangMentionCount: number;
+  /** % of this place's distinct visitors whose `cuisine_likes` overlaps the
+   *  place's own cuisine tags. `null` when no visitor has any cuisine
+   *  preference recorded to compare against — not the same as 0%. */
+  cuisineAlignmentPct: number | null;
+  /** % of this place's distinct visitors whose [budget_min, budget_max]
+   *  range includes the place's `budget_tier`. `null` with zero visitors. */
+  budgetAlignmentPct: number | null;
+}
+
+/**
+ * Part 1 §B — per-activity-type weighting for the Users view's composite
+ * engagement score. Equal (1) by default, but a real, persisted, admin-
+ * editable setting (`admin_engagement_weights`, migration 064) rather than
+ * a hardcoded constant — the source doc was explicit that "equal for now"
+ * still needed its own small settings surface, since the next admin may
+ * want to weight differently.
+ */
+export interface AdminEngagementWeights {
+  hosted: number;
+  voted: number;
+  rsvp: number;
+  visit: number;
+  review: number;
+  lobang: number;
+  /** `null` if the weights have never been changed from their seeded
+   *  default. */
+  updatedAt: string | null;
+}
+
+/** One person's row in the Users view's leaderboard or a segment list —
+ *  the composite score alongside every signal that fed it, so the number
+ *  is never the only thing visible (per the source doc's §2 decision). */
+export interface AdminUserSummary {
+  id: string;
+  name: string;
+  score: number;
+  hostedCount: number;
+  votedCount: number;
+  /** Lifetime, not windowed — `event_rsvps` has no timestamp column, the
+   *  same schema gap as `funnel.respondedToInviteTotal`. */
+  rsvpCount: number;
+  visitCount: number;
+  /** Visits with `is_public` set — a review, not just a private diary
+   *  entry, distinct from `visitCount`. */
+  reviewCount: number;
+  lobangCount: number;
+}
+
+export type AdminUserSegmentKey =
+  | "powerHosts"
+  | "activeVoters"
+  | "rsvpOnlyLurkers"
+  | "reviewers"
+  | "dormant"
+  | "newAndActive";
+
+/**
+ * Part 1 §B's Users view. Rule-based segments, not ML/clustering — deemed
+ * overkill for a small internal tool and worse than named, explainable
+ * groups for Sean's stated use ("ask the person for their ideas"). A
+ * person can land in more than one segment; these aren't partitions.
+ */
+export interface AdminUsersData {
+  windowDays: number;
+  weights: AdminEngagementWeights;
+  /** Top scorers with a score above zero, ranked — everyone else still
+   *  shows up in whichever segments they match, just not here. */
+  leaderboard: AdminUserSummary[];
+  segments: Record<AdminUserSegmentKey, AdminUserSummary[]>;
+}
+
+/**
+ * Part 1 §B's per-person drill-down — reuses `computeUserMetrics` (already
+ * storage-agnostic, never tied to "the logged-in user") pointed at one
+ * target, plus admin-only context alongside it. `visits` here is every
+ * visit regardless of `is_public` — a deliberate, documented privacy debt
+ * (source doc §2): full detail for now, worth tightening to aggregate-only
+ * once more admins are added, since the risk of exposure grows with the
+ * admin list, not with this feature itself.
+ */
+export interface AdminUserDetail {
+  userId: string;
+  name: string;
+  metrics: UserMetrics;
+  hostedCount: number;
+  kakiMemberships: { id: string; name: string }[];
+  lobangsSent: number;
+  lobangsReceived: number;
+  /** `null` if this person has never done anything at all. */
+  lastActiveAt: string | null;
+  /** % of Jios this person was ever invited to (host, Kaki member, or
+   *  explicit invitee) that they RSVP'd to at all, lifetime. `null` if
+   *  they've never been invited to one. */
+  rsvpResponsivenessPct: number | null;
 }
 
 // ---------------------------------------------------------------------------
