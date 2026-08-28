@@ -15,6 +15,7 @@ import {
   inputClass,
 } from "@/components/ui";
 import { UserMetricsCharts } from "@/components/MetricsCharts";
+import FoodIdentityCard from "@/components/profile/FoodIdentityCard";
 import PastJios from "@/components/profile/PastJios";
 import LobangInbox from "@/components/profile/LobangInbox";
 import AttachEmailPanel from "@/components/profile/AttachEmailPanel";
@@ -43,6 +44,7 @@ import type {
   BudgetTier,
   CuisineOption,
   Office,
+  UserFoodIdentitySnapshot,
   UserMetrics,
   UserPrefs,
   Visit,
@@ -72,10 +74,10 @@ export default function ProfilePage() {
     user: (AuthUser & { is_admin: boolean }) | null;
   }>("/api/me", fetcher);
   const [emailAttached, setEmailAttached] = useState(false);
-  const { data: metricsData } = useSWR<{ user: UserMetrics }>(
-    features.metrics ? "/api/metrics" : null,
-    fetcher
-  );
+  const { data: metricsData } = useSWR<{
+    user: UserMetrics;
+    foodIdentity: UserFoodIdentitySnapshot | null;
+  }>(features.metrics ? "/api/metrics" : null, fetcher);
   const { data: visitsData } = useSWR<{ visits: Visit[] }>(
     "/api/visits",
     fetcher
@@ -326,8 +328,11 @@ export default function ProfilePage() {
           <ZoneLabel>Your activity</ZoneLabel>
 
           {features.metrics && metricsData?.user && (
-            <section>
+            <section className="space-y-3">
               <SectionHeading>Your numbers</SectionHeading>
+              {metricsData.user.totalVisits > 0 && (
+                <FoodIdentityCard snapshot={metricsData.foodIdentity ?? null} />
+              )}
               <UserMetricsCharts metrics={metricsData.user} />
             </section>
           )}

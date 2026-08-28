@@ -68,8 +68,11 @@ import type {
   Filters,
   FlagReason,
   FlagResolution,
+  FoodIdentityCard,
   Kaki,
   KakiDetail,
+  KakiFoodIdentityCard,
+  KakiFoodIdentitySnapshot,
   KakiMember,
   Lobang,
   LobangTarget,
@@ -85,6 +88,7 @@ import type {
   RecurringSeries,
   RsvpResponse,
   TeamUser,
+  UserFoodIdentitySnapshot,
   UserPrefs,
   Visit,
   WalkCacheEntry,
@@ -143,6 +147,14 @@ interface DemoStore {
    *  equal by default but admin-editable (`updateEngagementWeights`), same
    *  singleton-row shape as `admin_engagement_weights` in live mode. */
   engagementWeights: AdminEngagementWeights;
+  /** CHANGES_20260821_combined2.md Item 1 — locked monthly food identity
+   *  snapshots, written only by the monthly cron. Carries the id fields
+   *  the real tables key on but the plain `UserFoodIdentitySnapshot`/
+   *  `KakiFoodIdentitySnapshot` types don't (the caller already knows
+   *  whose row it is), same reason other demo-store rows sometimes carry
+   *  a bit more than what's returned to callers. */
+  userFoodIdentitySnapshots: (UserFoodIdentitySnapshot & { user_id: string })[];
+  kakiFoodIdentitySnapshots: (KakiFoodIdentitySnapshot & { kaki_id: string })[];
 }
 
 const globalStore = globalThis as typeof globalThis & {
@@ -187,6 +199,8 @@ function seed(): DemoStore {
       lobang: 1,
       updatedAt: null,
     },
+    userFoodIdentitySnapshots: [],
+    kakiFoodIdentitySnapshots: [],
   };
 }
 
@@ -867,6 +881,18 @@ export const demoRepo: Repo = {
     return s.profiles[index];
   },
 
+  async markFirstDecidedCelebrationShown(userId) {
+    const s = store();
+    const index = s.profiles.findIndex((p) => p.user_id === userId);
+    if (index === -1 || s.profiles[index].first_decided_celebration_shown_at) {
+      return;
+    }
+    s.profiles[index] = {
+      ...s.profiles[index],
+      first_decided_celebration_shown_at: new Date().toISOString(),
+    };
+  },
+
   async getDisplayNames(userIds) {
     const map = new Map<string, string>();
     for (const id of userIds) map.set(id, displayNameFor(id));
@@ -1163,6 +1189,35 @@ export const demoRepo: Repo = {
       candidateDates,
       dateVotes,
       tally: eventTally(event.id),
+    };
+  },
+
+  async getPublicEventPreview(token) {
+    const s = store();
+    // Resolved by invite_token only, never a raw id — this is reachable
+    // with no session at all, unlike getEvent above.
+    const event = s.events.find((e) => e.invite_token === token);
+    if (!event) return null;
+
+    const goingCount = s.rsvps.filter(
+      (r) => r.event_id === event.id && r.response === "yes"
+    ).length;
+
+    const placeOptions = s.options
+      .filter((o) => o.event_id === event.id)
+      .map((o) => {
+        const place = s.places.find((p) => p.id === o.place_id);
+        return { id: o.place_id, name: place?.name ?? o.label ?? "A place" };
+      });
+
+    return {
+      title: event.title,
+      hostName: displayNameFor(event.host_id),
+      scheduledAt: event.scheduled_at,
+      datePhase: event.date_phase ?? null,
+      status: event.status,
+      goingCount,
+      placeOptions,
     };
   },
 
@@ -3568,6 +3623,70 @@ export const demoRepo: Repo = {
     const profile = s.profiles.find((p) => p.user_id === entry.user_id);
     if (!profile) return null;
     return { user_id: profile.user_id, display_name: profile.display_name };
+  },
+
+  async listAllUserIds() {
+    return store().profiles.map((p) => p.user_id);
+  },
+
+  async listAllKakiIds() {
+    return store().kakis.map((k) => k.id);
+  },
+
+  async saveUserFoodIdentitySnapshot(
+    userId: string,
+    month: string,
+    card: FoodIdentityCard
+  ) {
+    const s = store();
+    const row = {
+      user_id: userId,
+      ...card,
+      month,
+      computed_at: new Date().toISOString(),
+    };
+    const index = s.userFoodIdentitySnapshots.findIndex(
+      (r) => r.month === month && r.user_id === userId
+    );
+    if (index === -1) {
+      s.userFoodIdentitySnapshots.push(row);
+    } else {
+      s.userFoodIdentitySnapshots[index] = row;
+    }
+  },
+
+  async listUserFoodIdentitySnapshots(userId: string) {
+    return store()
+      .userFoodIdentitySnapshots.filter((row) => row.user_id === userId)
+      .sort((a, b) => b.month.localeCompare(a.month));
+  },
+
+  async saveKakiFoodIdentitySnapshot(
+    kakiId: string,
+    month: string,
+    card: KakiFoodIdentityCard
+  ) {
+    const s = store();
+    const row = {
+      kaki_id: kakiId,
+      ...card,
+      month,
+      computed_at: new Date().toISOString(),
+    };
+    const index = s.kakiFoodIdentitySnapshots.findIndex(
+      (r) => r.month === month && r.kaki_id === kakiId
+    );
+    if (index === -1) {
+      s.kakiFoodIdentitySnapshots.push(row);
+    } else {
+      s.kakiFoodIdentitySnapshots[index] = row;
+    }
+  },
+
+  async listKakiFoodIdentitySnapshots(kakiId: string) {
+    return store()
+      .kakiFoodIdentitySnapshots.filter((row) => row.kaki_id === kakiId)
+      .sort((a, b) => b.month.localeCompare(a.month));
   },
 };
 

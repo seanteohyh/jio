@@ -14,8 +14,11 @@ import type {
   Filters,
   FlagReason,
   FlagResolution,
+  FoodIdentityCard,
   Kaki,
   KakiDetail,
+  KakiFoodIdentityCard,
+  KakiFoodIdentitySnapshot,
   Lobang,
   LobangTarget,
   LunchEvent,
@@ -24,6 +27,7 @@ import type {
   Place,
   PlaceFlag,
   PlacesPage,
+  PublicEventPreview,
   PublicLobang,
   PublicPlace,
   PersonalInvite,
@@ -35,6 +39,7 @@ import type {
   RsvpResponse,
   ScoredPlace,
   TeamUser,
+  UserFoodIdentitySnapshot,
   UserPrefs,
   Visit,
   WalkCacheEntry,
@@ -228,6 +233,14 @@ export interface Repo {
    * later rename on /profile), which never touches `onboarded_at`.
    */
   completeOnboarding(userId: string, displayName: string): Promise<Profile>;
+  /**
+   * CHANGES_20260821_combined2.md §3D — stamps
+   * `first_decided_celebration_shown_at` if it isn't already set. Idempotent
+   * by design: called every time the one-time celebration's condition is
+   * met, which is itself gated on this column still being null, so a
+   * caller never has to check first.
+   */
+  markFirstDecidedCelebrationShown(userId: string): Promise<void>;
 
   // ---- Lunch events ----
   createEvent(
@@ -261,6 +274,14 @@ export interface Repo {
     timeOfDay?: string
   ): Promise<LunchEvent>;
   getEvent(idOrToken: string): Promise<EventDetail | null>;
+  /**
+   * CHANGES_20260821_combined2.md §3A — the signed-out preview at
+   * `/e/[token]`, resolved by `invite_token` only (never a raw id, unlike
+   * `getEvent`) since this is reachable with no session at all. Narrow on
+   * purpose — see `PublicEventPreview`'s own doc comment for exactly what's
+   * excluded and why.
+   */
+  getPublicEventPreview(token: string): Promise<PublicEventPreview | null>;
   listEvents(userId: string): Promise<LunchEvent[]>;
   /**
    * Adds another candidate date to an already-polling Flexi Jio. Same
@@ -818,6 +839,42 @@ export interface Repo {
    * token in this schema.
    */
   resolvePersonalInvite(token: string): Promise<PersonalInvite | null>;
+
+  // ---- Food identity (CHANGES_20260821_combined2.md Item 1) ----
+  /** Every account with a profile — the monthly cron's iteration set for
+   *  user-level snapshots. Not scoped to an office: this pilot only really
+   *  has the one, and nothing here needs to change if that stops being
+   *  true. */
+  listAllUserIds(): Promise<string[]>;
+  /** Every Kaki that exists — the monthly cron's iteration set for
+   *  group-level snapshots. */
+  listAllKakiIds(): Promise<string[]>;
+  /**
+   * Locks in one month's card for one account. Called only by the monthly
+   * cron; there is no authenticated write policy on the underlying table
+   * (see 068_food_identity_snapshots.sql), so nothing else can call this
+   * successfully against a real Supabase project even if it tried to.
+   * Upserts on (userId, month) — safe to re-run the same month.
+   */
+  saveUserFoodIdentitySnapshot(
+    userId: string,
+    month: string,
+    card: FoodIdentityCard
+  ): Promise<void>;
+  /** Every locked month for this account, most recent first. */
+  listUserFoodIdentitySnapshots(
+    userId: string
+  ): Promise<UserFoodIdentitySnapshot[]>;
+  /** Same shape as `saveUserFoodIdentitySnapshot`, for a Kaki's card. */
+  saveKakiFoodIdentitySnapshot(
+    kakiId: string,
+    month: string,
+    card: KakiFoodIdentityCard
+  ): Promise<void>;
+  /** Every locked month for this Kaki, most recent first. */
+  listKakiFoodIdentitySnapshots(
+    kakiId: string
+  ): Promise<KakiFoodIdentitySnapshot[]>;
 }
 
 /** Method names the conformance test walks. Keep in sync with the interface. */
@@ -852,9 +909,11 @@ export const REPO_METHODS = [
   "getPushTargets",
   "listAllUsers",
   "completeOnboarding",
+  "markFirstDecidedCelebrationShown",
   "createEvent",
   "createFlexiEvent",
   "getEvent",
+  "getPublicEventPreview",
   "listEvents",
   "addCandidateDate",
   "markDateAvailability",
@@ -926,6 +985,12 @@ export const REPO_METHODS = [
   "mergeCuisines",
   "generatePersonalInviteToken",
   "resolvePersonalInvite",
+  "listAllUserIds",
+  "listAllKakiIds",
+  "saveUserFoodIdentitySnapshot",
+  "listUserFoodIdentitySnapshots",
+  "saveKakiFoodIdentitySnapshot",
+  "listKakiFoodIdentitySnapshots",
 ] as const;
 
 export type RepoMethod = (typeof REPO_METHODS)[number];

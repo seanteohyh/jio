@@ -34,9 +34,17 @@ export async function GET(_request: NextRequest, { params }: Params) {
 
     const metrics = computeKakiMetrics(memberVisits, places, kaki.members);
 
+    // CHANGES_20260821_combined2.md Item 1 — the latest locked monthly
+    // snapshot, not a live computation off `metrics` above: see the cron
+    // for why. `null` until the cron has run at least once for this group.
+    const foodIdentityHistory = await repo.listKakiFoodIdentitySnapshots(id);
+    const foodIdentity = foodIdentityHistory[0] ?? null;
+
     return json({
       kaki,
       metrics,
+      foodIdentity,
+      foodIdentityHistory,
       viewer: {
         id: user.id,
         isMember: kaki.members.some((m) => m.user_id === user.id),

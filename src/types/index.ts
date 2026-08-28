@@ -206,6 +206,13 @@ export interface Profile {
    *  and anything added later. `notify_lobangs` exists in the schema
    *  (migration 025) but has no UI or trigger yet; out of scope for §6. */
   notify_events?: boolean;
+  /**
+   * CHANGES_20260821_combined2.md §3D — set the first time this account
+   * ever loads a decided Jio's page having both RSVP'd (any response) and
+   * voted on it. Null forever after means "never fires again," same
+   * one-shot shape as `onboarded_at`.
+   */
+  first_decided_celebration_shown_at?: string | null;
 }
 
 /** What a browser hands back from `PushManager.subscribe()`, trimmed to
@@ -481,6 +488,26 @@ export interface EventDetail extends LunchEvent {
   dateVotes: EventDateVote[];
 }
 
+/**
+ * CHANGES_20260821_combined2.md §3A — the narrow, privacy-safe shape a
+ * signed-out visitor sees at `/e/[token]` before the signup wall, same
+ * "unguessable token, SECURITY DEFINER resolver, narrow column list" shape
+ * as `PublicPlace`/`get_public_place`. Deliberately excludes anything a
+ * teammate's own vote or identity could leak through: no `tally`, no
+ * `votes`, no `invitees`, no per-person RSVP list, no option-level vote
+ * counts or `added_by`. `goingCount` is a rough headline number (RSVP'd
+ * "yes"), not a roster.
+ */
+export interface PublicEventPreview {
+  title: string;
+  hostName: string;
+  scheduledAt: string;
+  datePhase: DatePhase | null;
+  status: EventStatus;
+  goingCount: number;
+  placeOptions: { id: string; name: string }[];
+}
+
 // ---------------------------------------------------------------------------
 // Wishlist, recos, kakis
 // ---------------------------------------------------------------------------
@@ -750,6 +777,50 @@ export interface KakiMetrics {
   groupCuisineBreakdown: Record<string, number>;
   mostActiveMember: { user_id: string; visits: number } | null;
   adventurer: { user_id: string; distinctPlaces: number } | null;
+}
+
+/**
+ * CHANGES_20260821_combined2.md Item 1 — rule-based "food identity" cards,
+ * derived from `UserMetrics`/`KakiMetrics` rather than anything trained.
+ * See `src/lib/foodIdentity.ts` for the exact thresholds and priority
+ * order.
+ */
+export type FoodArchetype =
+  | "loyalist"
+  | "explorer"
+  | "regular"
+  | "enthusiast"
+  | "connoisseur"
+  | "budget_hunter"
+  | "well_rounded"
+  | "just_getting_started";
+
+export interface FoodIdentityCard {
+  archetype: FoodArchetype;
+  headline: string;
+  description: string;
+}
+
+/** A locked snapshot of one month's `FoodIdentityCard` — see 068_food_identity_snapshots.sql. */
+export interface UserFoodIdentitySnapshot extends FoodIdentityCard {
+  /** "YYYY-MM". */
+  month: string;
+  computed_at: string;
+}
+
+/** Kaki-level card: a group vibe headline plus the two award slots,
+ *  elevated from the plain stat tiles they replace. Positive-only by
+ *  design — there is no "least adventurous" or equivalent negative slot. */
+export interface KakiFoodIdentityCard {
+  headline: string;
+  description: string;
+  mostActive: { user_id: string; visits: number } | null;
+  adventurer: { user_id: string; distinctPlaces: number } | null;
+}
+
+export interface KakiFoodIdentitySnapshot extends KakiFoodIdentityCard {
+  month: string;
+  computed_at: string;
 }
 
 export interface CuisineStreak {

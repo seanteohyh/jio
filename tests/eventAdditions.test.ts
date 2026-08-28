@@ -280,6 +280,22 @@ describe("joining via an invite link", () => {
     expect(detail?.invitees.map((i) => i.user_id)).toContain(STRANGER);
   });
 
+  // CHANGES_20260821_combined2.md §2 — /e/[token]'s first-timer redirect
+  // checks listEvents(user.id) *before* calling joinEventViaInvite, since a
+  // stranger's very first join is what would otherwise make that list
+  // non-empty. This pins the ordering assumption: empty before, non-empty
+  // (containing exactly this join) after.
+  it("is empty for a genuine first-timer right up until their first join", async () => {
+    const event = await makeEvent();
+    expect(await demoRepo.listEvents(STRANGER)).toEqual([]);
+
+    await demoRepo.joinEventViaInvite(event.id, STRANGER);
+
+    const afterJoin = await demoRepo.listEvents(STRANGER);
+    expect(afterJoin).toHaveLength(1);
+    expect(afterJoin[0].id).toBe(event.id);
+  });
+
   it("is a no-op for the host joining their own event", async () => {
     const event = await makeEvent();
     await demoRepo.joinEventViaInvite(event.id, DEMO_USER_ID);
