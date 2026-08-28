@@ -1796,6 +1796,56 @@ export const demoRepo: Repo = {
     return detail;
   },
 
+  async maybeAutoCloseEvent(eventId) {
+    const s = store();
+    const index = s.events.findIndex((e) => e.id === eventId);
+    if (index === -1) return null;
+    const event = s.events[index];
+
+    if (event.status !== "open") return null;
+    if (event.date_phase === "polling") return null;
+
+    const participants = resolveEventParticipants(event);
+    const rsvpByUser = new Map(
+      s.rsvps
+        .filter((r) => r.event_id === eventId)
+        .map((r) => [r.user_id, r.response])
+    );
+
+    // Every participant must have confirmed or declined — "maybe", or no
+    // response at all, both leave this Jio open, same as a still-silent
+    // invitee would.
+    for (const userId of participants) {
+      const response = rsvpByUser.get(userId);
+      if (response !== "yes" && response !== "no") return null;
+    }
+
+    // Everyone who confirmed going must have actually voted.
+    const votedUserIds = new Set(
+      s.votes.filter((v) => v.event_id === eventId).map((v) => v.user_id)
+    );
+    for (const userId of participants) {
+      if (rsvpByUser.get(userId) === "yes" && !votedUserIds.has(userId)) {
+        return null;
+      }
+    }
+
+    const optionIds = s.options
+      .filter((o) => o.event_id === eventId)
+      .map((o) => o.place_id);
+    const votes = s.votes.filter((v) => v.event_id === eventId);
+    const winner = computeWinner(votes, optionIds).winnerId;
+
+    s.events[index] = {
+      ...event,
+      status: "closed",
+      winner_place_id: winner,
+      closed_at: new Date().toISOString(),
+    };
+
+    return demoRepo.getEvent(eventId);
+  },
+
   // ---- Recurring series ----
 
   async createRecurringSeries(data) {
