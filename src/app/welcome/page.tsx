@@ -174,6 +174,7 @@ export default function WelcomePage() {
                 </Chip>
               ))}
             </div>
+            <p className="text-stone text-xs">Usual spend per meal</p>
             <div className="flex flex-wrap gap-1.5">
               {BUDGET_TIERS.map((t) => (
                 <Chip
@@ -183,7 +184,10 @@ export default function WelcomePage() {
                     setBudgetTier((prev) => (prev === t.tier ? null : t.tier))
                   }
                 >
-                  {t.label}
+                  <span className="flex flex-col items-center leading-tight">
+                    <span>{t.label}</span>
+                    <span className="text-[9px] opacity-70">{t.description}</span>
+                  </span>
                 </Chip>
               ))}
             </div>

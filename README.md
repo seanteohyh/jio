@@ -140,22 +140,27 @@ in this mode. Asking for a name and then asking again to confirm it was one
 question too many. `/welcome` still exists for `email` mode, where people
 genuinely arrive without having given a name.
 
-**Known gap:** `/e/[token]`'s own `onboarded_at` check (CHANGES_20260821_combined2.md
-§2 — added so a first-timer invited straight into a Jio lands on `/welcome`/Home
-at least once instead of skipping both entirely) only actually fires in `email`
-mode. In `name` mode, onboarding is already stamped the moment sign-in
-completes — before `/e/[token]` ever runs — so the check there is always
-already satisfied and this route still forwards straight into the event for a
-`name`-mode first-timer. A mode-agnostic fix (checking whether this is the
-account's first-ever Jio at all, not its onboarding status) is the real fix
-for `name` mode and is not yet built.
+**`/e/[token]`'s first-timer redirect (CHANGES_20260821_combined2.md §2) uses
+two independent signals, not one, because `name` mode breaks the obvious
+one.** The obvious check — `!profile.onboarded_at`, the same gate Home
+already has — only actually catches an `email`-mode first-timer, since
+onboarding there genuinely lags behind sign-in. In `name` mode (the mode
+actually deployed today, `email` planned once the user pool grows) onboarding
+is stamped the moment sign-in completes, before `/e/[token]` ever runs, so
+that check is always already satisfied and would never fire for a real
+`name`-mode first-timer. The second signal — `listEvents(user.id)` returning
+empty *before* the join below runs, i.e. this account has never touched a
+single Jio in any capacity (host, invitee, kaki member, voter, or RSVP) —
+is mode-agnostic and is what actually catches it; either signal being true
+routes through `/welcome`.
 
 `/welcome` itself also grew three optional additions (CHANGES_20260821_combined2.md
 §2/§3B), all skippable via the one Continue button: a two-tap taste-preference
 bootstrap (a curated handful of cuisine chips, multi-select, plus a single-select
-row of the six budget-tier pills — deliberately simpler than `/profile`'s own
-Taste section's like/dislike cycling and min/max budget range, since this is a
-head start, not a full preference edit) that seeds `cuisine_likes`/
+row of the six budget-tier pills, each labeled with its actual dollar range —
+`$` alone doesn't mean anything on first sight — deliberately simpler than
+`/profile`'s own Taste section's like/dislike cycling and min/max budget
+range, since this is a head start, not a full preference edit) that seeds `cuisine_likes`/
 `budget_min`/`budget_max` so a first `/suggest` visit isn't running on an empty
 profile; the person's own personal invite link/QR (`PersonalInvitePanel`,
 reused as-is); and a pointer to `/suggest` as the no-group option.
@@ -1080,7 +1085,7 @@ does the reassignment, not the authorization check.
 ## Tests
 
 ```bash
-npm test          # 573 tests across 49 files
+npm test          # 574 tests across 49 files
 npm run typecheck
 npm run lint
 ```
@@ -1089,7 +1094,7 @@ npm run lint
 |---|---|
 | `recommend.test.ts` | Every scoring component, exclusions, ranking, boosts, group mode |
 | `blogImport.test.ts` | HTML extraction and the full SSRF matrix |
-| `eventAdditions.test.ts` | Who can add, remove, invite, vote and close; joining via an invite link makes a stranger a real invitee, not just visible; the vote-push throttle window; the starting-soon reminder's timing, one-shot firing, and non-responder targeting |
+| `eventAdditions.test.ts` | Who can add, remove, invite, vote and close; joining via an invite link makes a stranger a real invitee, not just visible; a genuine first-timer's `listEvents` is empty right up until their first join; the vote-push throttle window; the starting-soon reminder's timing, one-shot firing, and non-responder targeting |
 | `eventReminders.test.ts` | The configurable per-Jio "starting soon" reminder (CHANGES_20260821c.md §1) — a genuinely different feature from the row above's non-responder nudge: per-Jio override set/read/clear; `listAndClaimDueReminders` firing only for confirmed-going (RSVP `yes`) attendees within their effective lead time (override, else their `user_prefs` default), one-shot per (event, user), skipping cancelled Jios, already-passed Jios, and anyone with reminders turned off — including someone with no `user_prefs` row at all, who still gets the column defaults rather than being silently skipped |
 | `autoClose.test.ts` | `maybeAutoCloseEvent` (CHANGES_20260821_combined.md Part 2) — refuses while any participant hasn't responded or answered "maybe", refuses while any confirmed-yes participant hasn't voted, closes (with the real Borda winner) once every condition holds, closes with no winner when everyone declines, the host has no auto-confirm exception, a no-op on a still-polling Flexi Jio, an already-closed event, a cancelled event, and an event that doesn't exist |
 | `accountMerge.test.ts` | Duplicate-name grouping; merge authorization (self vs. admin vs. neither); row reassignment and collision handling across every owned table; recovery-token generation, resolution, regeneration, and cleanup after a merge; listing every admin |

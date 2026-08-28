@@ -20,6 +20,16 @@ import { formatDateTime } from "@/lib/utils";
  * resolver" shape as `/p/[id]`/`/l/[token]`. See `PublicEventPreview`'s own
  * doc comment for exactly what's excluded (votes, invitee identities, RSVP
  * names, per-option counts) and why.
+ *
+ * §2's first-timer fix uses *two* independent signals to decide whether to
+ * route through `/welcome` instead of straight into the event — deliberately
+ * not just one: `!profile.onboarded_at` catches an `email`-mode first-timer
+ * (onboarding genuinely hasn't happened yet), but is always already true by
+ * this point in `name` mode, since that mode's sign-in screen stamps
+ * onboarding immediately. `hadNoPriorJios` (this account has never touched
+ * *any* Jio before, checked before the join below adds this one) is what
+ * actually catches a `name`-mode first-timer, and works in `email` mode too
+ * — either signal being true is enough.
  */
 export default async function EventInvitePage({
   params,
@@ -103,14 +113,6 @@ export default async function EventInvitePage({
   const repo = await getRepoAsync();
   const event = await repo.getEvent(token);
 
-  if (event) {
-    // The comment above says following the link is the acceptance — this is
-    // what actually makes that true. Without it, a visitor who never RSVPs
-    // or votes has no footprint anywhere listEvents() is used, so their own
-    // Jios tab can't find something they were genuinely invited to (§4).
-    await repo.joinEventViaInvite(event.id, user.id);
-  }
-
   if (!event) {
     return (
       <div className="space-y-4 py-10 text-center">
@@ -122,6 +124,28 @@ export default async function EventInvitePage({
       </div>
     );
   }
+
+  // Checked *before* the join below, since joining is what would otherwise
+  // make this account's Jio list non-empty — this is the mode-agnostic
+  // signal for "has this account ever touched a single Jio before," used
+  // alongside (not instead of) the onboarded_at check further down. In
+  // `name` mode, sign-in itself stamps onboarding immediately, so
+  // onboarded_at alone is always already satisfied by the time this page
+  // runs and never catches a name-mode first-timer — this is what actually
+  // does, regardless of which auth mode is configured.
+  let hadNoPriorJios = false;
+  try {
+    hadNoPriorJios = (await repo.listEvents(user.id)).length === 0;
+  } catch {
+    // Safer default: treat as not-a-first-timer rather than force everyone
+    // through /welcome if this lookup fails for some reason.
+  }
+
+  // The comment above says following the link is the acceptance — this is
+  // what actually makes that true. Without it, a visitor who never RSVPs
+  // or votes has no footprint anywhere listEvents() is used, so their own
+  // Jios tab can't find something they were genuinely invited to (§4).
+  await repo.joinEventViaInvite(event.id, user.id);
 
   // CHANGES_20260821_combined2.md §2 — a first-timer invited straight into a
   // Jio via this link never had this checked anywhere: Home is the only
@@ -138,7 +162,7 @@ export default async function EventInvitePage({
     // Fall through to the event page — the join already succeeded, so
     // that's still strictly better than an error here.
   }
-  if (profile && !profile.onboarded_at) {
+  if ((profile && !profile.onboarded_at) || hadNoPriorJios) {
     redirect("/welcome");
   }
 
