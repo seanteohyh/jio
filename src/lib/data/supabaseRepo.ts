@@ -2421,6 +2421,94 @@ export const supabaseRepo: Repo = {
     return detail;
   },
 
+  /**
+   * See the interface doc comment. Reads go through the normal client —
+   * `event_rsvps`/`event_votes`/`lunch_events` are all broadly readable
+   * (007_rls.sql), so there's no permission gap on the check itself. The
+   * write is the exception: whoever's RSVP or vote just made this true
+   * often isn't the host, and `lunch_events_update` only allows
+   * `host_id = auth.uid()` — the same "not necessarily the host's own
+   * request" problem `reopen_event`/`cancel_event` solved with a SQL
+   * function. This reuses the service-role client instead, since closing
+   * needs `computeWinner` (Borda counting, TypeScript) rather than
+   * reimplementing it in plpgsql — the README's documented escape hatch
+   * for exactly this "act outside one user's RLS scope" situation, same
+   * as the cron routes and `listReviewLikesSince` already do.
+   */
+  async maybeAutoCloseEvent(eventId) {
+    const client = await db();
+
+    const { data: eventRow } = await client
+      .from("lunch_events")
+      .select("host_id, kaki_id, status, date_phase")
+      .eq("id", eventId)
+      .maybeSingle();
+    if (!eventRow) return null;
+    const event = eventRow as {
+      host_id: string;
+      kaki_id: string | null;
+      status: string;
+      date_phase: string | null;
+    };
+
+    if (event.status !== "open") return null;
+    if (event.date_phase === "polling") return null;
+
+    const [participants, { data: rsvpRows }, { data: voteRows }, { data: optionRows }] =
+      await Promise.all([
+        resolveEventParticipants(client, {
+          id: eventId,
+          host_id: event.host_id,
+          kaki_id: event.kaki_id,
+        }),
+        client.from("event_rsvps").select("user_id, response").eq("event_id", eventId),
+        client.from("event_votes").select("*").eq("event_id", eventId),
+        client.from("event_options").select("place_id").eq("event_id", eventId),
+      ]);
+
+    const rsvpByUser = new Map(
+      ((rsvpRows ?? []) as { user_id: string; response: string }[]).map(
+        (r) => [r.user_id, r.response]
+      )
+    );
+
+    for (const userId of participants) {
+      const response = rsvpByUser.get(userId);
+      if (response !== "yes" && response !== "no") return null;
+    }
+
+    const votes = (voteRows ?? []) as EventVote[];
+    const votedUserIds = new Set(votes.map((v) => v.user_id));
+    for (const userId of participants) {
+      if (rsvpByUser.get(userId) === "yes" && !votedUserIds.has(userId)) {
+        return null;
+      }
+    }
+
+    const optionIds = ((optionRows ?? []) as { place_id: string }[]).map(
+      (o) => o.place_id
+    );
+    const winner = computeWinner(votes, optionIds).winnerId;
+
+    const { createServiceRoleClient } = await import(
+      "@/lib/supabase/serviceClient"
+    );
+    const admin = createServiceRoleClient();
+    const { error } = await admin
+      .from("lunch_events")
+      .update({
+        status: "closed",
+        winner_place_id: winner,
+        closed_at: new Date().toISOString(),
+      })
+      .eq("id", eventId)
+      .eq("status", "open"); // Guards a race with a manual close/cancel in flight.
+
+    if (error) fail("Could not auto-close that Jio", error);
+
+    return supabaseRepo.getEvent(eventId);
+  },
+
   // ---- Recurring series ----
 
   async createRecurringSeries(data) {

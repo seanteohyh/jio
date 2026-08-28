@@ -4,6 +4,7 @@ import { getRepoAsync } from "@/lib/data/repo";
 import { badRequest, errorResponse, json, readJson } from "@/lib/api";
 import { featureGate } from "@/lib/config";
 import { redactHiddenVotes } from "@/lib/voting";
+import { notifyEventDecided } from "@/lib/eventNotifications";
 import type { RsvpResponse } from "@/types";
 
 type Params = { params: Promise<{ id: string }> };
@@ -28,7 +29,14 @@ export async function POST(request: NextRequest, { params }: Params) {
 
     await repo.rsvp(id, user.id, response);
 
-    const event = await repo.getEvent(id);
+    // CHANGES_20260821_combined.md Part 2 — an RSVP is one of the only two
+    // writes that can newly satisfy the auto-close condition, so it's
+    // checked right here rather than lazily. No-ops instantly unless this
+    // RSVP was genuinely the last piece.
+    const closedEvent = await repo.maybeAutoCloseEvent(id);
+    if (closedEvent) await notifyEventDecided(repo, closedEvent);
+
+    const event = closedEvent ?? (await repo.getEvent(id));
     return json({ ok: true, event: event && redactHiddenVotes(event) });
   } catch (error) {
     return errorResponse(error);

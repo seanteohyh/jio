@@ -5,6 +5,7 @@ import { badRequest, errorResponse, json, readJson } from "@/lib/api";
 import { featureGate } from "@/lib/config";
 import { redactHiddenVotes } from "@/lib/voting";
 import { sendPushToUsers } from "@/lib/push";
+import { notifyEventDecided } from "@/lib/eventNotifications";
 import type { EventDetail } from "@/types";
 import type { Repo } from "@/lib/data";
 
@@ -64,7 +65,14 @@ export async function POST(request: NextRequest, { params }: Params) {
 
     const event = await repo.getEvent(id);
     if (event) await notifyHostOfVote(repo, event, user.id);
-    return json({ ok: true, event: event && redactHiddenVotes(event) });
+
+    // CHANGES_20260821_combined.md Part 2 — a vote is the other of the two
+    // writes that can newly satisfy the auto-close condition.
+    const closedEvent = await repo.maybeAutoCloseEvent(id);
+    if (closedEvent) await notifyEventDecided(repo, closedEvent);
+
+    const finalEvent = closedEvent ?? event;
+    return json({ ok: true, event: finalEvent && redactHiddenVotes(finalEvent) });
   } catch (error) {
     return errorResponse(error);
   }

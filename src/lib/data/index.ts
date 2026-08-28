@@ -490,6 +490,21 @@ export interface Repo {
    * 030_cancel_event.sql lays out for `cancelled`.
    */
   reopenEvent(eventId: string, hostId: string): Promise<EventDetail>;
+  /**
+   * CHANGES_20260821_combined.md Part 2 — closes this Jio itself, no host
+   * action required, once every participant (`resolveEventParticipants`:
+   * host, kaki members, invitees) has RSVP'd `yes` or `no` — `maybe` does
+   * not count, read literally from how this was asked for — and everyone
+   * who RSVP'd `yes` has cast a ballot. No-ops (returns `null`) if the
+   * condition isn't met yet, the event isn't `open`, or it's still a
+   * polling Flexi Jio with no place-vote to close. Write-driven, not
+   * lazy/polled: the only two things that can ever newly satisfy this are
+   * an RSVP or a vote, so the caller is expected to call this right after
+   * each of those two writes succeed, same as `notifyHostOfVote` already
+   * does for its own trigger. Reuses `closeEvent`'s own Borda-count
+   * winner logic, not a second implementation of it.
+   */
+  maybeAutoCloseEvent(eventId: string): Promise<EventDetail | null>;
 
   // ---- Recurring series ("Recurring Jios", CHANGES_20260801.md §10) ----
   createRecurringSeries(
@@ -833,6 +848,7 @@ export const REPO_METHODS = [
   "rescheduleEvent",
   "editEventWinner",
   "reopenEvent",
+  "maybeAutoCloseEvent",
   "createRecurringSeries",
   "listRecurringSeries",
   "cancelRecurringSeries",
