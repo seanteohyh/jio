@@ -3342,10 +3342,11 @@ export const supabaseRepo: Repo = {
     }));
   },
 
-  async getAdminAnalytics(days = 90) {
+  async getAdminAnalytics(days = 90, segment = null) {
     const client = await db();
     const { data, error } = await client.rpc("get_admin_analytics", {
       p_days: days,
+      p_segment: segment,
     });
     if (error) fail("Could not load analytics", error);
     return data as AdminAnalytics;

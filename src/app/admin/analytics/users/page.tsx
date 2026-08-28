@@ -3,7 +3,8 @@
 import { useState } from "react";
 import useSWR from "swr";
 import { Card, ErrorNote, SectionHeading, SkeletonDetail } from "@/components/ui";
-import { RankedList } from "@/components/admin/AdminAnalyticsCharts";
+import { ExportCsvButton, RankedList } from "@/components/admin/AdminAnalyticsCharts";
+import { useAnalyticsDays } from "@/components/admin/AdminDateRangePicker";
 import { fetcher, mutateJson } from "@/lib/fetcher";
 import type { AdminUserSegmentKey, AdminUserSummary, AdminUsersData } from "@/types";
 
@@ -138,8 +139,9 @@ function WeightsForm({
  *  rule-based segments. Segments aren't a partition — a person can appear
  *  in more than one, or none. */
 export default function AdminAnalyticsUsersPage() {
+  const days = useAnalyticsDays();
   const { data, error, isLoading, mutate } = useSWR<{ usersData: AdminUsersData }>(
-    "/api/admin/analytics/users?days=90",
+    `/api/admin/analytics/users?days=${days}`,
     fetcher
   );
 
@@ -152,7 +154,23 @@ export default function AdminAnalyticsUsersPage() {
   return (
     <div className="space-y-4">
       <Card>
-        <SectionHeading>Leaderboard</SectionHeading>
+        <div className="flex items-center justify-between gap-2">
+          <SectionHeading>Leaderboard</SectionHeading>
+          <ExportCsvButton
+            filename="users-leaderboard.csv"
+            headers={["name", "score", "hosted", "voted", "rsvps", "visits", "reviews", "lobangs"]}
+            rows={usersData.leaderboard.map((u) => [
+              u.name,
+              u.score,
+              u.hostedCount,
+              u.votedCount,
+              u.rsvpCount,
+              u.visitCount,
+              u.reviewCount,
+              u.lobangCount,
+            ])}
+          />
+        </div>
         <p className="text-stone mb-2 text-xs">
           Composite score across the last {usersData.windowDays} days
           (RSVPs are counted lifetime — <code>event_rsvps</code> has no

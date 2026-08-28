@@ -3,6 +3,7 @@
 import useSWR from "swr";
 import { EmptyState, SkeletonDetail } from "@/components/ui";
 import AdminAnalyticsTabs from "@/components/admin/AdminAnalyticsTabs";
+import AdminDateRangePicker from "@/components/admin/AdminDateRangePicker";
 import { fetcher } from "@/lib/fetcher";
 import type { AuthUser } from "@/types";
 
@@ -48,13 +49,13 @@ export default function AdminAnalyticsLayout({
       <header>
         <h1 className="text-2xl font-semibold tracking-tight">Analytics</h1>
         <p className="text-stone mt-1 text-sm">
-          Last 90 days. Phase 1 — in-app, fixed charts; a self-hosted
-          Metabase connected to the same database is the planned Phase 2
-          for ad-hoc slicing.
+          Phase 1 — in-app, fixed charts; a self-hosted Metabase connected
+          to the same database is the planned Phase 2 for ad-hoc slicing.
         </p>
       </header>
 
       <AdminAnalyticsTabs />
+      <AdminDateRangePicker />
 
       {children}
     </div>

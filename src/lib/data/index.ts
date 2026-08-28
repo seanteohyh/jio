@@ -4,6 +4,7 @@ import type {
   AdminEngagementWeights,
   AdminPlaceDetail,
   AdminUserDetail,
+  AdminUserSegmentKey,
   AdminUsersData,
   CuisineMergePreview,
   CuisineOption,
@@ -659,8 +660,13 @@ export interface Repo {
    * check `isAdmin` first (same pattern as every other admin surface); this
    * method itself trusts the caller, matching `listModerationLog`/
    * `listPendingFlags`. Fixed 90-day trailing window unless `days` is given.
+   * `segment` (Part 1 §E) restricts `jioOutcomes`/`funnelSteps` to Jios
+   * hosted by that segment's members — `null`/omitted means unfiltered.
    */
-  getAdminAnalytics(days?: number): Promise<AdminAnalytics>;
+  getAdminAnalytics(
+    days?: number,
+    segment?: AdminUserSegmentKey | null
+  ): Promise<AdminAnalytics>;
   /**
    * Part 1 §C's Places drill-down — same admin-trusts-the-caller convention
    * as `getAdminAnalytics`. `null` when the place id doesn't exist.

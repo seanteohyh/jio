@@ -2,8 +2,10 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { Download } from "lucide-react";
 import { Card, SectionHeading } from "@/components/ui";
 import { cn, dateKey, formatCuisine, sgtToday } from "@/lib/utils";
+import { downloadCsv, toCsv } from "@/lib/csv";
 import type { AdminAnalytics, DateCount, NamedCount } from "@/types";
 
 /**
@@ -33,6 +35,30 @@ function shortDate(key: string): string {
     month: "short",
     day: "numeric",
   });
+}
+
+/** Part 1 §E — a small, reusable "export what you're looking at" button.
+ *  Client-side CSV generation only: the data driving the chart is already
+ *  in hand, so there's nothing a server round-trip would add. */
+export function ExportCsvButton({
+  filename,
+  headers,
+  rows,
+}: {
+  filename: string;
+  headers: string[];
+  rows: (string | number)[][];
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => downloadCsv(filename, toCsv(headers, rows))}
+      className="text-stone hover:text-ink inline-flex shrink-0 items-center gap-1 text-xs underline"
+    >
+      <Download className="h-3 w-3" aria-hidden="true" />
+      Export CSV
+    </button>
+  );
 }
 
 export function StatTile({
@@ -327,9 +353,13 @@ const FUNNEL_STEP_LABEL: Record<AdminAnalytics["funnelSteps"]["steps"][number]["
 export function FunnelStepsSection({
   funnelSteps,
   windowDays,
+  appliedSegmentLabel,
 }: {
   funnelSteps: AdminAnalytics["funnelSteps"];
   windowDays: number;
+  /** Part 1 §E — when set, this funnel is restricted to participants in
+   *  Jios hosted by this segment's members. */
+  appliedSegmentLabel?: string | null;
 }) {
   const { steps, trend, cohortBySignupWeek } = funnelSteps;
   const invited = steps[0]?.count ?? 0;
@@ -337,6 +367,11 @@ export function FunnelStepsSection({
   return (
     <Card className="space-y-4">
       <SectionHeading>Real funnel — decided Jios</SectionHeading>
+      {appliedSegmentLabel && (
+        <p className="text-ember text-xs font-medium">
+          Filtered to Jios hosted by: {appliedSegmentLabel}
+        </p>
+      )}
       <p className="text-stone text-xs">
         Every Jio that closed with a winner in this window, and everyone
         invited to one — one shared population carried step by step, unlike
@@ -450,6 +485,10 @@ export function FunnelStepsSection({
   );
 }
 
+function dateCountRows(series: DateCount[]): [string, number][] {
+  return series.map((d) => [d.date, d.count]);
+}
+
 export function GrowthSection({
   growth,
   windowDays,
@@ -463,21 +502,57 @@ export function GrowthSection({
       <SectionHeading>Growth</SectionHeading>
 
       <div>
-        <p className="text-ink text-sm font-medium">
-          New users — {sum(growth.newUsersPerDay)} in window
-        </p>
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-ink text-sm font-medium">
+            New users — {sum(growth.newUsersPerDay)} in window
+          </p>
+          <ExportCsvButton
+            filename="new-users-per-day.csv"
+            headers={["date", "count"]}
+            rows={dateCountRows(growth.newUsersPerDay)}
+          />
+        </div>
         <Sparkline data={growth.newUsersPerDay} windowDays={windowDays} />
+        {growth.newUsersDetail.length > 0 && (
+          <details className="mt-1">
+            <summary className="text-stone cursor-pointer text-[11px]">
+              Who joined — day by day
+            </summary>
+            <ul className="mt-1 space-y-1">
+              {growth.newUsersDetail.map((day) => (
+                <li key={day.date} className="text-stone text-[11px]">
+                  <span className="text-ink font-medium">{shortDate(day.date)}:</span>{" "}
+                  {day.users.map((u) => u.name).join(", ")}
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
       </div>
       <div>
-        <p className="text-ink text-sm font-medium">
-          Jios created — {sum(growth.jiosCreatedPerDay)} in window
-        </p>
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-ink text-sm font-medium">
+            Jios created — {sum(growth.jiosCreatedPerDay)} in window
+          </p>
+          <ExportCsvButton
+            filename="jios-created-per-day.csv"
+            headers={["date", "count"]}
+            rows={dateCountRows(growth.jiosCreatedPerDay)}
+          />
+        </div>
         <Sparkline data={growth.jiosCreatedPerDay} windowDays={windowDays} />
       </div>
       <div>
-        <p className="text-ink text-sm font-medium">
-          Places added — {sum(growth.placesAddedPerDay)} in window
-        </p>
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-ink text-sm font-medium">
+            Places added — {sum(growth.placesAddedPerDay)} in window
+          </p>
+          <ExportCsvButton
+            filename="places-added-per-day.csv"
+            headers={["date", "count"]}
+            rows={dateCountRows(growth.placesAddedPerDay)}
+          />
+        </div>
         <Sparkline data={growth.placesAddedPerDay} windowDays={windowDays} />
         <p className="text-stone mt-1 text-[11px]">
           Any path (via a Jio or /places/new) — the schema doesn't record
@@ -485,10 +560,17 @@ export function GrowthSection({
         </p>
       </div>
       <div>
-        <p className="text-ink text-sm font-medium">
-          Kaki groups created — {sum(growth.kakiGroupsCreatedPerDay)} in
-          window, {growth.kakiGroupsCumulative} total
-        </p>
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-ink text-sm font-medium">
+            Kaki groups created — {sum(growth.kakiGroupsCreatedPerDay)} in
+            window, {growth.kakiGroupsCumulative} total
+          </p>
+          <ExportCsvButton
+            filename="kaki-groups-created-per-day.csv"
+            headers={["date", "count"]}
+            rows={dateCountRows(growth.kakiGroupsCreatedPerDay)}
+          />
+        </div>
         <Sparkline
           data={growth.kakiGroupsCreatedPerDay}
           windowDays={windowDays}
@@ -500,12 +582,21 @@ export function GrowthSection({
 
 export function JioOutcomesSection({
   outcomes,
+  appliedSegmentLabel,
 }: {
   outcomes: AdminAnalytics["jioOutcomes"];
+  /** Part 1 §E — when set, these numbers are restricted to Jios hosted by
+   *  this segment's members rather than everyone. */
+  appliedSegmentLabel?: string | null;
 }) {
   return (
     <Card className="space-y-3">
       <SectionHeading>Jio outcomes</SectionHeading>
+      {appliedSegmentLabel && (
+        <p className="text-ember text-xs font-medium">
+          Filtered to Jios hosted by: {appliedSegmentLabel}
+        </p>
+      )}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <StatTile label="Decided" value={outcomes.decided} />
         <StatTile label="Closed, no winner" value={outcomes.closedNoWinner} />
@@ -530,7 +621,14 @@ export function ContentSection({
   return (
     <div className="space-y-4">
       <Card>
-        <SectionHeading>Top-rated places</SectionHeading>
+        <div className="flex items-center justify-between gap-2">
+          <SectionHeading>Top-rated places</SectionHeading>
+          <ExportCsvButton
+            filename="top-rated-places.csv"
+            headers={["name", "avgRating", "visits"]}
+            rows={content.topRatedPlaces.map((p) => [p.name, p.avgRating, p.count])}
+          />
+        </div>
         <p className="text-stone mb-2 text-xs">
           At least 3 visits, so one glowing review can't sit at the top.
         </p>
@@ -549,7 +647,14 @@ export function ContentSection({
       </Card>
 
       <Card>
-        <SectionHeading>Most-visited places</SectionHeading>
+        <div className="flex items-center justify-between gap-2">
+          <SectionHeading>Most-visited places</SectionHeading>
+          <ExportCsvButton
+            filename="most-visited-places.csv"
+            headers={["name", "visits"]}
+            rows={content.mostVisitedPlaces.map((p) => [p.name, p.count])}
+          />
+        </div>
         <RankedList
           items={content.mostVisitedPlaces}
           suffix=" visits"
@@ -658,10 +763,27 @@ export function WishlistSection({
     <Card className="space-y-4">
       <SectionHeading>Wishlist</SectionHeading>
       <div>
-        <p className="text-ink text-sm font-medium">Saves per week</p>
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-ink text-sm font-medium">Saves per week</p>
+          <ExportCsvButton
+            filename="wishlist-saves-per-week.csv"
+            headers={["weekStart", "count"]}
+            rows={dateCountRows(wishlist.savesPerWeek)}
+          />
+        </div>
         <Sparkline data={wishlist.savesPerWeek} weekly windowDays={windowDays} />
       </div>
-      <RankedList items={wishlist.mostSavedPlaces} suffix=" saves" />
+      <div>
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-ink text-sm font-medium">Most saved</p>
+          <ExportCsvButton
+            filename="most-saved-places.csv"
+            headers={["name", "saves"]}
+            rows={wishlist.mostSavedPlaces.map((p) => [p.name, p.count])}
+          />
+        </div>
+        <RankedList items={wishlist.mostSavedPlaces} suffix=" saves" />
+      </div>
     </Card>
   );
 }

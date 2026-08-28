@@ -3,12 +3,14 @@
 import useSWR from "swr";
 import { ErrorNote, SkeletonDetail } from "@/components/ui";
 import { ContentSection } from "@/components/admin/AdminAnalyticsCharts";
+import { useAnalyticsDays } from "@/components/admin/AdminDateRangePicker";
 import { fetcher } from "@/lib/fetcher";
 import type { AdminAnalytics } from "@/types";
 
 export default function AdminAnalyticsPlacesPage() {
+  const days = useAnalyticsDays();
   const { data, error, isLoading } = useSWR<{ analytics: AdminAnalytics }>(
-    "/api/admin/analytics?days=90",
+    `/api/admin/analytics?days=${days}`,
     fetcher
   );
 

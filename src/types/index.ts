@@ -781,6 +781,10 @@ export interface NamedCount {
 export interface AdminAnalytics {
   windowDays: number;
   generatedAt: string;
+  /** Part 1 §E — the segment (if any) `jioOutcomes`/`funnelSteps` are
+   *  currently restricted to (Jios hosted by that segment's members).
+   *  `null` means unfiltered, the normal case. */
+  appliedSegment: AdminUserSegmentKey | null;
 
   funnel: {
     /** Today only (Asia/Singapore), not a window total — a funnel is a
@@ -798,6 +802,10 @@ export interface AdminAnalytics {
 
   growth: {
     newUsersPerDay: DateCount[];
+    /** Part 1 §E — who actually joined each day, powering the "new users"
+     *  sparkline's click-through. Sparse like `newUsersPerDay` itself: a
+     *  day with no signups has no entry. */
+    newUsersDetail: { date: string; users: { id: string; name: string }[] }[];
     jiosCreatedPerDay: DateCount[];
     /**
      * All places created, any path. The Growth table asked for a split

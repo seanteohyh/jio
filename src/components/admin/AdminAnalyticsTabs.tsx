@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
 
 /**
@@ -24,6 +24,11 @@ const TABS = [
 
 export default function AdminAnalyticsTabs() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  // Carries the shared `?days=` date-range selection across tabs — without
+  // this, following a tab link would silently reset it back to the default.
+  const days = searchParams.get("days");
+  const query = days ? `?days=${days}` : "";
 
   return (
     <nav className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0">
@@ -35,7 +40,7 @@ export default function AdminAnalyticsTabs() {
         return (
           <Link
             key={tab.href}
-            href={tab.href}
+            href={`${tab.href}${query}`}
             className={cn(
               "inline-flex shrink-0 items-center rounded-full px-3 py-1.5 text-sm transition-colors",
               active

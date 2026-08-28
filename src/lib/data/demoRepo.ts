@@ -30,6 +30,7 @@ import {
   bucketWalkMinutes,
   isSameSgtDay,
   median,
+  sgtDateKey,
   sgtWeekKey,
   type UserActivity,
 } from "@/lib/adminAnalytics";
@@ -457,6 +458,78 @@ function resolveEventParticipants(event: LunchEvent): string[] {
   }
 
   return Array.from(ids);
+}
+
+/**
+ * Part 1 §E — resolves one segment's membership, for `getAdminAnalytics`'s
+ * optional `segment` filter. Deliberately a separate, standalone
+ * computation rather than a refactor of `getAdminUsersData`'s own segment
+ * logic below — that logic already shipped and is tested; duplicating six
+ * `if` branches here is cheaper than risking a regression there to share
+ * them. Mirrors migration 065's `admin_segment_member_ids` in live mode.
+ */
+function resolveSegmentMemberIds(
+  s: DemoStore,
+  days: number,
+  segment: string
+): Set<string> {
+  const now = new Date();
+  const cutoff = new Date(now.getTime() - days * 24 * 60 * 60 * 1000).toISOString();
+  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const inWindow = (iso?: string | null) => Boolean(iso) && iso! >= cutoff;
+
+  const members = new Set<string>();
+  for (const p of s.profiles) {
+    const uid = p.user_id;
+    const hostedCount = s.events.filter(
+      (e) => e.host_id === uid && inWindow(e.created_at)
+    ).length;
+    const votedCount = new Set(
+      s.votes
+        .filter((v) => v.user_id === uid && inWindow(v.created_at))
+        .map((v) => v.event_id)
+    ).size;
+    const rsvpCount = s.rsvps.filter((r) => r.user_id === uid).length;
+    const visitCount = s.visits.filter(
+      (v) => v.user_id === uid && inWindow(v.created_at)
+    ).length;
+    const reviewCount = s.visits.filter(
+      (v) => v.user_id === uid && v.is_public && inWindow(v.created_at)
+    ).length;
+    const lobangCount = s.lobangs.filter(
+      (l) => l.from_user_id === uid && inWindow(l.created_at)
+    ).length;
+    const activityTimestamps = [
+      ...s.events.filter((e) => e.host_id === uid).map((e) => e.created_at),
+      ...s.votes.filter((v) => v.user_id === uid).map((v) => v.created_at),
+      ...s.visits.filter((v) => v.user_id === uid).map((v) => v.created_at),
+      ...s.wishlist.filter((w) => w.user_id === uid).map((w) => w.created_at),
+      ...s.lobangs.filter((l) => l.from_user_id === uid).map((l) => l.created_at),
+      ...s.placeFlags.filter((f) => f.flagged_by === uid).map((f) => f.created_at),
+    ].filter((ts): ts is string => Boolean(ts));
+    const lastActiveAt =
+      activityTimestamps.length > 0
+        ? activityTimestamps.reduce((max, ts) => (ts > max ? ts : max))
+        : null;
+
+    let matches = false;
+    if (segment === "powerHosts") matches = hostedCount >= 3 && votedCount <= 1;
+    else if (segment === "activeVoters") matches = votedCount >= 3 && hostedCount <= 1;
+    else if (segment === "rsvpOnlyLurkers")
+      matches = rsvpCount >= 3 && votedCount === 0 && hostedCount === 0;
+    else if (segment === "reviewers") matches = reviewCount >= 2;
+    else if (segment === "dormant")
+      matches = !lastActiveAt || lastActiveAt < thirtyDaysAgo;
+    else if (segment === "newAndActive")
+      matches = Boolean(
+        p.created_at &&
+          p.created_at >= thirtyDaysAgo &&
+          hostedCount + votedCount + visitCount + lobangCount > 0
+      );
+
+    if (matches) members.add(uid);
+  }
+  return members;
 }
 
 // ---------------------------------------------------------------------------
@@ -2427,11 +2500,12 @@ export const demoRepo: Repo = {
       }));
   },
 
-  async getAdminAnalytics(days = 90) {
+  async getAdminAnalytics(days = 90, segment = null) {
     const s = store();
     const now = new Date();
     const cutoff = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
     const inWindow = (iso?: string | null) => Boolean(iso) && iso! >= cutoff.toISOString();
+    const segmentMembers = segment ? resolveSegmentMemberIds(s, days, segment) : null;
 
     // ---- funnel (today, Asia/Singapore) ----
     const today = (iso?: string | null) => Boolean(iso) && isSameSgtDay(iso!, now);
@@ -2493,7 +2567,11 @@ export const demoRepo: Repo = {
     // a winner) in the window — a Jio that never resolved has nothing to
     // attend or review.
     const decidedEventsInWindow = s.events.filter(
-      (e) => inWindow(e.created_at) && e.status === "closed" && e.winner_place_id
+      (e) =>
+        inWindow(e.created_at) &&
+        e.status === "closed" &&
+        e.winner_place_id &&
+        (!segmentMembers || segmentMembers.has(e.host_id))
     );
     type FunnelRow = {
       eventCreatedAt: string;
@@ -2587,6 +2665,24 @@ export const demoRepo: Repo = {
     const newUsersPerDay = bucketByDay(
       s.profiles.filter((p) => inWindow(p.created_at)).map((p) => p.created_at!)
     );
+    // Who actually joined each day (Part 1 §E) — powers the "new users"
+    // sparkline's click-through, not just its count.
+    const newUsersDetail = (() => {
+      const byDay = new Map<string, { id: string; name: string }[]>();
+      for (const p of s.profiles) {
+        if (!inWindow(p.created_at)) continue;
+        const day = sgtDateKey(p.created_at!);
+        const list = byDay.get(day) ?? [];
+        list.push({ id: p.user_id, name: p.display_name });
+        byDay.set(day, list);
+      }
+      return Array.from(byDay.entries())
+        .map(([date, users]) => ({
+          date,
+          users: users.sort((a, b) => a.name.localeCompare(b.name)),
+        }))
+        .sort((a, b) => a.date.localeCompare(b.date));
+    })();
     const jiosCreatedPerDay = bucketByDay(
       s.events.filter((e) => inWindow(e.created_at)).map((e) => e.created_at!)
     );
@@ -2598,7 +2694,9 @@ export const demoRepo: Repo = {
     );
 
     // ---- Jio outcomes ----
-    const eventsInWindow = s.events.filter((e) => inWindow(e.created_at));
+    const eventsInWindow = s.events.filter(
+      (e) => inWindow(e.created_at) && (!segmentMembers || segmentMembers.has(e.host_id))
+    );
     const decided = eventsInWindow.filter(
       (e) => e.status === "closed" && e.winner_place_id
     ).length;
@@ -2754,6 +2852,7 @@ export const demoRepo: Repo = {
     return {
       windowDays: days,
       generatedAt: now.toISOString(),
+      appliedSegment: segment ?? null,
       funnel: {
         participatingDau: participatingToday.size,
         respondedToInviteTotal: s.rsvps.length,
@@ -2762,6 +2861,7 @@ export const demoRepo: Repo = {
       },
       growth: {
         newUsersPerDay,
+        newUsersDetail,
         jiosCreatedPerDay,
         placesAddedPerDay,
         kakiGroupsCreatedPerDay,
