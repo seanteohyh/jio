@@ -1,6 +1,7 @@
 import type {
   AccountMergePreview,
   AdminAnalytics,
+  AdminPlaceDetail,
   CuisineMergePreview,
   CuisineOption,
   DuplicateProfileGroup,
@@ -658,6 +659,11 @@ export interface Repo {
    */
   getAdminAnalytics(days?: number): Promise<AdminAnalytics>;
   /**
+   * Part 1 §C's Places drill-down — same admin-trusts-the-caller convention
+   * as `getAdminAnalytics`. `null` when the place id doesn't exist.
+   */
+  getAdminPlaceDetail(placeId: string): Promise<AdminPlaceDetail | null>;
+  /**
    * Confirms or dismisses a freshly-discovered (`needs_review`) place. Any
    * signed-in user may call this — it's crowd-confirmation of OSM data
    * quality, not moderation of an established place, so unlike `blockPlace`
@@ -872,6 +878,7 @@ export const REPO_METHODS = [
   "isAdmin",
   "listAdminIds",
   "getAdminAnalytics",
+  "getAdminPlaceDetail",
   "blockPlace",
   "unblockPlace",
   "listModerationLog",

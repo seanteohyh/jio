@@ -913,6 +913,32 @@ export interface AdminAnalytics {
   };
 }
 
+/**
+ * Part 1 §C — a single place's drill-down behind the Places view's
+ * click-through (same pattern as the Users view's per-person drill-down).
+ * `null` from `getAdminPlaceDetail` means the place id doesn't exist —
+ * distinct from a real place with zero of everything.
+ */
+export interface AdminPlaceDetail {
+  placeId: string;
+  /** Everyone who's logged a visit here, ranked by visit count. */
+  visitors: NamedCount[];
+  /** Weekly average rating — a trend, not just `Place.avg_rating`'s single
+   *  current number. Only weeks with at least one rated visit appear. */
+  ratingTrend: { date: string; avgRating: number; count: number }[];
+  wishlistSaveCount: number;
+  /** How many `lobangs` (personal "you should try this" tip-offs) named
+   *  this place, from anyone to anyone. */
+  lobangMentionCount: number;
+  /** % of this place's distinct visitors whose `cuisine_likes` overlaps the
+   *  place's own cuisine tags. `null` when no visitor has any cuisine
+   *  preference recorded to compare against — not the same as 0%. */
+  cuisineAlignmentPct: number | null;
+  /** % of this place's distinct visitors whose [budget_min, budget_max]
+   *  range includes the place's `budget_tier`. `null` with zero visitors. */
+  budgetAlignmentPct: number | null;
+}
+
 // ---------------------------------------------------------------------------
 // External services
 // ---------------------------------------------------------------------------

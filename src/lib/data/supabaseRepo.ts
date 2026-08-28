@@ -19,6 +19,7 @@ import { createAuthServerClient } from "@/lib/supabase/serverAuth";
 import type { Repo } from "./index";
 import type {
   AdminAnalytics,
+  AdminPlaceDetail,
   CuisineMergePreview,
   CuisineOption,
   EventCandidateDate,
@@ -3345,6 +3346,15 @@ export const supabaseRepo: Repo = {
     });
     if (error) fail("Could not load analytics", error);
     return data as AdminAnalytics;
+  },
+
+  async getAdminPlaceDetail(placeId) {
+    const client = await db();
+    const { data, error } = await client.rpc("get_admin_place_detail", {
+      p_place_id: placeId,
+    });
+    if (error) fail("Could not load place detail", error);
+    return (data ?? null) as AdminPlaceDetail | null;
   },
 
   async reviewPlace(userId, placeId, approve) {

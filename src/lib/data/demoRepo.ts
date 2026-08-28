@@ -2790,6 +2790,87 @@ export const demoRepo: Repo = {
     };
   },
 
+  async getAdminPlaceDetail(placeId) {
+    const s = store();
+    const place = s.places.find((p) => p.id === placeId);
+    if (!place) return null;
+
+    const placeVisits = s.visits.filter((v) => v.place_id === placeId);
+
+    const visitCountByUser = new Map<string, number>();
+    for (const v of placeVisits) {
+      visitCountByUser.set(v.user_id, (visitCountByUser.get(v.user_id) ?? 0) + 1);
+    }
+    const visitors = Array.from(visitCountByUser.entries())
+      .map(([userId, count]) => ({
+        id: userId,
+        name: s.profiles.find((p) => p.user_id === userId)?.display_name ?? "Unknown",
+        count,
+      }))
+      .sort((a, b) => b.count - a.count);
+
+    const ratedVisits = placeVisits.filter(
+      (v) => typeof v.rating === "number" && v.created_at
+    );
+    const ratingByWeek = new Map<string, { sum: number; count: number }>();
+    for (const v of ratedVisits) {
+      const week = sgtWeekKey(v.created_at!);
+      const entry = ratingByWeek.get(week) ?? { sum: 0, count: 0 };
+      entry.sum += v.rating;
+      entry.count += 1;
+      ratingByWeek.set(week, entry);
+    }
+    const ratingTrend = Array.from(ratingByWeek.entries())
+      .map(([date, { sum, count }]) => ({
+        date,
+        avgRating: Math.round((sum / count) * 100) / 100,
+        count,
+      }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    const wishlistSaveCount = s.wishlist.filter((w) => w.place_id === placeId).length;
+    const lobangMentionCount = s.lobangs.filter((l) => l.place_id === placeId).length;
+
+    const distinctVisitorIds = Array.from(visitCountByUser.keys());
+    const visitorPrefs = distinctVisitorIds
+      .map((uid) => s.prefs.find((p) => p.user_id === uid))
+      .filter((p): p is NonNullable<typeof p> => Boolean(p));
+
+    const withCuisineLikes = visitorPrefs.filter((p) => p.cuisine_likes.length > 0);
+    const cuisineAlignmentPct =
+      withCuisineLikes.length > 0
+        ? Math.round(
+            (100 *
+              withCuisineLikes.filter((p) =>
+                p.cuisine_likes.some((c) => place.cuisine.includes(c))
+              ).length) /
+              withCuisineLikes.length
+          )
+        : null;
+
+    const budgetAlignmentPct =
+      visitorPrefs.length > 0
+        ? Math.round(
+            (100 *
+              visitorPrefs.filter(
+                (p) =>
+                  place.budget_tier >= p.budget_min && place.budget_tier <= p.budget_max
+              ).length) /
+              visitorPrefs.length
+          )
+        : null;
+
+    return {
+      placeId,
+      visitors,
+      ratingTrend,
+      wishlistSaveCount,
+      lobangMentionCount,
+      cuisineAlignmentPct,
+      budgetAlignmentPct,
+    };
+  },
+
   async reviewPlace(_userId, placeId, approve) {
     const s = store();
     const index = s.places.findIndex((p) => p.id === placeId);

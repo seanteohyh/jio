@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { Card, SectionHeading } from "@/components/ui";
 import { cn, dateKey, formatCuisine, sgtToday } from "@/lib/utils";
 import type { AdminAnalytics, DateCount, NamedCount } from "@/types";
@@ -133,10 +134,15 @@ export function RankedList({
   items,
   suffix = "",
   formatValue,
+  linkTo,
 }: {
   items: NamedCount[];
   suffix?: string;
   formatValue?: (item: NamedCount) => string;
+  /** When given, each row's name becomes a link — the click-through into a
+   *  per-item drill-down (Places §C today, Users §B later), reused here
+   *  rather than each view rolling its own linked-row variant. */
+  linkTo?: (item: NamedCount) => string;
 }) {
   if (items.length === 0) {
     return <p className="text-stone text-xs">Nothing here yet.</p>;
@@ -151,7 +157,13 @@ export function RankedList({
         >
           <span className="min-w-0 truncate">
             <span className="text-stone mr-2 text-xs">{index + 1}</span>
-            {item.name}
+            {linkTo ? (
+              <Link href={linkTo(item)} className="text-ember underline">
+                {item.name}
+              </Link>
+            ) : (
+              item.name
+            )}
           </span>
           <span className="text-stone shrink-0 text-xs tabular-nums">
             {formatValue ? formatValue(item) : `${item.count}${suffix}`}
@@ -221,6 +233,38 @@ export function DistributionBars({
         {grandTotal} total
       </p>
     </div>
+  );
+}
+
+/** Weekly average rating over time (Part 1 §C) — fixed 0-5 scale, unlike
+ *  `DistributionBars`' locally-scaled max, since a rating trend needs to
+ *  read against the actual 1-5 scale rather than its own history's peak. */
+export function RatingTrend({
+  data,
+}: {
+  data: { date: string; avgRating: number; count: number }[];
+}) {
+  if (data.length === 0) {
+    return <p className="text-stone text-xs">No rated visits yet.</p>;
+  }
+
+  return (
+    <ul className="space-y-1.5">
+      {data.map((point) => (
+        <li key={point.date} className="flex items-center gap-3 text-xs">
+          <span className="text-stone w-16 shrink-0">{shortDate(point.date)}</span>
+          <span className="bg-paper h-3 flex-1 overflow-hidden rounded-full">
+            <span
+              className="bg-ember/70 block h-full rounded-full"
+              style={{ width: `${Math.max(3, (point.avgRating / 5) * 100)}%` }}
+            />
+          </span>
+          <span className="text-ink w-16 shrink-0 text-right tabular-nums">
+            {point.avgRating.toFixed(1)} ({point.count})
+          </span>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -493,12 +537,17 @@ export function ContentSection({
             const rated = content.topRatedPlaces.find((p) => p.id === item.id);
             return `${rated?.avgRating.toFixed(1)} · ${item.count} visits`;
           }}
+          linkTo={(item) => `/admin/analytics/places/${item.id}`}
         />
       </Card>
 
       <Card>
         <SectionHeading>Most-visited places</SectionHeading>
-        <RankedList items={content.mostVisitedPlaces} suffix=" visits" />
+        <RankedList
+          items={content.mostVisitedPlaces}
+          suffix=" visits"
+          linkTo={(item) => `/admin/analytics/places/${item.id}`}
+        />
       </Card>
 
       <Card>
