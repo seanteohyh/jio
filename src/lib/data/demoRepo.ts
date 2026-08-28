@@ -23,9 +23,13 @@ import { DISCOVERY_CONFIG } from "@/lib/discoveryConfig";
 import {
   bucketByDay,
   bucketByWeek,
+  bucketDistinctUsersByDay,
+  bucketDistinctUsersByWeek,
+  bucketDistinctUsersByMonth,
   bucketWalkMinutes,
   isSameSgtDay,
   median,
+  type UserActivity,
 } from "@/lib/adminAnalytics";
 import {
   DEMO_TEAMMATE_A,
@@ -2442,6 +2446,32 @@ export const demoRepo: Repo = {
       ...flaggedToday,
     ]);
 
+    // ---- performance: same six "did anything" signals as the funnel
+    // above, over the whole window instead of collapsed to today.
+    const activityInWindow: UserActivity[] = [
+      ...s.votes
+        .filter((v) => inWindow(v.created_at))
+        .map((v) => ({ userId: v.user_id, createdAt: v.created_at! })),
+      ...s.events
+        .filter((e) => inWindow(e.created_at))
+        .map((e) => ({ userId: e.host_id, createdAt: e.created_at! })),
+      ...s.visits
+        .filter((v) => inWindow(v.created_at))
+        .map((v) => ({ userId: v.user_id, createdAt: v.created_at! })),
+      ...s.wishlist
+        .filter((w) => inWindow(w.created_at))
+        .map((w) => ({ userId: w.user_id, createdAt: w.created_at! })),
+      ...s.places
+        .filter((p) => p.created_by && inWindow(p.created_at))
+        .map((p) => ({ userId: p.created_by!, createdAt: p.created_at! })),
+      ...s.placeFlags
+        .filter((f) => inWindow(f.created_at))
+        .map((f) => ({ userId: f.flagged_by, createdAt: f.created_at! })),
+    ];
+    const dauPerDay = bucketDistinctUsersByDay(activityInWindow);
+    const wauPerWeek = bucketDistinctUsersByWeek(activityInWindow);
+    const mauPerMonth = bucketDistinctUsersByMonth(activityInWindow);
+
     // ---- growth ----
     const newUsersPerDay = bucketByDay(
       s.profiles.filter((p) => inWindow(p.created_at)).map((p) => p.created_at!)
@@ -2654,6 +2684,11 @@ export const demoRepo: Repo = {
       wishlist: {
         savesPerWeek,
         mostSavedPlaces,
+      },
+      performance: {
+        dauPerDay,
+        wauPerWeek,
+        mauPerMonth,
       },
     };
   },

@@ -471,33 +471,74 @@ export function WishlistSection({
   );
 }
 
-export function PerformanceSection() {
+/** Last bucket's count, 0 for an empty series — "how many people were
+ *  active in the most recent complete-ish bucket," not a lifetime total. */
+function latest(series: DateCount[]): number {
+  return series.length > 0 ? series[series.length - 1].count : 0;
+}
+
+export function PerformanceSection({
+  performance,
+  windowDays,
+}: {
+  performance: AdminAnalytics["performance"];
+  windowDays: number;
+}) {
   return (
-    <Card className="space-y-2">
+    <Card className="space-y-4">
       <SectionHeading>Performance</SectionHeading>
       <p className="text-stone text-xs">
-        Page views, unique visitors, DAU and Core Web Vitals live in
-        Vercel's own dashboards — free-tier metering (Supabase egress/DB
-        size, Vercel Active CPU) is platform data this app's own database
-        can't query, so this links out rather than trying to replicate it.
+        In-app usage — distinct people who did anything (voted, hosted,
+        logged a visit, saved a wishlist item, added a place, or filed a
+        report), the same "active" definition as the funnel above, tracked
+        as a trend instead of just today.
       </p>
-      <div className="flex flex-wrap gap-3 text-sm">
-        <a
-          href="https://vercel.com/dashboard"
-          target="_blank"
-          rel="noreferrer"
-          className="text-ember underline"
-        >
-          Vercel Analytics →
-        </a>
-        <a
-          href="https://supabase.com/dashboard"
-          target="_blank"
-          rel="noreferrer"
-          className="text-ember underline"
-        >
-          Supabase usage →
-        </a>
+
+      <div className="grid grid-cols-3 gap-3">
+        <StatTile label="DAU" value={latest(performance.dauPerDay)} sub="latest day" />
+        <StatTile label="WAU" value={latest(performance.wauPerWeek)} sub="latest week" />
+        <StatTile label="MAU" value={latest(performance.mauPerMonth)} sub="latest month" />
+      </div>
+
+      <div>
+        <p className="text-ink text-sm font-medium">Daily active users</p>
+        <Sparkline data={performance.dauPerDay} windowDays={windowDays} />
+      </div>
+      <div>
+        <p className="text-ink text-sm font-medium">Weekly active users</p>
+        <Sparkline data={performance.wauPerWeek} weekly windowDays={windowDays} />
+      </div>
+      <div>
+        <p className="text-ink text-sm font-medium">Monthly active users</p>
+        <Sparkline data={performance.mauPerMonth} windowDays={windowDays} />
+      </div>
+
+      <div className="border-line border-t pt-3">
+        <p className="text-stone text-xs">
+          Page views, unique visitors, and Core Web Vitals live in Vercel's
+          own dashboard instead — free-tier metering (Supabase egress/DB
+          size, Vercel Active CPU) is platform data this app's own database
+          can't query either, so both link out rather than trying to
+          replicate them.
+        </p>
+        <div className="mt-2 flex flex-wrap gap-3 text-sm">
+          <a
+            href="https://vercel.com/dashboard"
+            target="_blank"
+            rel="noreferrer"
+            className="text-ember underline"
+          >
+            Vercel Analytics →
+          </a>
+          <a
+            href="https://supabase.com/dashboard"
+            target="_blank"
+            rel="noreferrer"
+            className="text-ember underline"
+          >
+            Supabase usage →
+          </a>
+        </div>
       </div>
     </Card>
   );

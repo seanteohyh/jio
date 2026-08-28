@@ -2,10 +2,14 @@ import { describe, expect, it } from "vitest";
 import {
   bucketByDay,
   bucketByWeek,
+  bucketDistinctUsersByDay,
+  bucketDistinctUsersByMonth,
+  bucketDistinctUsersByWeek,
   bucketWalkMinutes,
   isSameSgtDay,
   median,
   sgtDateKey,
+  sgtMonthKey,
   sgtWeekKey,
 } from "@/lib/adminAnalytics";
 
@@ -57,6 +61,59 @@ describe("bucketByDay / bucketByWeek", () => {
       "2026-03-06T02:00:00Z", // Friday, same SGT week
     ]);
     expect(result).toEqual([{ date: "2026-03-02", count: 2 }]);
+  });
+});
+
+describe("sgtMonthKey", () => {
+  it("returns the 1st of the SGT month", () => {
+    // 2026-03-05T02:00:00Z is 2026-03-05T10:00 in Singapore.
+    expect(sgtMonthKey("2026-03-05T02:00:00Z")).toBe("2026-03-01");
+  });
+
+  it("rolls a late-UTC end-of-month timestamp into the next SGT month", () => {
+    // 2026-02-28T20:00:00Z is 2026-03-01T04:00 in Singapore.
+    expect(sgtMonthKey("2026-02-28T20:00:00Z")).toBe("2026-03-01");
+  });
+});
+
+describe("bucketDistinctUsersByDay / Week / Month", () => {
+  it("counts each user once per bucket, not once per event", () => {
+    const result = bucketDistinctUsersByDay([
+      { userId: "a", createdAt: "2026-03-05T02:00:00Z" },
+      { userId: "a", createdAt: "2026-03-05T05:00:00Z" }, // same user, same SGT day
+      { userId: "b", createdAt: "2026-03-05T03:00:00Z" },
+      { userId: "a", createdAt: "2026-03-04T02:00:00Z" },
+    ]);
+    expect(result).toEqual([
+      { date: "2026-03-04", count: 1 },
+      { date: "2026-03-05", count: 2 },
+    ]);
+  });
+
+  it("weekly bucketing collapses a whole week's distinct users into one point", () => {
+    const result = bucketDistinctUsersByWeek([
+      { userId: "a", createdAt: "2026-03-02T02:00:00Z" }, // Monday
+      { userId: "b", createdAt: "2026-03-06T02:00:00Z" }, // Friday, same SGT week
+      { userId: "a", createdAt: "2026-03-06T04:00:00Z" }, // repeat user, same week
+    ]);
+    expect(result).toEqual([{ date: "2026-03-02", count: 2 }]);
+  });
+
+  it("monthly bucketing collapses a whole month's distinct users into one point", () => {
+    const result = bucketDistinctUsersByMonth([
+      { userId: "a", createdAt: "2026-03-05T02:00:00Z" },
+      { userId: "b", createdAt: "2026-03-20T02:00:00Z" },
+      { userId: "a", createdAt: "2026-03-25T02:00:00Z" }, // repeat, same month
+      { userId: "c", createdAt: "2026-04-01T02:00:00Z" },
+    ]);
+    expect(result).toEqual([
+      { date: "2026-03-01", count: 2 },
+      { date: "2026-04-01", count: 1 },
+    ]);
+  });
+
+  it("returns an empty array for no activity", () => {
+    expect(bucketDistinctUsersByDay([])).toEqual([]);
   });
 });
 

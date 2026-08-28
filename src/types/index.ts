@@ -850,6 +850,21 @@ export interface AdminAnalytics {
     savesPerWeek: DateCount[];
     mostSavedPlaces: NamedCount[];
   };
+
+  /**
+   * In-app usage trend (CHANGES_20260821_combined.md Part 1 §F) — distinct
+   * users per bucket across the same six "did anything" signals `funnel.
+   * participatingDau` already uses for today, extended over the full
+   * trailing window instead of just today. This is deliberately separate
+   * from Vercel's page-view analytics (still linked from the Performance
+   * view) — this is "how many people used the app," not "how many pages
+   * were requested."
+   */
+  performance: {
+    dauPerDay: DateCount[];
+    wauPerWeek: DateCount[];
+    mauPerMonth: DateCount[];
+  };
 }
 
 // ---------------------------------------------------------------------------
