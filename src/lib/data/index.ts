@@ -229,6 +229,14 @@ export interface Repo {
    * later rename on /profile), which never touches `onboarded_at`.
    */
   completeOnboarding(userId: string, displayName: string): Promise<Profile>;
+  /**
+   * CHANGES_20260821_combined2.md §3D — stamps
+   * `first_decided_celebration_shown_at` if it isn't already set. Idempotent
+   * by design: called every time the one-time celebration's condition is
+   * met, which is itself gated on this column still being null, so a
+   * caller never has to check first.
+   */
+  markFirstDecidedCelebrationShown(userId: string): Promise<void>;
 
   // ---- Lunch events ----
   createEvent(
@@ -861,6 +869,7 @@ export const REPO_METHODS = [
   "getPushTargets",
   "listAllUsers",
   "completeOnboarding",
+  "markFirstDecidedCelebrationShown",
   "createEvent",
   "createFlexiEvent",
   "getEvent",

@@ -848,7 +848,9 @@ export const supabaseRepo: Repo = {
     // privilege on rather than silently omitting it.
     const { data, error } = await client
       .from("profiles")
-      .select("user_id, display_name, created_at, onboarded_at, notify_events")
+      .select(
+        "user_id, display_name, created_at, onboarded_at, notify_events, first_decided_celebration_shown_at"
+      )
       .eq("user_id", userId)
       .maybeSingle();
 
@@ -893,6 +895,20 @@ export const supabaseRepo: Repo = {
 
     if (error) fail("Could not save your display name", error);
     return data as Profile;
+  },
+
+  async markFirstDecidedCelebrationShown(userId) {
+    const client = await db();
+    // `.is(..., null)` — idempotent, and avoids a redundant write once
+    // already stamped; the value itself is only ever "has this fired," not
+    // meaningful as a real timestamp to compare against.
+    const { error } = await client
+      .from("profiles")
+      .update({ first_decided_celebration_shown_at: new Date().toISOString() })
+      .eq("user_id", userId)
+      .is("first_decided_celebration_shown_at", null);
+
+    if (error) fail("Could not save that", error);
   },
 
   async getDisplayNames(userIds) {

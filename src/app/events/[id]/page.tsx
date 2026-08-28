@@ -55,6 +55,9 @@ interface EventResponse {
       defaultLeadMinutes: number;
       overrideLeadMinutes: number | null;
     } | null;
+    /** CHANGES_20260821_combined2.md §3D — true on at most one response,
+     *  ever, for a given account: see the route for the exact condition. */
+    firstDecidedCelebration: boolean;
   };
 }
 
@@ -122,6 +125,20 @@ export default function EventDetailPage({
       setJustResolved(true);
     }
     prevStatusRef.current = current;
+  }, [data]);
+
+  // CHANGES_20260821_combined2.md §3D — the server only ever reports this
+  // `true` once, on whichever load actually stamps it, so latch it locally
+  // rather than reading `data.viewer.firstDecidedCelebration` live: any
+  // later refetch on this same page (an action, a realtime push) would
+  // otherwise see the now-stamped profile and report `false`, yanking the
+  // card away mid-read.
+  const [showFirstDecidedCelebration, setShowFirstDecidedCelebration] =
+    useState(false);
+  useEffect(() => {
+    if (data?.viewer.firstDecidedCelebration) {
+      setShowFirstDecidedCelebration(true);
+    }
   }, [data]);
 
   // Seed the ballot from the server once, then leave the voter's own order
@@ -535,6 +552,20 @@ export default function EventDetailPage({
         <Card className="border-sage/40 bg-sage-tint/70 animate-fade-in">
           <p className="text-sm font-medium">
             Confirmed for {formatDate(justConfirmedDate)}!
+          </p>
+        </Card>
+      )}
+
+      {!isOpen && !isCancelled && showFirstDecidedCelebration && (
+        <Card className="border-ember/40 bg-ember-tint/70 animate-fade-in space-y-1 text-center">
+          <p className="text-2xl" aria-hidden="true">
+            🎉
+          </p>
+          <p className="font-display text-ink text-lg font-bold tracking-tight">
+            Your first decided Jio!
+          </p>
+          <p className="text-stone text-sm">
+            You voted, the group decided — this is how it goes from here.
           </p>
         </Card>
       )}

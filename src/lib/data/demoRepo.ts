@@ -867,6 +867,18 @@ export const demoRepo: Repo = {
     return s.profiles[index];
   },
 
+  async markFirstDecidedCelebrationShown(userId) {
+    const s = store();
+    const index = s.profiles.findIndex((p) => p.user_id === userId);
+    if (index === -1 || s.profiles[index].first_decided_celebration_shown_at) {
+      return;
+    }
+    s.profiles[index] = {
+      ...s.profiles[index],
+      first_decided_celebration_shown_at: new Date().toISOString(),
+    };
+  },
+
   async getDisplayNames(userIds) {
     const map = new Map<string, string>();
     for (const id of userIds) map.set(id, displayNameFor(id));

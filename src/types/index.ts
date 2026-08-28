@@ -206,6 +206,13 @@ export interface Profile {
    *  and anything added later. `notify_lobangs` exists in the schema
    *  (migration 025) but has no UI or trigger yet; out of scope for §6. */
   notify_events?: boolean;
+  /**
+   * CHANGES_20260821_combined2.md §3D — set the first time this account
+   * ever loads a decided Jio's page having both RSVP'd (any response) and
+   * voted on it. Null forever after means "never fires again," same
+   * one-shot shape as `onboarded_at`.
+   */
+  first_decided_celebration_shown_at?: string | null;
 }
 
 /** What a browser hands back from `PushManager.subscribe()`, trimmed to
