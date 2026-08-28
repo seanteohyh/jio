@@ -779,6 +779,50 @@ export interface KakiMetrics {
   adventurer: { user_id: string; distinctPlaces: number } | null;
 }
 
+/**
+ * CHANGES_20260821_combined2.md Item 1 — rule-based "food identity" cards,
+ * derived from `UserMetrics`/`KakiMetrics` rather than anything trained.
+ * See `src/lib/foodIdentity.ts` for the exact thresholds and priority
+ * order.
+ */
+export type FoodArchetype =
+  | "loyalist"
+  | "explorer"
+  | "regular"
+  | "enthusiast"
+  | "connoisseur"
+  | "budget_hunter"
+  | "well_rounded"
+  | "just_getting_started";
+
+export interface FoodIdentityCard {
+  archetype: FoodArchetype;
+  headline: string;
+  description: string;
+}
+
+/** A locked snapshot of one month's `FoodIdentityCard` — see 068_food_identity_snapshots.sql. */
+export interface UserFoodIdentitySnapshot extends FoodIdentityCard {
+  /** "YYYY-MM". */
+  month: string;
+  computed_at: string;
+}
+
+/** Kaki-level card: a group vibe headline plus the two award slots,
+ *  elevated from the plain stat tiles they replace. Positive-only by
+ *  design — there is no "least adventurous" or equivalent negative slot. */
+export interface KakiFoodIdentityCard {
+  headline: string;
+  description: string;
+  mostActive: { user_id: string; visits: number } | null;
+  adventurer: { user_id: string; distinctPlaces: number } | null;
+}
+
+export interface KakiFoodIdentitySnapshot extends KakiFoodIdentityCard {
+  month: string;
+  computed_at: string;
+}
+
 export interface CuisineStreak {
   cuisine: string;
   days: number;

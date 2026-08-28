@@ -33,8 +33,11 @@ import type {
   EventRsvp,
   EventVote,
   Filters,
+  FoodIdentityCard,
   Kaki,
   KakiDetail,
+  KakiFoodIdentityCard,
+  KakiFoodIdentitySnapshot,
   KakiMember,
   Lobang,
   LobangTarget,
@@ -49,6 +52,7 @@ import type {
   PublicEventPreview,
   RecurringSeries,
   TeamUser,
+  UserFoodIdentitySnapshot,
   UserPrefs,
   Visit,
   WalkCacheEntry,
@@ -3748,6 +3752,117 @@ export const supabaseRepo: Repo = {
     if (!data) return null;
     const row = data as { user_id: string; display_name: string };
     return { user_id: row.user_id, display_name: row.display_name };
+  },
+
+  async listAllUserIds() {
+    // Service-role, not the per-request anon client: this is the monthly
+    // cron's iteration set, and profiles_select (authenticated, using(true))
+    // would work here too, but there is no authenticated session in a cron
+    // run — same reasoning as the two save methods below.
+    const { createServiceRoleClient } = await import(
+      "@/lib/supabase/serviceClient"
+    );
+    const admin = createServiceRoleClient();
+    const { data, error } = await admin.from("profiles").select("user_id");
+    if (error) fail("Could not list accounts", error);
+    return (data ?? []).map((row) => row.user_id as string);
+  },
+
+  async listAllKakiIds() {
+    const { createServiceRoleClient } = await import(
+      "@/lib/supabase/serviceClient"
+    );
+    const admin = createServiceRoleClient();
+    const { data, error } = await admin.from("kakis").select("id");
+    if (error) fail("Could not list Kakis", error);
+    return (data ?? []).map((row) => row.id as string);
+  },
+
+  async saveUserFoodIdentitySnapshot(userId, month, card: FoodIdentityCard) {
+    // There is no user session in a cron run, so the normal anon-key path
+    // would be rejected outright by RLS (068_food_identity_snapshots.sql
+    // grants this table no authenticated write policy at all, by design —
+    // only the cron, via this method, ever writes it). Same reasoning as
+    // the discovery cron's `places` upsert.
+    const { createServiceRoleClient } = await import(
+      "@/lib/supabase/serviceClient"
+    );
+    const admin = createServiceRoleClient();
+    const { error } = await admin.from("user_food_identity_snapshots").upsert(
+      {
+        user_id: userId,
+        month,
+        archetype: card.archetype,
+        headline: card.headline,
+        description: card.description,
+        computed_at: new Date().toISOString(),
+      },
+      { onConflict: "user_id,month" }
+    );
+    if (error) fail("Could not save that food identity snapshot", error);
+  },
+
+  async listUserFoodIdentitySnapshots(userId) {
+    const client = await db();
+    const { data, error } = await client
+      .from("user_food_identity_snapshots")
+      .select("month, archetype, headline, description, computed_at")
+      .eq("user_id", userId)
+      .order("month", { ascending: false });
+    if (error) fail("Could not load your food identity history", error);
+    return (data ?? []) as UserFoodIdentitySnapshot[];
+  },
+
+  async saveKakiFoodIdentitySnapshot(kakiId, month, card: KakiFoodIdentityCard) {
+    const { createServiceRoleClient } = await import(
+      "@/lib/supabase/serviceClient"
+    );
+    const admin = createServiceRoleClient();
+    const { error } = await admin.from("kaki_food_identity_snapshots").upsert(
+      {
+        kaki_id: kakiId,
+        month,
+        headline: card.headline,
+        description: card.description,
+        most_active_user_id: card.mostActive?.user_id ?? null,
+        most_active_visits: card.mostActive?.visits ?? null,
+        adventurer_user_id: card.adventurer?.user_id ?? null,
+        adventurer_distinct_places: card.adventurer?.distinctPlaces ?? null,
+        computed_at: new Date().toISOString(),
+      },
+      { onConflict: "kaki_id,month" }
+    );
+    if (error) fail("Could not save that Kaki food identity snapshot", error);
+  },
+
+  async listKakiFoodIdentitySnapshots(kakiId) {
+    const client = await db();
+    const { data, error } = await client
+      .from("kaki_food_identity_snapshots")
+      .select(
+        "month, headline, description, most_active_user_id, most_active_visits, adventurer_user_id, adventurer_distinct_places, computed_at"
+      )
+      .eq("kaki_id", kakiId)
+      .order("month", { ascending: false });
+    if (error) fail("Could not load this Kaki's food identity history", error);
+    return (data ?? []).map((row) => ({
+      month: row.month as string,
+      headline: row.headline as string,
+      description: row.description as string,
+      computed_at: row.computed_at as string,
+      mostActive:
+        row.most_active_user_id && typeof row.most_active_visits === "number"
+          ? { user_id: row.most_active_user_id as string, visits: row.most_active_visits }
+          : null,
+      adventurer:
+        row.adventurer_user_id &&
+        typeof row.adventurer_distinct_places === "number"
+          ? {
+              user_id: row.adventurer_user_id as string,
+              distinctPlaces: row.adventurer_distinct_places,
+            }
+          : null,
+    })) as KakiFoodIdentitySnapshot[];
   },
 };
 

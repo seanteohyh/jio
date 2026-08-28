@@ -13,13 +13,15 @@ import {
 } from "@/components/ui";
 import { KakiMetricsCharts } from "@/components/MetricsCharts";
 import AddKakiMemberPanel from "@/components/kakis/AddKakiMemberPanel";
+import KakiFoodIdentityCard from "@/components/kakis/KakiFoodIdentityCard";
 import { fetcher, mutateJson } from "@/lib/fetcher";
 import { formatDate } from "@/lib/utils";
-import type { KakiDetail, KakiMetrics } from "@/types";
+import type { KakiDetail, KakiFoodIdentitySnapshot, KakiMetrics } from "@/types";
 
 interface KakiResponse {
   kaki: KakiDetail;
   metrics: KakiMetrics;
+  foodIdentity: KakiFoodIdentitySnapshot | null;
   viewer: { id: string; isMember: boolean; isCreator: boolean };
 }
 
@@ -44,7 +46,7 @@ export default function KakiDetailPage({
   if (error) return <ErrorNote>{error.message}</ErrorNote>;
   if (!data) return null;
 
-  const { kaki, metrics, viewer } = data;
+  const { kaki, metrics, foodIdentity, viewer } = data;
 
   const inviteUrl =
     typeof window !== "undefined"
@@ -158,8 +160,12 @@ export default function KakiDetailPage({
           Built from visits members have shared. Private visits stay private, so
           these numbers are a floor, not a full picture.
         </p>
-        <KakiMetricsCharts metrics={metrics} nameFor={nameFor} />
+        <KakiMetricsCharts metrics={metrics} />
       </section>
+
+      {metrics.groupTotalVisits > 0 && (
+        <KakiFoodIdentityCard snapshot={foodIdentity} nameFor={nameFor} />
+      )}
 
       {viewer.isMember && (
         <Button variant="danger" onClick={leave} disabled={busy}>

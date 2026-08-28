@@ -154,13 +154,7 @@ export function UserMetricsCharts({ metrics }: { metrics: UserMetrics }) {
   );
 }
 
-export function KakiMetricsCharts({
-  metrics,
-  nameFor,
-}: {
-  metrics: KakiMetrics;
-  nameFor: (userId: string) => string;
-}) {
+export function KakiMetricsCharts({ metrics }: { metrics: KakiMetrics }) {
   if (metrics.groupTotalVisits === 0) {
     return (
       <EmptyState
@@ -172,31 +166,13 @@ export function KakiMetricsCharts({
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      {/* "Most active" and "Adventurer" used to live here as plain stat
+          tiles — CHANGES_20260821_combined2.md Item 1 elevates them into
+          named celebratory slots on `KakiFoodIdentityCard` instead,
+          rendered by the Kaki page alongside this component. */}
+      <div className="grid grid-cols-2 gap-3">
         <StatTile label="Group visits" value={metrics.groupTotalVisits} />
         <StatTile label="Places tried" value={metrics.groupDistinctPlaces} />
-        <StatTile
-          label="Most active"
-          value={
-            metrics.mostActiveMember
-              ? nameFor(metrics.mostActiveMember.user_id)
-              : "—"
-          }
-          sub={
-            metrics.mostActiveMember
-              ? `${metrics.mostActiveMember.visits} visits`
-              : undefined
-          }
-        />
-        <StatTile
-          label="Adventurer"
-          value={metrics.adventurer ? nameFor(metrics.adventurer.user_id) : "—"}
-          sub={
-            metrics.adventurer
-              ? `${metrics.adventurer.distinctPlaces} different places`
-              : undefined
-          }
-        />
       </div>
 
       <CuisineBars
