@@ -4,14 +4,16 @@ import useSWR from "swr";
 import { ErrorNote, SkeletonDetail } from "@/components/ui";
 import {
   FunnelSection,
+  FunnelStepsSection,
   GrowthSection,
   JioOutcomesSection,
 } from "@/components/admin/AdminAnalyticsCharts";
 import { fetcher } from "@/lib/fetcher";
 import type { AdminAnalytics } from "@/types";
 
-/** Overview — the three sections every other view builds on: today's
- *  funnel, growth over the window, and how Jios have been resolving. */
+/** Overview — the sections every other view builds on: today's activity
+ *  snapshot, the real decided-Jio step funnel, growth over the window, and
+ *  how Jios have been resolving. */
 export default function AdminAnalyticsOverviewPage() {
   const { data, error, isLoading } = useSWR<{ analytics: AdminAnalytics }>(
     "/api/admin/analytics?days=90",
@@ -25,6 +27,10 @@ export default function AdminAnalyticsOverviewPage() {
   return (
     <>
       <FunnelSection funnel={data.analytics.funnel} />
+      <FunnelStepsSection
+        funnelSteps={data.analytics.funnelSteps}
+        windowDays={data.analytics.windowDays}
+      />
       <GrowthSection
         growth={data.analytics.growth}
         windowDays={data.analytics.windowDays}

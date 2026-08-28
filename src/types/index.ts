@@ -865,6 +865,52 @@ export interface AdminAnalytics {
     wauPerWeek: DateCount[];
     mauPerMonth: DateCount[];
   };
+
+  /**
+   * The real step funnel (Part 1 §D) — replaces `funnel`'s four same-day
+   * counts (never a true funnel: no shared population, no drop-off) with an
+   * actual invited → responded → voted → attended → reviewed conversion
+   * over every *decided* Jio (closed with a winner) in the window. A Jio
+   * that never resolved has nothing to attend or review, so the population
+   * is scoped to decided Jios only — unlike `funnel.participatingDau` above,
+   * which counts any activity regardless of outcome.
+   *
+   * "Attended" = RSVP'd yes (decided in §2 of the source doc — the app's
+   * own explicit signal, higher coverage than requiring a logged visit).
+   * "Reviewed" is the one approximation the schema forces: `visits` has no
+   * `event_id`, so it can't be tied to *which* Jio prompted it — this counts
+   * a participant as reviewed if they logged any visit to the winning place
+   * at or after the Jio's `closed_at`. A person who separately visits the
+   * same place for an unrelated reason shortly after could be miscounted;
+   * worth adding `visits.event_id` if this funnel becomes a priority.
+   */
+  funnelSteps: {
+    steps: {
+      step: "invited" | "responded" | "voted" | "attended" | "reviewed";
+      count: number;
+    }[];
+    /** Each series bucketed by the *Jio's* creation week, so a trend reads
+     *  "of the Jios created that week, how many invite-instances eventually
+     *  reached this step" — not when the RSVP/vote/visit itself happened. */
+    trend: {
+      invitedPerWeek: DateCount[];
+      respondedPerWeek: DateCount[];
+      votedPerWeek: DateCount[];
+      attendedPerWeek: DateCount[];
+      reviewedPerWeek: DateCount[];
+    };
+    /** One row per Asia/Singapore week a participant signed up in, showing
+     *  how that signup cohort converted across every decided Jio they were
+     *  part of in the window — not just Jios created that week. */
+    cohortBySignupWeek: {
+      weekStart: string;
+      invited: number;
+      responded: number;
+      voted: number;
+      attended: number;
+      reviewed: number;
+    }[];
+  };
 }
 
 // ---------------------------------------------------------------------------

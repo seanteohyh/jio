@@ -29,6 +29,7 @@ import {
   bucketWalkMinutes,
   isSameSgtDay,
   median,
+  sgtWeekKey,
   type UserActivity,
 } from "@/lib/adminAnalytics";
 import {
@@ -2472,6 +2473,101 @@ export const demoRepo: Repo = {
     const wauPerWeek = bucketDistinctUsersByWeek(activityInWindow);
     const mauPerMonth = bucketDistinctUsersByMonth(activityInWindow);
 
+    // ---- funnel steps (Part 1 §D): real invited -> responded -> voted ->
+    // attended -> reviewed conversion, scoped to decided Jios (closed with
+    // a winner) in the window — a Jio that never resolved has nothing to
+    // attend or review.
+    const decidedEventsInWindow = s.events.filter(
+      (e) => inWindow(e.created_at) && e.status === "closed" && e.winner_place_id
+    );
+    type FunnelRow = {
+      eventCreatedAt: string;
+      responded: boolean;
+      voted: boolean;
+      attended: boolean;
+      reviewed: boolean;
+      signupAt?: string;
+    };
+    const funnelRows: FunnelRow[] = [];
+    for (const e of decidedEventsInWindow) {
+      for (const uid of resolveEventParticipants(e)) {
+        const rsvp = s.rsvps.find((r) => r.event_id === e.id && r.user_id === uid);
+        const responded = Boolean(rsvp);
+        const attended = rsvp?.response === "yes";
+        const voted = s.votes.some((v) => v.event_id === e.id && v.user_id === uid);
+        const reviewed = Boolean(
+          attended &&
+            e.closed_at &&
+            s.visits.some(
+              (v) =>
+                v.user_id === uid &&
+                v.place_id === e.winner_place_id &&
+                v.created_at &&
+                v.created_at >= e.closed_at!
+            )
+        );
+        const signupAt = s.profiles.find((p) => p.user_id === uid)?.created_at;
+        funnelRows.push({
+          eventCreatedAt: e.created_at!,
+          responded,
+          voted,
+          attended,
+          reviewed,
+          signupAt,
+        });
+      }
+    }
+    const funnelSteps = {
+      steps: [
+        { step: "invited" as const, count: funnelRows.length },
+        { step: "responded" as const, count: funnelRows.filter((r) => r.responded).length },
+        { step: "voted" as const, count: funnelRows.filter((r) => r.voted).length },
+        { step: "attended" as const, count: funnelRows.filter((r) => r.attended).length },
+        { step: "reviewed" as const, count: funnelRows.filter((r) => r.reviewed).length },
+      ],
+      trend: {
+        invitedPerWeek: bucketByWeek(funnelRows.map((r) => r.eventCreatedAt)),
+        respondedPerWeek: bucketByWeek(
+          funnelRows.filter((r) => r.responded).map((r) => r.eventCreatedAt)
+        ),
+        votedPerWeek: bucketByWeek(
+          funnelRows.filter((r) => r.voted).map((r) => r.eventCreatedAt)
+        ),
+        attendedPerWeek: bucketByWeek(
+          funnelRows.filter((r) => r.attended).map((r) => r.eventCreatedAt)
+        ),
+        reviewedPerWeek: bucketByWeek(
+          funnelRows.filter((r) => r.reviewed).map((r) => r.eventCreatedAt)
+        ),
+      },
+      cohortBySignupWeek: (() => {
+        const byWeek = new Map<
+          string,
+          { invited: number; responded: number; voted: number; attended: number; reviewed: number }
+        >();
+        for (const r of funnelRows) {
+          if (!r.signupAt) continue;
+          const week = sgtWeekKey(r.signupAt);
+          const c = byWeek.get(week) ?? {
+            invited: 0,
+            responded: 0,
+            voted: 0,
+            attended: 0,
+            reviewed: 0,
+          };
+          c.invited += 1;
+          if (r.responded) c.responded += 1;
+          if (r.voted) c.voted += 1;
+          if (r.attended) c.attended += 1;
+          if (r.reviewed) c.reviewed += 1;
+          byWeek.set(week, c);
+        }
+        return Array.from(byWeek.entries())
+          .map(([weekStart, c]) => ({ weekStart, ...c }))
+          .sort((a, b) => a.weekStart.localeCompare(b.weekStart));
+      })(),
+    };
+
     // ---- growth ----
     const newUsersPerDay = bucketByDay(
       s.profiles.filter((p) => inWindow(p.created_at)).map((p) => p.created_at!)
@@ -2690,6 +2786,7 @@ export const demoRepo: Repo = {
         wauPerWeek,
         mauPerMonth,
       },
+      funnelSteps,
     };
   },
 

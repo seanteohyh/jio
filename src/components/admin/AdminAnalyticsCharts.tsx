@@ -260,6 +260,145 @@ export function FunnelSection({ funnel }: { funnel: AdminAnalytics["funnel"] }) 
   );
 }
 
+const FUNNEL_STEP_LABEL: Record<AdminAnalytics["funnelSteps"]["steps"][number]["step"], string> = {
+  invited: "Invited",
+  responded: "Responded",
+  voted: "Voted",
+  attended: "Attended",
+  reviewed: "Reviewed",
+};
+
+/** The real step funnel (Part 1 §D) — a shared population of invite-
+ *  instances across every decided Jio in the window, each step a strict
+ *  subset of the one before, with real drop-off percentages. Distinct from
+ *  `FunnelSection` above, which is a same-day activity snapshot with no
+ *  shared population and nothing to drop off between. */
+export function FunnelStepsSection({
+  funnelSteps,
+  windowDays,
+}: {
+  funnelSteps: AdminAnalytics["funnelSteps"];
+  windowDays: number;
+}) {
+  const { steps, trend, cohortBySignupWeek } = funnelSteps;
+  const invited = steps[0]?.count ?? 0;
+
+  return (
+    <Card className="space-y-4">
+      <SectionHeading>Real funnel — decided Jios</SectionHeading>
+      <p className="text-stone text-xs">
+        Every Jio that closed with a winner in this window, and everyone
+        invited to one — one shared population carried step by step, unlike
+        the same-day snapshot above. "Reviewed" is an approximation: a visit
+        to the winning place at or after the Jio closed, since visits aren't
+        linked to which Jio prompted them.
+      </p>
+
+      {invited === 0 ? (
+        <p className="text-stone text-xs">No decided Jios in this window yet.</p>
+      ) : (
+        <ul className="space-y-2">
+          {steps.map((s, i) => {
+            const pctOfInvited = invited > 0 ? Math.round((s.count / invited) * 100) : 0;
+            const prev = i > 0 ? steps[i - 1].count : null;
+            const pctOfPrev =
+              prev && prev > 0 ? Math.round((s.count / prev) * 100) : null;
+            return (
+              <li key={s.step} className="flex items-center gap-3 text-xs">
+                <span className="text-stone w-20 shrink-0">
+                  {FUNNEL_STEP_LABEL[s.step]}
+                </span>
+                <span className="bg-paper h-3 flex-1 overflow-hidden rounded-full">
+                  <span
+                    className="bg-ember/70 block h-full rounded-full"
+                    style={{ width: `${Math.max(3, pctOfInvited)}%` }}
+                  />
+                </span>
+                <span className="text-ink w-10 shrink-0 text-right tabular-nums">
+                  {s.count}
+                </span>
+                <span className="text-stone w-24 shrink-0 text-right tabular-nums">
+                  {pctOfInvited}% of invited
+                  {pctOfPrev !== null && i > 0 && ` · ${pctOfPrev}% of prev`}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div>
+          <p className="text-ink text-sm font-medium">Invited per week</p>
+          <Sparkline data={trend.invitedPerWeek} weekly windowDays={windowDays} />
+        </div>
+        <div>
+          <p className="text-ink text-sm font-medium">Responded per week</p>
+          <Sparkline data={trend.respondedPerWeek} weekly windowDays={windowDays} />
+        </div>
+        <div>
+          <p className="text-ink text-sm font-medium">Voted per week</p>
+          <Sparkline data={trend.votedPerWeek} weekly windowDays={windowDays} />
+        </div>
+        <div>
+          <p className="text-ink text-sm font-medium">Attended per week</p>
+          <Sparkline data={trend.attendedPerWeek} weekly windowDays={windowDays} />
+        </div>
+        <div>
+          <p className="text-ink text-sm font-medium">Reviewed per week</p>
+          <Sparkline data={trend.reviewedPerWeek} weekly windowDays={windowDays} />
+        </div>
+      </div>
+
+      <div>
+        <p className="text-ink text-sm font-medium">Cohort by signup week</p>
+        {cohortBySignupWeek.length === 0 ? (
+          <p className="text-stone mt-1 text-xs">
+            No participant in a decided Jio has a recorded signup week yet.
+          </p>
+        ) : (
+          <div className="mt-2 overflow-x-auto">
+            <table className="w-full min-w-[420px] text-xs">
+              <thead>
+                <tr className="text-stone text-left">
+                  <th className="pb-1 pr-2 font-medium">Signed up</th>
+                  <th className="pb-1 pr-2 text-right font-medium">Invited</th>
+                  <th className="pb-1 pr-2 text-right font-medium">Responded</th>
+                  <th className="pb-1 pr-2 text-right font-medium">Voted</th>
+                  <th className="pb-1 pr-2 text-right font-medium">Attended</th>
+                  <th className="pb-1 text-right font-medium">Reviewed</th>
+                </tr>
+              </thead>
+              <tbody>
+                {cohortBySignupWeek.map((row) => (
+                  <tr key={row.weekStart} className="border-line border-t">
+                    <td className="text-ink py-1 pr-2">{shortDate(row.weekStart)}</td>
+                    <td className="text-ink py-1 pr-2 text-right tabular-nums">
+                      {row.invited}
+                    </td>
+                    <td className="text-ink py-1 pr-2 text-right tabular-nums">
+                      {row.responded}
+                    </td>
+                    <td className="text-ink py-1 pr-2 text-right tabular-nums">
+                      {row.voted}
+                    </td>
+                    <td className="text-ink py-1 pr-2 text-right tabular-nums">
+                      {row.attended}
+                    </td>
+                    <td className="text-ink py-1 text-right tabular-nums">
+                      {row.reviewed}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
+
 export function GrowthSection({
   growth,
   windowDays,
