@@ -13,6 +13,11 @@ import HintCard from "@/components/HintCard";
 import { LinkButton, SectionHeading } from "@/components/ui";
 import JioLockup from "@/components/brand/JioLockup";
 import { formatTime, isSameSgtDay } from "@/lib/utils";
+import type { InviteSelection } from "@/components/InvitePicker";
+import {
+  buildFirstHostInvite,
+  pickFirstHostSourceEvent,
+} from "@/lib/firstHostInvite";
 import type { LunchEvent } from "@/types";
 
 /** CHANGES_20260819.md §1 — how long a fresh account still counts as
@@ -118,6 +123,26 @@ export default async function HomePage() {
     .filter((e) => e.host_id === user.id && e.status !== "open")
     .sort((a, b) => b.scheduled_at.localeCompare(a.scheduled_at))[0];
 
+  // CHANGES_20260821_combined2.md §3C — a first-ever "Start a Jio" attempt
+  // pre-checks co-attendees from the most recent Jio this account joined as
+  // a guest, since that's the crowd a brand-new host most likely means to
+  // invite. See firstHostInvite.ts for the actual selection logic.
+  let firstHostInvite: InviteSelection | undefined;
+  if (features.events) {
+    const joinedEvent = pickFirstHostSourceEvent(events, user.id);
+    if (joinedEvent) {
+      try {
+        const repo = await getRepoAsync();
+        const source = await repo.getEvent(joinedEvent.id);
+        firstHostInvite =
+          (source && buildFirstHostInvite(source, user.id)) ?? undefined;
+      } catch {
+        // No prefill is a fine fallback — the ordinary empty picker still
+        // works exactly as it does for everyone else.
+      }
+    }
+  }
+
   const isNewerUser =
     !!profile?.created_at &&
     now.getTime() - new Date(profile.created_at).getTime() <
@@ -174,7 +199,7 @@ export default async function HomePage() {
       <div className="flex flex-col gap-2 sm:flex-row">
         {features.events ? (
           <div className="flex-1">
-            <StartJioWizard />
+            <StartJioWizard initialInvite={firstHostInvite} />
           </div>
         ) : null}
         <LinkButton href="/suggest" variant="secondary" className="flex-1">
