@@ -24,6 +24,7 @@ import type {
   Place,
   PlaceFlag,
   PlacesPage,
+  PublicEventPreview,
   PublicLobang,
   PublicPlace,
   PersonalInvite,
@@ -261,6 +262,14 @@ export interface Repo {
     timeOfDay?: string
   ): Promise<LunchEvent>;
   getEvent(idOrToken: string): Promise<EventDetail | null>;
+  /**
+   * CHANGES_20260821_combined2.md §3A — the signed-out preview at
+   * `/e/[token]`, resolved by `invite_token` only (never a raw id, unlike
+   * `getEvent`) since this is reachable with no session at all. Narrow on
+   * purpose — see `PublicEventPreview`'s own doc comment for exactly what's
+   * excluded and why.
+   */
+  getPublicEventPreview(token: string): Promise<PublicEventPreview | null>;
   listEvents(userId: string): Promise<LunchEvent[]>;
   /**
    * Adds another candidate date to an already-polling Flexi Jio. Same
@@ -855,6 +864,7 @@ export const REPO_METHODS = [
   "createEvent",
   "createFlexiEvent",
   "getEvent",
+  "getPublicEventPreview",
   "listEvents",
   "addCandidateDate",
   "markDateAvailability",

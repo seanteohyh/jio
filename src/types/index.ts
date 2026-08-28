@@ -481,6 +481,26 @@ export interface EventDetail extends LunchEvent {
   dateVotes: EventDateVote[];
 }
 
+/**
+ * CHANGES_20260821_combined2.md §3A — the narrow, privacy-safe shape a
+ * signed-out visitor sees at `/e/[token]` before the signup wall, same
+ * "unguessable token, SECURITY DEFINER resolver, narrow column list" shape
+ * as `PublicPlace`/`get_public_place`. Deliberately excludes anything a
+ * teammate's own vote or identity could leak through: no `tally`, no
+ * `votes`, no `invitees`, no per-person RSVP list, no option-level vote
+ * counts or `added_by`. `goingCount` is a rough headline number (RSVP'd
+ * "yes"), not a roster.
+ */
+export interface PublicEventPreview {
+  title: string;
+  hostName: string;
+  scheduledAt: string;
+  datePhase: DatePhase | null;
+  status: EventStatus;
+  goingCount: number;
+  placeOptions: { id: string; name: string }[];
+}
+
 // ---------------------------------------------------------------------------
 // Wishlist, recos, kakis
 // ---------------------------------------------------------------------------

@@ -1166,6 +1166,35 @@ export const demoRepo: Repo = {
     };
   },
 
+  async getPublicEventPreview(token) {
+    const s = store();
+    // Resolved by invite_token only, never a raw id — this is reachable
+    // with no session at all, unlike getEvent above.
+    const event = s.events.find((e) => e.invite_token === token);
+    if (!event) return null;
+
+    const goingCount = s.rsvps.filter(
+      (r) => r.event_id === event.id && r.response === "yes"
+    ).length;
+
+    const placeOptions = s.options
+      .filter((o) => o.event_id === event.id)
+      .map((o) => {
+        const place = s.places.find((p) => p.id === o.place_id);
+        return { id: o.place_id, name: place?.name ?? o.label ?? "A place" };
+      });
+
+    return {
+      title: event.title,
+      hostName: displayNameFor(event.host_id),
+      scheduledAt: event.scheduled_at,
+      datePhase: event.date_phase ?? null,
+      status: event.status,
+      goingCount,
+      placeOptions,
+    };
+  },
+
   async listEvents(userId) {
     const s = store();
 

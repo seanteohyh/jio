@@ -46,6 +46,7 @@ import type {
   PlaceFlag,
   PlacesPagination,
   Profile,
+  PublicEventPreview,
   RecurringSeries,
   TeamUser,
   UserPrefs,
@@ -1366,6 +1367,15 @@ export const supabaseRepo: Repo = {
     };
 
     return detail;
+  },
+
+  async getPublicEventPreview(token) {
+    const client = await db();
+    const { data, error } = await client.rpc("get_public_event_preview", {
+      p_token: token,
+    });
+    if (error) fail("Could not load that Jio", error);
+    return (data ?? null) as PublicEventPreview | null;
   },
 
   async listEvents(userId) {
