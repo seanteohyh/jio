@@ -19,7 +19,10 @@ import { createAuthServerClient } from "@/lib/supabase/serverAuth";
 import type { Repo } from "./index";
 import type {
   AdminAnalytics,
+  AdminEngagementWeights,
   AdminPlaceDetail,
+  AdminUserDetail,
+  AdminUsersData,
   CuisineMergePreview,
   CuisineOption,
   EventCandidateDate,
@@ -3355,6 +3358,38 @@ export const supabaseRepo: Repo = {
     });
     if (error) fail("Could not load place detail", error);
     return (data ?? null) as AdminPlaceDetail | null;
+  },
+
+  async getAdminUsersData(days = 90) {
+    const client = await db();
+    const { data, error } = await client.rpc("get_admin_users", {
+      p_days: days,
+    });
+    if (error) fail("Could not load users data", error);
+    return data as AdminUsersData;
+  },
+
+  async updateEngagementWeights(weights) {
+    const client = await db();
+    const { data, error } = await client.rpc("set_engagement_weights", {
+      p_hosted: weights.hosted,
+      p_voted: weights.voted,
+      p_rsvp: weights.rsvp,
+      p_visit: weights.visit,
+      p_review: weights.review,
+      p_lobang: weights.lobang,
+    });
+    if (error) fail("Could not update engagement weights", error);
+    return data as AdminEngagementWeights;
+  },
+
+  async getAdminUserDetail(userId) {
+    const client = await db();
+    const { data, error } = await client.rpc("get_admin_user_detail", {
+      p_user_id: userId,
+    });
+    if (error) fail("Could not load user detail", error);
+    return (data ?? null) as AdminUserDetail | null;
   },
 
   async reviewPlace(userId, placeId, approve) {

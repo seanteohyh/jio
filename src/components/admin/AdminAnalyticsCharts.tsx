@@ -177,10 +177,16 @@ export function RankedList({
 export function DistributionBars({
   entries,
   formatLabel,
+  formatValue,
   total,
 }: {
   entries: [string, number][];
   formatLabel?: (key: string) => string;
+  /** Formats each bar's own value and the "N total" line — defaults to the
+   *  raw number, which is right for the two integer-count callers. Pass
+   *  e.g. `(v) => \`${v}%\`` when `entries` holds percentage points rather
+   *  than counts (a user's cuisine breakdown is a 0-1 share, not a count). */
+  formatValue?: (value: number) => string;
   /**
    * Overrides the "N total" line's sum — pass the true, untruncated total
    * when `entries` has been sliced down (e.g. cuisine tags to the top 8).
@@ -194,6 +200,7 @@ export function DistributionBars({
   }
   const max = Math.max(1, ...entries.map(([, v]) => v));
   const grandTotal = total ?? entries.reduce((sum, [, v]) => sum + v, 0);
+  const fmt = formatValue ?? ((v: number) => `${v}`);
 
   return (
     <div>
@@ -223,14 +230,14 @@ export function DistributionBars({
                 />
               </span>
               <span className="text-stone w-8 shrink-0 text-right tabular-nums">
-                {value}
+                {fmt(value)}
               </span>
             </li>
           );
         })}
       </ul>
       <p className="text-stone mt-2 text-[11px] tabular-nums">
-        {grandTotal} total
+        {fmt(grandTotal)} total
       </p>
     </div>
   );

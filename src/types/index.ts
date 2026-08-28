@@ -939,6 +939,93 @@ export interface AdminPlaceDetail {
   budgetAlignmentPct: number | null;
 }
 
+/**
+ * Part 1 §B — per-activity-type weighting for the Users view's composite
+ * engagement score. Equal (1) by default, but a real, persisted, admin-
+ * editable setting (`admin_engagement_weights`, migration 064) rather than
+ * a hardcoded constant — the source doc was explicit that "equal for now"
+ * still needed its own small settings surface, since the next admin may
+ * want to weight differently.
+ */
+export interface AdminEngagementWeights {
+  hosted: number;
+  voted: number;
+  rsvp: number;
+  visit: number;
+  review: number;
+  lobang: number;
+  /** `null` if the weights have never been changed from their seeded
+   *  default. */
+  updatedAt: string | null;
+}
+
+/** One person's row in the Users view's leaderboard or a segment list —
+ *  the composite score alongside every signal that fed it, so the number
+ *  is never the only thing visible (per the source doc's §2 decision). */
+export interface AdminUserSummary {
+  id: string;
+  name: string;
+  score: number;
+  hostedCount: number;
+  votedCount: number;
+  /** Lifetime, not windowed — `event_rsvps` has no timestamp column, the
+   *  same schema gap as `funnel.respondedToInviteTotal`. */
+  rsvpCount: number;
+  visitCount: number;
+  /** Visits with `is_public` set — a review, not just a private diary
+   *  entry, distinct from `visitCount`. */
+  reviewCount: number;
+  lobangCount: number;
+}
+
+export type AdminUserSegmentKey =
+  | "powerHosts"
+  | "activeVoters"
+  | "rsvpOnlyLurkers"
+  | "reviewers"
+  | "dormant"
+  | "newAndActive";
+
+/**
+ * Part 1 §B's Users view. Rule-based segments, not ML/clustering — deemed
+ * overkill for a small internal tool and worse than named, explainable
+ * groups for Sean's stated use ("ask the person for their ideas"). A
+ * person can land in more than one segment; these aren't partitions.
+ */
+export interface AdminUsersData {
+  windowDays: number;
+  weights: AdminEngagementWeights;
+  /** Top scorers with a score above zero, ranked — everyone else still
+   *  shows up in whichever segments they match, just not here. */
+  leaderboard: AdminUserSummary[];
+  segments: Record<AdminUserSegmentKey, AdminUserSummary[]>;
+}
+
+/**
+ * Part 1 §B's per-person drill-down — reuses `computeUserMetrics` (already
+ * storage-agnostic, never tied to "the logged-in user") pointed at one
+ * target, plus admin-only context alongside it. `visits` here is every
+ * visit regardless of `is_public` — a deliberate, documented privacy debt
+ * (source doc §2): full detail for now, worth tightening to aggregate-only
+ * once more admins are added, since the risk of exposure grows with the
+ * admin list, not with this feature itself.
+ */
+export interface AdminUserDetail {
+  userId: string;
+  name: string;
+  metrics: UserMetrics;
+  hostedCount: number;
+  kakiMemberships: { id: string; name: string }[];
+  lobangsSent: number;
+  lobangsReceived: number;
+  /** `null` if this person has never done anything at all. */
+  lastActiveAt: string | null;
+  /** % of Jios this person was ever invited to (host, Kaki member, or
+   *  explicit invitee) that they RSVP'd to at all, lifetime. `null` if
+   *  they've never been invited to one. */
+  rsvpResponsivenessPct: number | null;
+}
+
 // ---------------------------------------------------------------------------
 // External services
 // ---------------------------------------------------------------------------

@@ -53,7 +53,7 @@ When you are ready to make it real, see [Going live](#going-live).
 | **Recurring Jios** | A standing weekly Jio — same place every time (auto-confirmed, no vote needed) or a vote over the same option pool each week. Generates its next occurrence lazily, a few days ahead, when the host loads Home or Jios; invitees are expanded fresh from current kaki membership every time, not frozen at series creation. The configured time is anchored to Singapore's fixed UTC+8 offset explicitly at generation time, not the server process's own local timezone — the write-side counterpart to the display-only timezone bug above: a 12:00 series used to generate at 12:00 UTC (8pm SGT) instead of the intended 04:00 UTC. Editable, not just stoppable — an "Edit" link reuses the same create form, prefilled. Changes to the weekday only ever affect what generates from then on; time, place/mode and invitees also propagate onto an occurrence the series already generated, but only while it's still open and nobody's voted or RSVP'd on it yet — once someone has, that one occurrence is left exactly as it was, so an edit can never invalidate an answer someone already gave. |
 | **Push notifications** | Opt in from "You": get notified when you're invited to a Jio, when someone votes on one you're hosting (throttled to at most one push per event per ~10 minutes), when a Jio you're in is starting in 30 minutes and you haven't voted or RSVP'd, when one you're in gets decided, when someone sends you a lobang, when someone likes a review you shared (same ~10 minute throttle, skipped for liking your own review), and a weekly recap of how many likes your reviews picked up, sent only if that count is above zero. iOS only ever delivers push to an installed PWA, never a browser tab, so the app also nudges toward "Add to Home Screen" after a few visits — dismissible with "remind me later," not a one-shot ask — plus an always-available "Add to home screen" card in "You" for anyone who dismissed that prompt but changes their mind later. Both surfaces' instructions call out that the Share icon isn't always sitting directly in the visible toolbar — some iOS layouts tuck it behind a "•••"/"More" button first, and a user report confirmed people were getting stuck right there without that hint. In `name` mode, a successful install is also followed by an offer to attach an email, since installing the icon is the moment a second, independent signed-in context is about to exist. |
 | **Jio reminders** | A separate, configurable "starting soon" reminder (CHANGES_20260821c.md §1) — not the fixed 30-minute non-responder nudge above, which only ever pushes people who haven't voted or RSVP'd. This one is for anyone confirmed going (RSVP "Yes"), whether or not they've already voted, at a lead time you actually choose. "You" carries the on/off default and the default lead time, right below the push toggle; a Jio you're confirmed for shows its own reminder card, collapsed to "using your default" with a "Change for this Jio" override that only that Jio ever sees. Fires once per person per Jio, same one-shot idea as the fixed reminder above — reopening a Jio for voting or changing your RSVP doesn't matter to it either way. |
-| **Admin** | Moderation (reports, block/unblock), an analytics dashboard split into seven tabbed views — Overview (funnel, growth, Jio outcomes), Users, Places, Social, Moderation, Wishlist, and Performance — office management, and an accounts screen for merging duplicate identities (auto-surfaced by shared name, or search any account) and issuing recovery links — all reachable from "You", no dedicated nav icon, since admins are the one group that needs it least often. The Performance tab now includes an in-app DAU/WAU/MAU trend (distinct users doing anything — voting, hosting, logging a visit, saving a wishlist item, adding a place, or filing a report — bucketed by day/week/month) alongside the existing Vercel/Supabase link-outs, which still cover page views and platform-quota metering this app's own database can't query. Overview also carries a real step funnel — invited → responded → voted → attended → reviewed, with real drop-off percentages, a per-week trend for each step, and a cohort table grouped by signup week — scoped to every Jio that actually closed with a winner in the window, distinct from the same-day activity snapshot above it. The Places view's top-rated/most-visited lists are now click-through: opening a place shows who's visited (ranked), a weekly rating trend rather than just the single current average, wishlist-save and lobang-mention counts, and how well the place's cuisine/budget lines up with the people who actually go there. The dashboard's two chart primitives — a sparkline and a horizontal-bar distribution — print their key numbers as visible text by default rather than only on hover: a sparkline shows its date range plus the peak and latest values always, with a tap-or-hover readout per bar for the rest; a distribution bar shows a 0→max scale and an "N total" line, in one consistent color rather than cycling through decorative hues that don't encode anything. |
+| **Admin** | Moderation (reports, block/unblock), an analytics dashboard split into seven tabbed views — Overview (funnel, growth, Jio outcomes), Users, Places, Social, Moderation, Wishlist, and Performance — office management, and an accounts screen for merging duplicate identities (auto-surfaced by shared name, or search any account) and issuing recovery links — all reachable from "You", no dedicated nav icon, since admins are the one group that needs it least often. The Performance tab now includes an in-app DAU/WAU/MAU trend (distinct users doing anything — voting, hosting, logging a visit, saving a wishlist item, adding a place, or filing a report — bucketed by day/week/month) alongside the existing Vercel/Supabase link-outs, which still cover page views and platform-quota metering this app's own database can't query. Overview also carries a real step funnel — invited → responded → voted → attended → reviewed, with real drop-off percentages, a per-week trend for each step, and a cohort table grouped by signup week — scoped to every Jio that actually closed with a winner in the window, distinct from the same-day activity snapshot above it. The Places view's top-rated/most-visited lists are now click-through: opening a place shows who's visited (ranked), a weekly rating trend rather than just the single current average, wishlist-save and lobang-mention counts, and how well the place's cuisine/budget lines up with the people who actually go there. The Users view carries a leaderboard scored by a composite engagement signal (hosting, voting, RSVPing, logging visits, writing public reviews, sending lobangs) — equal-weighted by default, but adjustable from an on-page settings form since the next admin may want to weight differently — six rule-based segments (Power hosts, Active voters, RSVP-only lurkers, Reviewers, Dormant, New & active; not a partition, a person can land in more than one or none), and the same click-through pattern into a per-person drill-down: full visit history, cuisine breakdown, regulars, Jios hosted, Kaki memberships, lobangs sent/received, last-active date, and lifetime RSVP responsiveness. The dashboard's two chart primitives — a sparkline and a horizontal-bar distribution — print their key numbers as visible text by default rather than only on hover: a sparkline shows its date range plus the peak and latest values always, with a tap-or-hover readout per bar for the rest; a distribution bar shows a 0→max scale and an "N total" line, in one consistent color rather than cycling through decorative hues that don't encode anything. |
 
 ---
 
@@ -297,7 +297,7 @@ Roughly 30 minutes end to end. Everything below stays on a free tier.
    `service_role` key. The last one is a secret; it bypasses all access
    control.
 3. **SQL Editor** — run every file in `supabase/migrations/` in numeric order,
-   001 through 063. They are idempotent, so re-running is harmless.
+   001 through 064. They are idempotent, so re-running is harmless.
 4. **Authentication → Providers → Anonymous sign-ins** — turn this on. It is
    what makes name-only sign-in work.
 5. **Authentication → URL Configuration** — set the Site URL to your deployed
@@ -705,7 +705,27 @@ privilege is earned by the check inside the function, not by which key
 signed the request. This is deliberately different from "rated by your
 Kaki group" above, which stays on the plain client and inherits RLS's
 private-data limit — an admin dashboard's whole job is seeing the true
-aggregate, a per-user feature's isn't.
+aggregate, a per-user feature's isn't. `get_admin_place_detail` (063),
+`get_admin_users`/`get_engagement_weights`/`set_engagement_weights` (064),
+and `get_admin_user_detail` (064) all follow the identical pattern for the
+Places/Users views added later.
+
+**`get_admin_user_detail` shows one person's full visit history — every
+rating, note, and best-dish list, regardless of `is_public` — not an
+aggregate summary.** This is a deliberate, documented privacy debt
+(CHANGES_20260821_combined.md Part 1 §2), not an oversight: full detail was
+chosen because there's currently exactly one admin, so the exposure is
+Sean seeing Sean's own data model reflected back. It's flagged for
+revisiting once more admins are added, since "full detail, visible to
+whoever holds admin" gets riskier as that list grows — dropping to
+aggregate-only later means deleting the one `'visits'` key from the
+function's `jsonb_build_object` and the corresponding block in the detail
+page, not a rebuild. `admin_engagement_weights` (064) — the composite
+score's per-signal weights — is a one-row singleton table with RLS enabled
+and *zero* policies defined, the same "no policies, the function is the
+only door" shape as `recovery_tokens`: every access has to go through
+`get_engagement_weights`/`set_engagement_weights`, both of which check
+`admins` themselves.
 
 **Staying signed in depends on `middleware.ts`, not just the Supabase
 client config.** `@supabase/ssr`'s access token is short-lived; the refresh
@@ -1014,7 +1034,7 @@ does the reassignment, not the authorization check.
 ## Tests
 
 ```bash
-npm test          # 546 tests across 45 files
+npm test          # 556 tests across 47 files
 npm run typecheck
 npm run lint
 ```
@@ -1056,6 +1076,7 @@ npm run lint
 | `adminAnalytics.test.ts` | Asia/Singapore day/week/month bucketing across the UTC boundary, median with no-data returning `null` not `0`, walk-time bucket edges, distinct-user (not per-event) DAU/WAU/MAU bucketing |
 | `adminAnalyticsFunnel.test.ts` | Real step-funnel population logic (invited/responded/voted/attended/reviewed) scoped to decided Jios only, a still-open or no-winner Jio excluded entirely, "reviewed" requiring the visit to land at/after `closed_at`, signup-week cohort aggregation |
 | `adminPlaceDetail.test.ts` | Place drill-down: visitors ranked by count, rating trend bucketed by SGT week, wishlist/lobang counts, cuisine/budget alignment against actual visitors' prefs, `null` (not `0`) alignment when no visitor has any prefs recorded |
+| `adminUsersView.test.ts` | Composite score responds to weight changes, segment membership rules (power hosts, active voters, dormant), per-person drill-down (hostedCount/lobangs/lastActiveAt), lifetime RSVP responsiveness across every Jio a person was ever invited to |
 | `kakiMembers.test.ts` | Adding an existing user to a Kaki directly: any current member can, a non-member can't, no duplicate membership, rejects a nonexistent group |
 | `publicPlace.test.ts` | The public place-preview data: only the safe field subset, never `notes`/`created_by`, carries `lat`/`lng`, hides `needs_review` and `blocked` places, computed rating and visit count match the authenticated view |
 | `reviewLikes.test.ts` | Toggling a like on/off, independent counts across multiple likers, `liked_by_me` populated only for a known viewer, the like-push throttle window (claims once, refuses within the window, claims again after), and `listReviewLikesSince`'s cutoff filtering |

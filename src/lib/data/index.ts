@@ -1,7 +1,10 @@
 import type {
   AccountMergePreview,
   AdminAnalytics,
+  AdminEngagementWeights,
   AdminPlaceDetail,
+  AdminUserDetail,
+  AdminUsersData,
   CuisineMergePreview,
   CuisineOption,
   DuplicateProfileGroup,
@@ -664,6 +667,22 @@ export interface Repo {
    */
   getAdminPlaceDetail(placeId: string): Promise<AdminPlaceDetail | null>;
   /**
+   * Part 1 §B's Users view — leaderboard, segments, and the current
+   * engagement weights, all in one call since the leaderboard/segments are
+   * computed from those same weights. Same admin-trusts-the-caller
+   * convention as `getAdminAnalytics`.
+   */
+  getAdminUsersData(days?: number): Promise<AdminUsersData>;
+  /** The only way to change the composite score's per-signal weights —
+   *  admin only, validated non-negative. Returns the new weights so the
+   *  caller doesn't need a second round-trip to confirm the save. */
+  updateEngagementWeights(
+    weights: Omit<AdminEngagementWeights, "updatedAt">
+  ): Promise<AdminEngagementWeights>;
+  /** Part 1 §B's per-person drill-down. `null` when the user id doesn't
+   *  exist. Same admin-trusts-the-caller convention as `getAdminAnalytics`. */
+  getAdminUserDetail(userId: string): Promise<AdminUserDetail | null>;
+  /**
    * Confirms or dismisses a freshly-discovered (`needs_review`) place. Any
    * signed-in user may call this — it's crowd-confirmation of OSM data
    * quality, not moderation of an established place, so unlike `blockPlace`
@@ -879,6 +898,9 @@ export const REPO_METHODS = [
   "listAdminIds",
   "getAdminAnalytics",
   "getAdminPlaceDetail",
+  "getAdminUsersData",
+  "updateEngagementWeights",
+  "getAdminUserDetail",
   "blockPlace",
   "unblockPlace",
   "listModerationLog",
