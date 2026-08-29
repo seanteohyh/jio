@@ -73,26 +73,39 @@ export default async function EventInvitePage({
             {preview.datePhase !== "polling" &&
               ` · ${formatDateTime(preview.scheduledAt)}`}
           </p>
-          <p className="text-stone mt-1 text-sm">
-            {preview.goingCount > 0
-              ? `${preview.goingCount} going so far`
-              : "Nobody's confirmed yet"}
-          </p>
+          {/* UX review log #25 — once decided, voting is no longer
+              relevant: surface the actual result instead of "going so far"
+              and the still-open vote options. */}
+          {preview.status === "closed" && preview.winnerPlaceName ? (
+            <p className="mt-2 text-sm">
+              <span className="text-sage font-medium">Decided:</span>{" "}
+              {preview.winnerPlaceName}
+            </p>
+          ) : (
+            <>
+              <p className="text-stone mt-1 text-sm">
+                {preview.goingCount > 0
+                  ? `${preview.goingCount} going so far`
+                  : "Nobody's confirmed yet"}
+              </p>
 
-          {preview.placeOptions.length > 0 && (
-            <div className="mt-3 flex flex-wrap gap-1.5">
-              {preview.placeOptions.map((option) => (
-                <Chip key={option.id}>{option.name}</Chip>
-              ))}
-            </div>
+              {preview.placeOptions.length > 0 && (
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  {preview.placeOptions.map((option) => (
+                    <Chip key={option.id}>{option.name}</Chip>
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </header>
 
         <Card className="space-y-3 text-center">
           <p className="text-sm">
-            <span className="font-medium">{config.appName}</span> is how our
-            team decides where to eat — sign in to vote, RSVP, and see the
-            full details.
+            <span className="font-medium">{config.appName}</span>{" "}
+            {preview.status === "closed" && preview.winnerPlaceName
+              ? "is how our team decides where to eat — sign in to see who's going and the full details."
+              : "is how our team decides where to eat — sign in to vote, RSVP, and see the full details."}
           </p>
           <LinkButton
             href={`/login?next=${encodeURIComponent(`/e/${token}`)}`}
@@ -152,7 +165,7 @@ export default async function EventInvitePage({
   // other place that gates on `onboarded_at`, and a visitor who follows an
   // event link never lands there first. Without this, their entire first
   // session was just this one event page — no Home, no /welcome, no
-  // /suggest, no personal invite link of their own. The join above already
+  // personal invite link of their own. The join above already
   // ran, so /welcome's own redirect to Home afterward is what actually
   // surfaces this Jio, rather than sending them back into it directly.
   let profile = null;

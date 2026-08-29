@@ -206,13 +206,6 @@ export interface Profile {
    *  and anything added later. `notify_lobangs` exists in the schema
    *  (migration 025) but has no UI or trigger yet; out of scope for §6. */
   notify_events?: boolean;
-  /**
-   * CHANGES_20260821_combined2.md §3D — set the first time this account
-   * ever loads a decided Jio's page having both RSVP'd (any response) and
-   * voted on it. Null forever after means "never fires again," same
-   * one-shot shape as `onboarded_at`.
-   */
-  first_decided_celebration_shown_at?: string | null;
 }
 
 /** What a browser hands back from `PushManager.subscribe()`, trimmed to
@@ -506,6 +499,11 @@ export interface PublicEventPreview {
   status: EventStatus;
   goingCount: number;
   placeOptions: { id: string; name: string }[];
+  /** UX review log #25 — the decided place's name, only set once
+   *  `status === "closed"` (a real place's name, or the free-text label if
+   *  it has no `places` row behind it). Lets the signed-out preview surface
+   *  the actual result rather than staying written for a still-open vote. */
+  winnerPlaceName?: string | null;
 }
 
 // ---------------------------------------------------------------------------

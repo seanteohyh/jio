@@ -3,7 +3,7 @@
 import { use, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import useSWR from "swr";
-import { CheckCircle2, CirclePlus, MapPin } from "lucide-react";
+import { CheckCircleIcon, PlaceIcon, PlusCircleIcon } from "@/components/icons";
 import {
   Avatar,
   Button,
@@ -16,6 +16,11 @@ import {
   inputClass,
 } from "@/components/ui";
 import RouletteWheel from "@/components/RouletteWheel";
+import JioResolvedCelebration from "@/components/JioResolvedCelebration";
+import CountUp from "@/components/CountUp";
+import { useAnnounce } from "@/components/LiveAnnouncer";
+import { hapticResolve, hapticTap } from "@/lib/haptics";
+import { useToast } from "@/components/Toast";
 import ShareLink from "@/components/ShareLink";
 import ShareResultCard from "@/components/ShareResultCard";
 import InvitePicker, { type InviteSelection } from "@/components/InvitePicker";
@@ -55,9 +60,9 @@ interface EventResponse {
       defaultLeadMinutes: number;
       overrideLeadMinutes: number | null;
     } | null;
-    /** CHANGES_20260821_combined2.md §3D — true on at most one response,
-     *  ever, for a given account: see the route for the exact condition. */
-    firstDecidedCelebration: boolean;
+    /** UX review log #25 — true at most once per (account, event); see the
+     *  route for the exact condition. */
+    decidedCelebration: boolean;
   };
 }
 
@@ -127,19 +132,64 @@ export default function EventDetailPage({
     prevStatusRef.current = current;
   }, [data]);
 
-  // CHANGES_20260821_combined2.md §3D — the server only ever reports this
-  // `true` once, on whichever load actually stamps it, so latch it locally
-  // rather than reading `data.viewer.firstDecidedCelebration` live: any
-  // later refetch on this same page (an action, a realtime push) would
-  // otherwise see the now-stamped profile and report `false`, yanking the
-  // card away mid-read.
-  const [showFirstDecidedCelebration, setShowFirstDecidedCelebration] =
-    useState(false);
+  // UX review log #25 — the server only ever reports this `true` once, on
+  // whichever load actually stamps it, so latch it locally rather than
+  // reading `data.viewer.decidedCelebration` live: any later refetch on
+  // this same page (an action, a realtime push) would otherwise see the
+  // now-stamped row and report `false`, yanking the celebration away
+  // mid-read.
+  const [showDecidedCelebration, setShowDecidedCelebration] = useState(false);
   useEffect(() => {
-    if (data?.viewer.firstDecidedCelebration) {
-      setShowFirstDecidedCelebration(true);
+    if (data?.viewer.decidedCelebration) {
+      setShowDecidedCelebration(true);
     }
   }, [data]);
+
+  // UX review log #4 — announces the same milestone #25's celebration
+  // shows visually, riding its generalized trigger rather than the old
+  // narrow live-transition-only one. Plain text, no emoji (see
+  // LiveAnnouncer's own doc comment for why).
+  const announce = useAnnounce();
+  const showToast = useToast();
+  useEffect(() => {
+    if (!data?.viewer.decidedCelebration) return;
+    const name =
+      data.event.winner_place_name ?? data.event.winner_label ?? "a place";
+    announce(`Decided: ${name}.`);
+    hapticResolve();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data?.viewer.decidedCelebration]);
+
+  // UX review log #4's other milestone: a Flexi date's leading option
+  // changing. Only an actual change is worth announcing — `prev === null`
+  // means this is the first time a leading date has been computed at all
+  // (page just loaded), which isn't a change to announce, just a baseline.
+  const prevLeadingDateRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!data || data.event.date_phase !== "polling") return;
+    const counts = new Map<string, number>();
+    for (const c of data.event.candidateDates) {
+      counts.set(
+        c.date,
+        data.event.dateVotes.filter((v) => v.date === c.date).length
+      );
+    }
+    const leading = data.event.candidateDates.reduce<string | null>(
+      (leader, c) => {
+        if (!leader) return c.date;
+        return (counts.get(c.date) ?? 0) > (counts.get(leader) ?? 0)
+          ? c.date
+          : leader;
+      },
+      null
+    );
+
+    const prev = prevLeadingDateRef.current;
+    if (leading && prev !== null && leading !== prev) {
+      announce(`${formatDate(leading)} is now the leading date.`);
+    }
+    prevLeadingDateRef.current = leading;
+  }, [data, announce]);
 
   // Seed the ballot from the server once, then leave the voter's own order
   // alone so a realtime refresh cannot yank options out from under someone
@@ -246,8 +296,10 @@ export default function EventDetailPage({
   // Jio), so a guessed number would either be wrong or leak what §14 hides.
   const submitBallot = () => {
     if (!data) return;
+    hapticTap();
     setActionError(null);
     setBusy(true);
+    const wasOpen = data.event.status === "open";
     mutate(
       mutateJson(`/api/events/${id}/vote`, "POST", {
         ranked_place_ids: ballot,
@@ -258,6 +310,15 @@ export default function EventDetailPage({
         revalidate: false,
       }
     )
+      .then((updated) => {
+        // UX review log #5 — the vote that happens to close a Jio
+        // (auto-close) skips its own toast: #25's full-screen celebration
+        // already acknowledges that action, so firing both would stack two
+        // acknowledgments on one tap. Every other vote still gets the
+        // plain toast.
+        const justAutoClosed = wasOpen && updated?.event.status !== "open";
+        if (!justAutoClosed) showToast("Vote counted");
+      })
       .catch((err) =>
         setActionError(err instanceof Error ? err.message : "Something failed")
       )
@@ -266,6 +327,7 @@ export default function EventDetailPage({
 
   const sendRsvp = (response: RsvpResponse) => {
     if (!data) return;
+    hapticTap();
     setActionError(null);
     setBusy(true);
     const delta =
@@ -287,6 +349,15 @@ export default function EventDetailPage({
         revalidate: false,
       }
     )
+      .then(() => {
+        const label =
+          response === "yes"
+            ? "You're in"
+            : response === "maybe"
+              ? "Marked as maybe"
+              : "Marked as can't make it";
+        showToast(label);
+      })
       .catch((err) =>
         setActionError(err instanceof Error ? err.message : "Something failed")
       )
@@ -556,18 +627,10 @@ export default function EventDetailPage({
         </Card>
       )}
 
-      {!isOpen && !isCancelled && showFirstDecidedCelebration && (
-        <Card className="border-ember/40 bg-ember-tint/70 animate-fade-in space-y-1 text-center">
-          <p className="text-2xl" aria-hidden="true">
-            🎉
-          </p>
-          <p className="font-display text-ink text-lg font-bold tracking-tight">
-            Your first decided Jio!
-          </p>
-          <p className="text-stone text-sm">
-            You voted, the group decided — this is how it goes from here.
-          </p>
-        </Card>
+      {!isOpen && !isCancelled && showDecidedCelebration && (
+        <JioResolvedCelebration
+          placeName={event.winner_place_name ?? event.winner_label ?? "Somewhere good"}
+        />
       )}
 
       {!isOpen && isCancelled && (
@@ -589,7 +652,7 @@ export default function EventDetailPage({
         >
           {event.winner_place_name || event.winner_label ? (
             <div className="flex items-center gap-3">
-              <CheckCircle2
+              <CheckCircleIcon
                 className="text-sage h-8 w-8 shrink-0"
                 strokeWidth={2}
                 aria-hidden="true"
@@ -652,6 +715,7 @@ export default function EventDetailPage({
                 ? googleMapsPlaceUrl(event.winner_place)
                 : undefined
             }
+            inviteUrl={eventInviteUrl(event.invite_token)}
           />
         )}
 
@@ -967,9 +1031,10 @@ export default function EventDetailPage({
                   type="button"
                   onClick={() => removeInvitee(invitee.user_id)}
                   disabled={busy}
-                  className="border-line text-stone rounded-full border px-2.5 py-1 text-xs hover:border-ember hover:text-ember"
+                  aria-label={`Remove ${invitee.display_name ?? "Teammate"}`}
+                  className="border-line text-stone rounded-full border px-2.5 py-3.5 text-xs hover:border-ember hover:text-ember"
                 >
-                  {invitee.display_name ?? "Teammate"} ×
+                  {invitee.display_name ?? "Teammate"} <span aria-hidden="true">×</span>
                 </button>
               ))}
             </div>
@@ -1076,7 +1141,7 @@ export default function EventDetailPage({
                         aria-label={`View ${option.place.name} on Google Maps`}
                         className="text-stone hover:text-ember ml-1.5 inline-block align-middle"
                       >
-                        <MapPin className="h-3.5 w-3.5" strokeWidth={2} />
+                        <PlaceIcon className="h-3.5 w-3.5" strokeWidth={2} />
                       </a>
                     )}
                     {option.place?.socials_url && (
@@ -1111,13 +1176,14 @@ export default function EventDetailPage({
                         title="Add to Places"
                         className="text-stone hover:text-ember ml-1.5 inline-block align-middle"
                       >
-                        <CirclePlus className="h-3.5 w-3.5" strokeWidth={2} />
+                        <PlusCircleIcon className="h-3.5 w-3.5" strokeWidth={2} />
                       </Link>
                     )}
                   </span>
                   {!hideStanding && (
                     <span className="text-stone shrink-0 text-xs tabular-nums">
-                      {points} pt{points === 1 ? "" : "s"}
+                      <CountUp value={points} durationMs={400} />{" "}
+                      pt{points === 1 ? "" : "s"}
                     </span>
                   )}
                 </div>
@@ -1125,7 +1191,12 @@ export default function EventDetailPage({
                   <div className="bg-paper mt-1 h-2 overflow-hidden rounded-full">
                     <div
                       className={
-                        isWinner ? "bg-sage h-full" : "bg-ember h-full"
+                        // UX review log #21 — --ease-jio extended to the
+                        // vote-bar fill, so a live vote update (realtime
+                        // push, or your own submitted ballot) eases into
+                        // its new width rather than snapping instantly.
+                        (isWinner ? "bg-sage h-full" : "bg-ember h-full") +
+                        " transition-[width] duration-500 ease-[var(--ease-jio)]"
                       }
                       style={{ width: `${(points / maxPoints) * 100}%` }}
                     />
@@ -1191,7 +1262,7 @@ export default function EventDetailPage({
                           aria-label={`View ${option.place.name} on Google Maps`}
                           className="text-stone hover:text-ember shrink-0"
                         >
-                          <MapPin className="h-3.5 w-3.5" strokeWidth={2} />
+                          <PlaceIcon className="h-3.5 w-3.5" strokeWidth={2} />
                         </a>
                       )}
                       {option?.place?.socials_url && (
@@ -1357,9 +1428,10 @@ export default function EventDetailPage({
                       type="button"
                       onClick={() => removeOption(option.place_id)}
                       disabled={busy}
-                      className="border-line text-stone rounded-full border px-2.5 py-1 text-xs hover:border-ember hover:text-ember"
+                      aria-label={`Remove ${option.place?.name ?? option.label}`}
+                      className="border-line text-stone rounded-full border px-2.5 py-3.5 text-xs hover:border-ember hover:text-ember"
                     >
-                      {option.place?.name ?? option.label} ×
+                      {option.place?.name ?? option.label} <span aria-hidden="true">×</span>
                     </button>
                   ))}
               </div>

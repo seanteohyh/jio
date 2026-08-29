@@ -149,7 +149,7 @@ export default async function HomePage() {
       NEW_USER_WINDOW_DAYS * 24 * 60 * 60 * 1000;
 
   return (
-    <div className="space-y-6">
+    <div className="animate-fade-in space-y-6">
       {/* The lockup only appears on Home. Everywhere else the side rail or the
           page title carries the identity, and repeating it would be noise. */}
       <JioLockup className="md:hidden" size="sm" beta={config.isDemo} />
@@ -196,16 +196,44 @@ export default async function HomePage() {
 
       {features.metrics && <StreakBanner />}
 
-      <div className="flex flex-col gap-2 sm:flex-row">
-        {features.events ? (
+      {/*
+        UX review log #23 — the three-state action block:
+        1. No upcoming Jio today: "+ Start a Jio" leads, quick-pick beside it.
+        2. Today's Jio still has an open vote: "Cast your vote" leads —
+           starting a new one is a secondary action beside it, never
+           blocked behind one already in progress.
+        3. Today's Jio needs nothing further (closed): "+ Start a Jio"
+           leads again; the quiet link back to it already sits in the
+           header above ("View the Jio").
+      */}
+      {features.events && todaysJio && todaysJio.status === "open" ? (
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <LinkButton href={`/events/${todaysJio.id}`} className="flex-1">
+            Cast your vote
+          </LinkButton>
           <div className="flex-1">
-            <StartJioWizard initialInvite={firstHostInvite} />
+            <StartJioWizard
+              label="New Jio"
+              variant="secondary"
+              initialInvite={firstHostInvite}
+            />
           </div>
-        ) : null}
-        <LinkButton href="/suggest" variant="secondary" className="flex-1">
-          Just tell me where to go
-        </LinkButton>
-      </div>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2 sm:flex-row">
+          {features.events ? (
+            <div className="flex-1">
+              <StartJioWizard initialInvite={firstHostInvite} />
+            </div>
+          ) : null}
+          {/* UX review log #6 — /suggest itself is retired; Places carries
+              the same personal picks now ("Quick & nearby," "New to try"),
+              so that's where this now leads. */}
+          <LinkButton href="/places" variant="secondary" className="flex-1">
+            Just tell me where to go
+          </LinkButton>
+        </div>
+      )}
 
       {features.events && lastHosted && (
         <Link

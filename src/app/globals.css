@@ -27,9 +27,24 @@
   --color-frost: #fffdf9;
   --color-ink: #2b2b2b;
   --color-stone: #6b665c;
-  --color-sage: #567b57;
-  --color-amber: #d98a2b;
-  --color-slate: #547691;
+  /* Re-solved against cream (the app's darker of two light backgrounds,
+     and the one the original report's values were never actually checked
+     against) — both sage and slate now clear 4.5:1 small-text AA on paper
+     *and* cream. UX review log #1. */
+  --color-sage: #517351;
+  --color-slate: #4f6e88;
+  /* Split in two: `--color-amber` stays the non-text value (backgrounds,
+     borders, icon glyphs like star ratings) at a slightly deeper #be7722;
+     `--color-amber-text` is for actual prose/label text set in amber,
+     where AA needs a darker value still. Using one shared value for both
+     cases is exactly the bug this log's #1 caught. */
+  --color-amber: #be7722;
+  --color-amber-text: #965e1b;
+  /* Border/line — kept as-is, knowingly non-compliant (1.16:1 on paper,
+     1.05:1 on cream, both well under the 3:1 non-text minimum). A softer
+     alternative was reviewed and rejected in favor of the current faint
+     border. Do not "fix" this later without re-confirming — it's
+     deliberate. UX review log #1. */
   --color-line: #ece5d8;
 
   /* ---- Pill tints: light fill + a deeper text that clears AA at 11-13px ---- */
@@ -133,6 +148,46 @@ h2,
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
+/*
+ * UX review log #2 — real padding (not just line-height) for a text-only
+ * action link under 24px (Like, Dismiss, "Not interested", Edit,
+ * remove-chips, and similar). Negative margin compensates the added
+ * padding so the surrounding layout doesn't shift — only the invisible
+ * tap zone grows, same "expanded hit-area" idea as the slider thumb below.
+ */
+.tap-target-text {
+  display: inline-block;
+  padding: 14px 8px;
+  margin: -14px -8px;
+}
+
+/*
+ * UX review log #2 — the walk-time slider's thumb keeps its current
+ * ~16px visual size; the actual draggable/tappable zone extends to a
+ * real 44x44px. A `radial-gradient` draws a small solid dot centered in
+ * an otherwise-transparent 44x44 box, so the hit area grows without the
+ * thumb looking any bigger. Only one `<input type="range">` exists in
+ * the app today (FilterBar's walk-time filter), so this is scoped
+ * globally to the element rather than a one-off class.
+ */
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--color-ember) 0 8px, transparent 8px 100%);
+  cursor: pointer;
+}
+input[type="range"]::-moz-range-thumb {
+  width: 44px;
+  height: 44px;
+  border: none;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--color-ember) 0 8px, transparent 8px 100%);
+  cursor: pointer;
+}
+
 @keyframes jio-spin {
   from {
     transform: rotate(0deg);
@@ -175,6 +230,63 @@ h2,
   }
 }
 
+/**
+ * UX review log #25 — the decided-Jio celebration's pebbles-into-JioMark
+ * animation. Three loose "pebble" dots converge from scattered positions
+ * onto the exact spot the real JioMark's own three pebbles sit at (offsets
+ * measured from JioMark.tsx's own path geometry, scaled to whatever size
+ * the celebration renders the mark at), then the real crisp mark fades in
+ * over them so the resting state is the authentic brand mark, not an
+ * approximation. `--ease-jio` extended to this pass rather than a new
+ * curve, per the same UX review item bundling that extension in here.
+ */
+/* Pixel offsets, not percentages — a CSS `translate(%)` is relative to the
+ * *transformed element's own* box, not its parent, so a percentage here
+ * would move each small pebble by a fraction of its own tiny size rather
+ * than the intended distance across the mark's stage. End points are each
+ * pebble's measured centroid offset from JioMark.tsx's own centre, scaled
+ * to the celebration's 112px (h-28/w-28) stage. */
+@keyframes jio-pebble-1 {
+  0% { transform: translate(-42px, -36px) scale(0.55); opacity: 0; }
+  35% { opacity: 1; }
+  85% { transform: translate(9px, -22px) scale(1); opacity: 1; }
+  100% { transform: translate(9px, -22px) scale(1); opacity: 0; }
+}
+@keyframes jio-pebble-2 {
+  0% { transform: translate(40px, 32px) scale(0.55); opacity: 0; }
+  35% { opacity: 1; }
+  85% { transform: translate(17px, 23px) scale(1); opacity: 1; }
+  100% { transform: translate(17px, 23px) scale(1); opacity: 0; }
+}
+@keyframes jio-pebble-3 {
+  0% { transform: translate(-36px, 38px) scale(0.55); opacity: 0; }
+  35% { opacity: 1; }
+  85% { transform: translate(-23px, 8px) scale(1); opacity: 1; }
+  100% { transform: translate(-23px, 8px) scale(1); opacity: 0; }
+}
+@keyframes jio-mark-settle {
+  0%, 55% {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+.animate-pebble-1 {
+  animation: jio-pebble-1 900ms var(--ease-jio) both;
+}
+.animate-pebble-2 {
+  animation: jio-pebble-2 900ms var(--ease-jio) 60ms both;
+}
+.animate-pebble-3 {
+  animation: jio-pebble-3 900ms var(--ease-jio) 120ms both;
+}
+.animate-mark-settle {
+  animation: jio-mark-settle 900ms var(--ease-jio) both;
+}
+
 /* Skeletons, not spinners, for content that is about to arrive. */
 @keyframes jio-shimmer {
   from {
@@ -186,7 +298,9 @@ h2,
 }
 
 .animate-fade-in {
-  animation: jio-fade-in 0.25s ease-out;
+  /* UX review log #21 — --ease-jio extended to card entrances (bundled
+     into the same pass as #25's celebration). */
+  animation: jio-fade-in 0.25s var(--ease-jio);
 }
 
 .animate-resolved {

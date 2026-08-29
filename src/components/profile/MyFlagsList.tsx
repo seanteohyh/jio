@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import useSWR from "swr";
-import { Card, SectionHeading } from "../ui";
+import { AlertIcon } from "@/components/icons";
+import { Button, Card, SectionHeading } from "../ui";
 import { fetcher } from "@/lib/fetcher";
 import { relativeDayLabel } from "@/lib/utils";
 import type { FlagReason, PlaceFlag } from "@/types";
@@ -27,8 +28,31 @@ const RESOLUTION_LABELS: Record<string, string> = {
  * here until an admin gets to the queue.
  */
 export default function MyFlagsList() {
-  const { data } = useSWR<{ flags: PlaceFlag[] }>("/api/flags/mine", fetcher);
+  const { data, error, mutate } = useSWR<{ flags: PlaceFlag[] }>(
+    "/api/flags/mine",
+    fetcher
+  );
   const flags = data?.flags ?? [];
+
+  // UX review log #7 — same tier as PastJios: your own reports silently
+  // vanishing on a failed fetch is confusing, so this gets a visible retry
+  // rather than collapsing to the empty-state `return null` below.
+  if (error) {
+    return (
+      <section>
+        <SectionHeading>My reports</SectionHeading>
+        <Card className="flex items-center justify-between gap-3">
+          <p className="text-stone flex items-center gap-2 text-sm">
+            <AlertIcon className="text-ember h-4 w-4 shrink-0" aria-hidden="true" />
+            Couldn&apos;t load your reports.
+          </p>
+          <Button variant="secondary" size="sm" onClick={() => mutate()}>
+            Try again
+          </Button>
+        </Card>
+      </section>
+    );
+  }
 
   if (flags.length === 0) return null;
 

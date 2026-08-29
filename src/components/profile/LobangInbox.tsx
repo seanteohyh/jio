@@ -3,7 +3,8 @@
 import { useEffect, useRef } from "react";
 import Link from "next/link";
 import useSWR from "swr";
-import { Avatar, Card, SectionHeading } from "../ui";
+import { AlertIcon } from "@/components/icons";
+import { Avatar, Button, Card, SectionHeading } from "../ui";
 import { fetcher, mutateJson } from "@/lib/fetcher";
 import { relativeDayLabel } from "@/lib/utils";
 import type { Lobang } from "@/types";
@@ -14,7 +15,11 @@ import type { Lobang } from "@/types";
  * a broadcast to the entire team.
  */
 export default function LobangInbox() {
-  const { data: received, mutate: mutateReceived } = useSWR<{
+  const {
+    data: received,
+    error: receivedError,
+    mutate: mutateReceived,
+  } = useSWR<{
     lobangs: Lobang[];
   }>("/api/lobangs?direction=received", fetcher);
   const { data: sent } = useSWR<{ lobangs: Lobang[] }>(
@@ -46,6 +51,26 @@ export default function LobangInbox() {
 
   const inbox = received?.lobangs ?? [];
   const history = sent?.lobangs ?? [];
+
+  // UX review log #7 — same tier as PastJios: lobangs sent to you are
+  // content someone else acted on, not a decorative nudge, so a failed
+  // fetch shouldn't just make them disappear.
+  if (receivedError) {
+    return (
+      <section>
+        <SectionHeading>Lobangs for you</SectionHeading>
+        <Card className="flex items-center justify-between gap-3">
+          <p className="text-stone flex items-center gap-2 text-sm">
+            <AlertIcon className="text-ember h-4 w-4 shrink-0" aria-hidden="true" />
+            Couldn&apos;t load your lobangs.
+          </p>
+          <Button variant="secondary" size="sm" onClick={() => mutateReceived()}>
+            Try again
+          </Button>
+        </Card>
+      </section>
+    );
+  }
 
   if (inbox.length === 0 && history.length === 0) return null;
 

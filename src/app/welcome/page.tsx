@@ -55,9 +55,11 @@ const WELCOME_CUISINES: { slug: string; label: string }[] = [
  *
  * CHANGES_20260821_combined2.md §2/§3B added the three blocks below the
  * name/office form: a taste-preference bootstrap (so a first-timer's very
- * first /suggest visit isn't running on an empty profile), the person's
- * own personal invite link/QR, and a pointer to /suggest as the no-group
- * option — all optional, all skippable via the one Continue button.
+ * first personalized picks aren't running on an empty profile), the
+ * person's own personal invite link/QR, and a pointer to Places as the
+ * no-group option (UX review log #6 — /suggest itself is retired; Places
+ * carries the same personal-suggestion rails now) — all optional, all
+ * skippable via the one Continue button.
  */
 export default function WelcomePage() {
   const router = useRouter();
@@ -218,11 +220,11 @@ export default function WelcomePage() {
       <Card>
         <SectionHeading>No group yet?</SectionHeading>
         <p className="text-stone mt-1 text-sm">
-          You don't need a Kaki to use Jio — get a lunch suggestion just for
-          yourself any time.
+          You don't need a Kaki to use Jio — Places has personal picks built
+          right in, any time.
         </p>
-        <Link href="/suggest" className="text-ember mt-2 inline-block text-sm underline">
-          Try /suggest →
+        <Link href="/places" className="text-ember mt-2 inline-block text-sm underline">
+          Browse Places →
         </Link>
       </Card>
 

@@ -4,7 +4,7 @@ import { getRepoAsync } from "@/lib/data/repo";
 import { badRequest, errorResponse, json, notFound, readJson } from "@/lib/api";
 import { featureGate } from "@/lib/config";
 import { redactHiddenVotes } from "@/lib/voting";
-import { qualifiesForFirstDecidedCelebration } from "@/lib/firstDecidedCelebration";
+import { qualifiesForDecidedCelebration } from "@/lib/decidedCelebration";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -44,23 +44,30 @@ export async function GET(_request: NextRequest, { params }: Params) {
     const myRsvp =
       event.rsvps.find((r) => r.user_id === user.id)?.response ?? null;
 
-    // CHANGES_20260821_combined2.md §3D — the one-time "first decided Jio"
-    // celebration, distinct from the everyday "Decided" card. Fires the
-    // next time this account loads *any* qualifying decided Jio's page
-    // while the profile flag is still null — not just live at the moment
-    // of closing (most closes happen while nobody's watching: auto-close,
-    // or the host closing it) — so this check runs on every load, not only
-    // on a state transition. Stamped immediately once it qualifies, right
-    // here, so it can never fire twice even across a rapid double-load.
-    const profile = await repo.getProfile(user.id);
-    const firstDecidedCelebration = qualifiesForFirstDecidedCelebration({
-      alreadyShown: Boolean(profile?.first_decided_celebration_shown_at),
+    // UX review log #25 — the decided-Jio celebration, distinct from the
+    // everyday "Decided" card. Generalised from a one-time account-wide
+    // flag (migration 067) to one per (user, event): every decided Jio a
+    // viewer RSVP'd and voted on gets its own celebration, gated on the
+    // lunch itself still being ahead of it. Fires the next time this
+    // account loads a qualifying Jio's page while it hasn't seen that
+    // one's celebration yet — not just live at the moment of closing (most
+    // closes happen while nobody's watching: auto-close, or the host
+    // closing it) — so this check runs on every load, not only on a state
+    // transition. Stamped immediately once it qualifies, right here, so it
+    // can never fire twice even across a rapid double-load.
+    const alreadySeenCelebration = await repo.hasSeenDecidedCelebration(
+      user.id,
+      id
+    );
+    const decidedCelebration = qualifiesForDecidedCelebration({
+      alreadySeen: alreadySeenCelebration,
       eventStatus: event.status,
+      isUpcoming: new Date(event.scheduled_at).getTime() > Date.now(),
       myRsvp,
       myVoteCount: myVote.length,
     });
-    if (firstDecidedCelebration) {
-      await repo.markFirstDecidedCelebrationShown(user.id);
+    if (decidedCelebration) {
+      await repo.markDecidedCelebrationShown(user.id, id);
     }
 
     // CHANGES_20260821c.md §1 — only fetched for someone confirmed going,
@@ -94,7 +101,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
         myVote,
         myRsvp,
         reminder,
-        firstDecidedCelebration,
+        decidedCelebration,
       },
     });
   } catch (error) {

@@ -46,7 +46,7 @@ export default function KakisPage() {
   const kakis = data?.kakis ?? [];
 
   return (
-    <div className="space-y-5">
+    <div className="animate-fade-in space-y-5">
       <header className="flex items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Kakis</h1>

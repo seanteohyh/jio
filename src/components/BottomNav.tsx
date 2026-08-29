@@ -3,13 +3,13 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  CalendarDays,
-  CircleUser,
-  Home,
-  MapPin,
-  Users,
-  UtensilsCrossed,
-} from "lucide-react";
+  HomeIcon,
+  JiosIcon,
+  KakiIcon,
+  MapIcon,
+  PlaceIcon,
+  YouIcon,
+} from "@/components/icons";
 import { cn } from "@/lib/utils";
 import { config, features } from "@/lib/config";
 import JioMark from "@/components/brand/JioMark";
@@ -21,14 +21,9 @@ import JioMark from "@/components/brand/JioMark";
  * rail on desktop. Keeping them in one place means a new destination cannot be
  * added to one and forgotten in the other.
  *
- * Icons are Lucide line icons at the system's stroke weight, replacing the
- * hand-rolled SVGs. Active state is Ember plus a 2px top indicator on mobile.
- *
- * Icon note: the design system maps Jios to `Users`. Kakis needs a slot too,
- * and two people-shaped glyphs side by side in a six-tab bar are hard to tell
- * apart at 20px — so Jios takes `CalendarDays` (a Jio is a scheduled outing)
- * and `Users` goes to Kakis (a Kaki is a group of people). Swap the two if you
- * would rather follow the spec to the letter.
+ * Icons are the bespoke Jio set (`src/components/icons.tsx`, UX review log
+ * #20) at the system's stroke weight. Active state is Ember plus a 2px top
+ * indicator on mobile.
  */
 
 interface NavItem {
@@ -41,27 +36,27 @@ interface NavItem {
 export default function BottomNav() {
   const pathname = usePathname();
 
-  // Suggest is no longer a destination of its own — it is reached from a
-  // button on /places. The route still exists, so old links and any installed
-  // PWA shortcuts keep working; it just stopped earning a slot in a bar that
-  // only has room for the things people open every day.
+  // UX review log #6 — Suggest is retired entirely, not just demoted out
+  // of the bar: its personal-suggestion rails now live on Places itself
+  // ("Quick & nearby," "New to try"), so there's nothing left at a
+  // /suggest route for a stray old link or PWA shortcut to land on.
   const items: NavItem[] = [
-    { href: "/", label: "Home", icon: <Home />, enabled: true },
+    { href: "/", label: "Home", icon: <HomeIcon />, enabled: true },
     {
       href: "/events",
       label: "Jios",
-      icon: <CalendarDays />,
+      icon: <JiosIcon />,
       enabled: features.events,
     },
-    { href: "/kakis", label: "Kaki", icon: <Users />, enabled: features.kakis },
+    { href: "/kakis", label: "Kaki", icon: <KakiIcon />, enabled: features.kakis },
     {
       href: "/places",
       label: "Places",
-      icon: <UtensilsCrossed />,
+      icon: <PlaceIcon />,
       enabled: true,
     },
-    { href: "/map", label: "Map", icon: <MapPin />, enabled: features.map },
-    { href: "/profile", label: "You", icon: <CircleUser />, enabled: true },
+    { href: "/map", label: "Map", icon: <MapIcon />, enabled: features.map },
+    { href: "/profile", label: "You", icon: <YouIcon />, enabled: true },
   ];
 
   const visible = items.filter((item) => item.enabled);

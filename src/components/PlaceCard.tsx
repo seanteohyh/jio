@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, Footprints, Users } from "lucide-react";
+import { ArrowRightIcon, KakiIcon, WalkIcon } from "@/components/icons";
 import { BudgetBadge, Stars, TintPill } from "./ui";
 import { cn, formatCuisine } from "@/lib/utils";
 import type { Place } from "@/types";
@@ -68,7 +68,7 @@ export default function PlaceCard({
             <BudgetBadge tier={place.budget_tier} />
             {typeof place.walk_minutes === "number" && (
               <TintPill tone="walk">
-                <Footprints className="h-3 w-3" aria-hidden="true" />
+                <WalkIcon className="h-3 w-3" aria-hidden="true" />
                 {place.walk_minutes} min
               </TintPill>
             )}
@@ -96,14 +96,14 @@ export default function PlaceCard({
               className="mt-1.5"
               title="Highly rated by your Kaki group"
             >
-              <Users className="h-3 w-3" aria-hidden="true" />
+              <KakiIcon className="h-3 w-3" aria-hidden="true" />
               {place.kaki_rating.toFixed(1)} · your Kakis
             </TintPill>
           )}
 
           {why && (
             <p className="text-ember mt-2 text-xs">
-              <ArrowRight className="mr-1 inline h-3 w-3 align-[-1px]" aria-hidden="true" />
+              <ArrowRightIcon className="mr-1 inline h-3 w-3 align-[-1px]" aria-hidden="true" />
               {why}
             </p>
           )}

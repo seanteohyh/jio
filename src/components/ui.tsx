@@ -43,16 +43,20 @@ export function Button({
   return (
     <button
       className={cn(
-        "inline-flex items-center justify-center gap-2 rounded-xl font-medium transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-50",
+        // UX review log #21 — press feedback: a shared scale-down plus
+        // colour shift on `:active`, the same primitive across every
+        // button-shaped control in the app rather than one-off per surface.
+        "inline-flex items-center justify-center gap-2 rounded-xl font-medium transition-[color,background-color,transform] duration-150 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100",
         // 44px minimum touch target, per the accessibility rule in the brief.
         size === "sm" ? "min-h-9 px-3 py-1.5 text-sm" : "min-h-11 px-4 py-2.5 text-sm",
-        variant === "primary" && "bg-ember hover:bg-ember-deep text-white shadow-[var(--shadow-sm)]",
+        variant === "primary" &&
+          "bg-ember hover:bg-ember-deep active:bg-ember-deep text-white shadow-[var(--shadow-sm)]",
         variant === "secondary" &&
-          "border-line bg-paper text-ink hover:bg-cream border",
+          "border-line bg-paper text-ink hover:bg-cream active:bg-cream border",
         variant === "ghost" &&
-          "text-stone hover:bg-cream hover:text-ink",
+          "text-stone hover:bg-cream active:bg-cream hover:text-ink",
         variant === "danger" &&
-          "border-ember-tint bg-ember-tint text-ember-tint-text hover:bg-ember-tint/70 border",
+          "border-ember-tint bg-ember-tint text-ember-tint-text hover:bg-ember-tint/70 active:bg-ember-tint/70 border",
         className
       )}
       {...props}
@@ -87,13 +91,15 @@ export function LinkButton({
       target={target}
       rel={rel}
       className={cn(
-        "inline-flex items-center justify-center gap-2 rounded-xl font-medium transition-colors duration-150",
+        // UX review log #21 — same press-feedback primitive as Button.
+        "inline-flex items-center justify-center gap-2 rounded-xl font-medium transition-[color,background-color,transform] duration-150 active:scale-[0.97]",
         size === "sm" ? "min-h-9 px-3 py-1.5 text-sm" : "min-h-11 px-4 py-2.5 text-sm",
-        variant === "primary" && "bg-ember hover:bg-ember-deep text-white shadow-[var(--shadow-sm)]",
+        variant === "primary" &&
+          "bg-ember hover:bg-ember-deep active:bg-ember-deep text-white shadow-[var(--shadow-sm)]",
         variant === "secondary" &&
-          "border-line bg-paper text-ink hover:bg-cream border",
+          "border-line bg-paper text-ink hover:bg-cream active:bg-cream border",
         variant === "ghost" &&
-          "text-stone hover:bg-cream hover:text-ink",
+          "text-stone hover:bg-cream active:bg-cream hover:text-ink",
         className
       )}
     >
@@ -108,6 +114,8 @@ export function Chip({
   tone,
   onClick,
   className,
+  ariaLabel,
+  pressed,
 }: {
   children: React.ReactNode;
   active?: boolean;
@@ -117,14 +125,37 @@ export function Chip({
   tone?: "like" | "dislike";
   onClick?: () => void;
   className?: string;
+  /**
+   * UX review log #3 — overrides the accessible name entirely. For a
+   * remove-chip ("Remove {name}") or a 3-state taste-preference chip,
+   * which states its value directly ("Chinese, disliked") since
+   * `aria-pressed` only fits a genuine two-state toggle.
+   */
+  ariaLabel?: string;
+  /**
+   * UX review log #3 — only for a genuine two-state toggle (the cuisine
+   * filter, "Kaki favourites only"). Omit for remove-chips and the 3-state
+   * taste-preference chips — neither is a plain on/off toggle.
+   */
+  pressed?: boolean;
 }) {
   const Component = onClick ? "button" : "span";
   return (
     <Component
       onClick={onClick}
       type={onClick ? "button" : undefined}
+      aria-label={ariaLabel}
+      aria-pressed={onClick ? pressed : undefined}
       className={cn(
-        "inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-xs transition-colors",
+        // UX review log #2 — a real 44px tap target, not an invisible
+        // expanded hit-area: py-3.5 (14px top+bottom) plus text-xs's 16px
+        // line-height is exactly 44px. `py-2.5` (the report's own literal
+        // fix) only reaches ~36px — computed height, not the named class,
+        // is what actually matters here.
+        // UX review log #21 — same press-feedback primitive as Button;
+        // only meaningful when the chip is actually clickable.
+        "inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-3.5 text-xs transition-[color,background-color,transform] duration-150",
+        onClick && "active:scale-[0.97]",
         active && tone === "like" && "bg-sage-tint text-sage-tint-text",
         active && tone === "dislike" && "bg-ember-tint text-ember-tint-text",
         active && !tone && "bg-ember text-white",

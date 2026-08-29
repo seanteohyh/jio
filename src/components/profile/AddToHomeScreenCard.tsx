@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { PlusSquare, Share, Smartphone } from "lucide-react";
+import { AddSquareIcon, PhoneIcon, ShareIcon } from "@/components/icons";
 import { Button, Card } from "@/components/ui";
 import { useInstallPrompt } from "@/components/InstallPromptProvider";
 
@@ -43,7 +43,7 @@ export default function AddToHomeScreenCard({
   const row = (
     <div className="flex items-start gap-3">
       <span className="bg-ember-tint text-ember flex h-9 w-9 shrink-0 items-center justify-center rounded-full">
-        <Smartphone className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
+        <PhoneIcon className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
       </span>
 
       <div className="min-w-0 flex-1">
@@ -51,14 +51,14 @@ export default function AddToHomeScreenCard({
         {platform === "ios" ? (
           <p className="text-stone mt-1 text-xs">
             Tap{" "}
-            <Share
+            <ShareIcon
               className="mx-0.5 inline h-3.5 w-3.5 -translate-y-px"
               strokeWidth={1.75}
               aria-hidden="true"
             />{" "}
             Share (look for <span aria-hidden="true">•••</span> or "More"
             first if you don't see it), then{" "}
-            <PlusSquare
+            <AddSquareIcon
               className="mx-0.5 inline h-3.5 w-3.5 -translate-y-px"
               strokeWidth={1.75}
               aria-hidden="true"

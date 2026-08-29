@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import useSWR from "swr";
 import PlaceCard from "@/components/PlaceCard";
 import SaveButton from "@/components/SaveButton";
+import SuggestionRails from "@/components/places/SuggestionRails";
 import FilterBar, {
   DEFAULT_FILTERS,
   type FilterState,
@@ -78,7 +80,7 @@ export default function PlacesPage() {
   ];
 
   return (
-    <div className="space-y-5">
+    <div className="animate-fade-in space-y-5">
       <header className="flex items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Places</h1>
@@ -87,15 +89,6 @@ export default function PlacesPage() {
           </p>
         </div>
         <div className="flex shrink-0 gap-2">
-          {/*
-            Suggest lost its bottom-nav slot and lives here instead. It stays a
-            separate page rather than a third tab: /places is a paginated list
-            sorted by walk time, /suggest is a scored unpaginated ranking, and
-            reconciling two different data shapes into one list buys nothing.
-          */}
-          <LinkButton href="/suggest" variant="secondary">
-            Suggest
-          </LinkButton>
           <LinkButton href="/places/new">Add</LinkButton>
         </div>
       </header>
@@ -140,7 +133,9 @@ export default function PlacesPage() {
           onChanged={() => mutateLobangs()}
         />
       ) : (
-        <BrowseList />
+        <Suspense fallback={<SkeletonRows count={6} rowClassName="h-20 w-full" />}>
+          <BrowseList />
+        </Suspense>
       )}
     </div>
   );
@@ -267,7 +262,7 @@ function LobangsList({
                     <button
                       type="button"
                       onClick={() => remove(l.id)}
-                      className="text-stone hover:text-ink text-xs underline"
+                      className="text-stone hover:text-ink tap-target-text text-xs underline"
                     >
                       Not interested
                     </button>
@@ -296,6 +291,8 @@ function LobangsList({
  * that does not use filters.
  */
 function BrowseList() {
+  const searchParams = useSearchParams();
+  const excludeCuisine = searchParams.get("exclude") ?? undefined;
   const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
   const [page, setPage] = useState(1);
   const [loaded, setLoaded] = useState<Place[]>([]);
@@ -352,9 +349,17 @@ function BrowseList() {
   const hasMore = places.length < total;
   const pending = pendingData?.places ?? [];
 
+  // UX review log #6 — the personal-suggestion rails only make sense on a
+  // plain browse: a search or an active cuisine filter is already a
+  // specific intent, and stacking curated rails on top of that would read
+  // as clutter rather than help.
+  const isPlainBrowse = !filters.search && filters.cuisines.length === 0;
+
   return (
     <div className="space-y-5">
       <FilterBar value={filters} onChange={setFilters} showSort />
+
+      {isPlainBrowse && <SuggestionRails excludeCuisine={excludeCuisine} />}
 
       {pending.length > 0 && (
         <Card className="border-amber/40 bg-amber-tint/60">

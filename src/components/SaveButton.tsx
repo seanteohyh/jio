@@ -1,7 +1,8 @@
 "use client";
 
 import useSWR, { mutate as globalMutate } from "swr";
-import { Bookmark } from "lucide-react";
+import { BookmarkIcon } from "@/components/icons";
+import { useToast } from "@/components/Toast";
 import { fetcher } from "@/lib/fetcher";
 import { features } from "@/lib/config";
 import type { WishlistEntry } from "@/types";
@@ -31,6 +32,7 @@ export default function SaveButton({
     features.wishlist ? "/api/wishlist" : null,
     fetcher
   );
+  const showToast = useToast();
 
   if (!features.wishlist) return null;
 
@@ -57,6 +59,8 @@ export default function SaveButton({
             created_at: new Date().toISOString(),
           } as WishlistEntry,
         ];
+
+    showToast(saved ? "Removed from Want to try" : "Saved to Want to try");
 
     await globalMutate(
       "/api/wishlist",
@@ -88,7 +92,7 @@ export default function SaveButton({
         (className ? ` ${className}` : "")
       }
     >
-      <Bookmark
+      <BookmarkIcon
         className="h-4 w-4"
         strokeWidth={1.75}
         fill={saved ? "currentColor" : "none"}

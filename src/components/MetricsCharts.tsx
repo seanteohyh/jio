@@ -1,7 +1,11 @@
 "use client";
 
 import { formatCuisine, formatMonthKey } from "@/lib/utils";
-import { Star } from "lucide-react";
+import { StarIcon } from "@/components/icons";
+import CountUp from "@/components/CountUp";
+import CuisinePlate from "@/components/kakis/CuisinePlate";
+import FavouritesStampCard from "@/components/kakis/FavouritesStampCard";
+import BudgetGauge from "@/components/kakis/BudgetGauge";
 import { Card, EmptyState, LinkButton, SectionHeading } from "./ui";
 import type { KakiMetrics, UserMetrics } from "@/types";
 
@@ -79,7 +83,10 @@ function StatTile({
   return (
     <div className="border-line bg-cream/60 rounded-xl border p-3">
       <p className="text-ink text-xl font-semibold tabular-nums">
-        {value}
+        {/* UX review log #21 — a whole-number count animates up to its
+            value; a rating or budget label (already formatted text) just
+            renders as-is, nothing to count up from. */}
+        {typeof value === "number" ? <CountUp value={value} /> : value}
       </p>
       <p className="text-stone mt-0.5 text-xs">{label}</p>
       {sub && <p className="text-stone mt-0.5 text-[11px]">{sub}</p>}
@@ -143,7 +150,7 @@ export function UserMetricsCharts({ metrics }: { metrics: UserMetrics }) {
                 </span>
                 <span className="text-stone shrink-0 text-xs tabular-nums">
                   {fav.visit_count} visits · {fav.avg_rating.toFixed(1)}
-                  <Star className="ml-0.5 inline h-3 w-3 align-[-1px]" fill="currentColor" strokeWidth={1.5} aria-hidden="true" />
+                  <StarIcon className="ml-0.5 inline h-3 w-3 align-[-1px]" fill="currentColor" strokeWidth={1.5} aria-hidden="true" />
                 </span>
               </li>
             ))}
@@ -175,10 +182,18 @@ export function KakiMetricsCharts({ metrics }: { metrics: KakiMetrics }) {
         <StatTile label="Places tried" value={metrics.groupDistinctPlaces} />
       </div>
 
-      <CuisineBars
-        breakdown={metrics.groupCuisineBreakdown}
-        title="What the group eats"
-      />
+      {/* UX review log #24 — stats detail restyled, not hidden: cuisine
+          share becomes a plate, favourites become a stamp card, and
+          typical spend gets its own gauge in budget's existing sage tone. */}
+      <Card>
+        <SectionHeading>What the group eats</SectionHeading>
+        <CuisinePlate breakdown={metrics.groupCuisineBreakdown} />
+      </Card>
+
+      <Card>
+        <SectionHeading>Typical spend</SectionHeading>
+        <BudgetGauge tier={metrics.groupAvgBudgetTier} label={metrics.groupAvgBudgetLabel} />
+      </Card>
 
       {metrics.groupFavouritePlaces.length > 0 && (
         <Card>
@@ -186,25 +201,7 @@ export function KakiMetricsCharts({ metrics }: { metrics: KakiMetrics }) {
           <p className="text-stone mb-2 text-xs">
             Ranked by how many members have been, not by raw visit count.
           </p>
-          <ol className="space-y-1.5">
-            {metrics.groupFavouritePlaces.map((fav, index) => (
-              <li
-                key={fav.place_id}
-                className="flex items-center justify-between gap-3 text-sm"
-              >
-                <span className="truncate">
-                  <span className="text-stone mr-2 text-xs">
-                    {index + 1}
-                  </span>
-                  {fav.place_name}
-                </span>
-                <span className="text-stone shrink-0 text-xs tabular-nums">
-                  {fav.visit_count} visits · {fav.avg_rating.toFixed(1)}
-                  <Star className="ml-0.5 inline h-3 w-3 align-[-1px]" fill="currentColor" strokeWidth={1.5} aria-hidden="true" />
-                </span>
-              </li>
-            ))}
-          </ol>
+          <FavouritesStampCard favourites={metrics.groupFavouritePlaces} />
         </Card>
       )}
     </div>

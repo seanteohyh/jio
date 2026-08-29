@@ -343,7 +343,7 @@ export default function PlaceDetailPage({
           <Stars rating={place.avg_rating} size="md" />
           {place.visit_count ? <span>{place.visit_count} visits</span> : null}
           {place.has_pending_flag && (
-            <span className="bg-amber/20 text-amber rounded-full px-2 py-0.5 text-xs font-medium">
+            <span className="bg-amber/20 text-amber-text rounded-full px-2 py-0.5 text-xs font-medium">
               Reported
             </span>
           )}
@@ -632,17 +632,44 @@ export default function PlaceDetailPage({
                 <p className="text-ink mb-1.5 text-sm font-medium">
                   {editingVisitId ? "Edit your review" : "How was it?"}
                 </p>
-                <div className="flex gap-1">
+                <div
+                  role="radiogroup"
+                  aria-label="Rating"
+                  className="flex gap-1"
+                  onKeyDown={(e) => {
+                    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+                    e.preventDefault();
+                    const next =
+                      e.key === "ArrowRight"
+                        ? Math.min(5, rating + 1)
+                        : Math.max(1, rating - 1);
+                    setRating(next);
+                    (
+                      e.currentTarget.querySelector(
+                        `[data-star="${next}"]`
+                      ) as HTMLButtonElement | null
+                    )?.focus();
+                  }}
+                >
                   {[1, 2, 3, 4, 5].map((n) => (
                     <button
                       key={n}
                       type="button"
+                      data-star={n}
+                      role="radio"
+                      aria-checked={n === rating}
+                      tabIndex={n === rating ? 0 : -1}
                       onClick={() => setRating(n)}
                       aria-label={`${n} star${n === 1 ? "" : "s"}`}
+                      // UX review log #2 — a real 44px tap target on the
+                      // actual interactive rating control (read-only star
+                      // displays elsewhere, e.g. `Stars` in ui.tsx, are
+                      // untouched: this is scoped to the input only).
+                      // min-w/min-h + centering grows the tappable box
+                      // without changing the glyph's own visual size.
                       className={
-                        n <= rating
-                          ? "text-amber text-2xl"
-                          : "text-line text-2xl"
+                        "flex min-h-11 min-w-11 items-center justify-center text-2xl " +
+                        (n <= rating ? "text-amber" : "text-line")
                       }
                     >
                       ★
@@ -740,14 +767,22 @@ export default function PlaceDetailPage({
                           type="button"
                           onClick={() => toggleLike(review.id)}
                           disabled={likingId === review.id}
-                          className={`inline-flex items-center gap-1 text-xs font-medium ${
+                          // UX review log #3 — a stable accessible name
+                          // ("Like"/"Unlike") instead of the count-dependent
+                          // "♡ Like" / "♥ 3" the report found, plus
+                          // aria-pressed for the toggle state.
+                          aria-label={review.liked_by_me ? "Unlike" : "Like"}
+                          aria-pressed={review.liked_by_me}
+                          className={`tap-target-text inline-flex items-center gap-1 text-xs font-medium ${
                             review.liked_by_me
                               ? "text-ember"
                               : "text-stone hover:text-ink"
                           }`}
                         >
-                          {review.liked_by_me ? "♥" : "♡"}{" "}
-                          {review.like_count > 0 ? review.like_count : "Like"}
+                          <span aria-hidden="true">
+                            {review.liked_by_me ? "♥" : "♡"}{" "}
+                            {review.like_count > 0 ? review.like_count : "Like"}
+                          </span>
                         </button>
                         {/* CHANGES_20260818.md §1 — own reviews only; a
                             teammate's review renders identically either

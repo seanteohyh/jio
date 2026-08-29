@@ -76,6 +76,25 @@ describe("getPublicEventPreview", () => {
     }
   });
 
+  it("winnerPlaceName is null while a Jio is still open", async () => {
+    const event = await makeEvent();
+    const preview = await demoRepo.getPublicEventPreview(event.invite_token);
+    expect(preview?.winnerPlaceName).toBeNull();
+  });
+
+  it("winnerPlaceName surfaces the real place's name once closed — UX review log #25", async () => {
+    const event = await makeEvent();
+    await demoRepo.castBallot(event.id, DEMO_USER_ID, [
+      "demo-place-01",
+      "demo-place-02",
+    ]);
+    await demoRepo.closeEvent(event.id, DEMO_USER_ID);
+
+    const preview = await demoRepo.getPublicEventPreview(event.invite_token);
+    expect(preview?.status).toBe("closed");
+    expect(preview?.winnerPlaceName).toBe("Albert Centre Market & Food Centre");
+  });
+
   it("is unaffected by a Jio's hide_votes setting — always redacted regardless", async () => {
     const event = await demoRepo.createEvent(
       DEMO_USER_ID,

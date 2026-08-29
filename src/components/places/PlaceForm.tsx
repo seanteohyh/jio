@@ -370,8 +370,13 @@ export default function PlaceForm({
           {customCuisineTags.length > 0 && (
             <div className="mt-2 flex flex-wrap gap-1.5">
               {customCuisineTags.map((tag) => (
-                <Chip key={tag} active onClick={() => removeCustomCuisineTag(tag)}>
-                  {tag} ×
+                <Chip
+                  key={tag}
+                  active
+                  onClick={() => removeCustomCuisineTag(tag)}
+                  ariaLabel={`Remove ${tag}`}
+                >
+                  {tag} <span aria-hidden="true">×</span>
                 </Chip>
               ))}
             </div>

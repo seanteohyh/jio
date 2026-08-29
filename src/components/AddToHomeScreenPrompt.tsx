@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { X, Share, PlusSquare, Smartphone } from "lucide-react";
+import { AddSquareIcon, CloseIcon, PhoneIcon, ShareIcon } from "@/components/icons";
 import { Button } from "./ui";
 import { useInstallPrompt } from "./InstallPromptProvider";
 import AttachEmailPanel from "./profile/AttachEmailPanel";
@@ -99,13 +99,13 @@ export default function AddToHomeScreenPrompt() {
     return (
       <div className="fixed inset-x-0 bottom-16 z-40 px-4 pb-[env(safe-area-inset-bottom)] md:bottom-4 md:left-64 md:right-4">
         <div
-          className="border-line bg-cream mx-auto flex max-w-lg items-start gap-3 rounded-2xl border p-4"
+          className="border-line bg-cream animate-fade-in mx-auto flex max-w-lg items-start gap-3 rounded-2xl border p-4"
           style={{ boxShadow: "var(--shadow-sm)" }}
           role="dialog"
           aria-label="Attach an email"
         >
           <span className="bg-ember-tint text-ember flex h-9 w-9 shrink-0 items-center justify-center rounded-full">
-            <Smartphone className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
+            <PhoneIcon className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
           </span>
           <div className="min-w-0 flex-1">
             <p className="text-ink text-sm font-medium">Installed.</p>
@@ -131,13 +131,13 @@ export default function AddToHomeScreenPrompt() {
   return (
     <div className="fixed inset-x-0 bottom-16 z-40 px-4 pb-[env(safe-area-inset-bottom)] md:bottom-4 md:left-64 md:right-4">
       <div
-        className="border-line bg-cream mx-auto flex max-w-lg items-start gap-3 rounded-2xl border p-4"
+        className="border-line bg-cream animate-fade-in mx-auto flex max-w-lg items-start gap-3 rounded-2xl border p-4"
         style={{ boxShadow: "var(--shadow-sm)" }}
         role="dialog"
         aria-label="Add Jio to your home screen"
       >
         <span className="bg-ember-tint text-ember flex h-9 w-9 shrink-0 items-center justify-center rounded-full">
-          <Smartphone className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
+          <PhoneIcon className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
         </span>
 
         <div className="min-w-0 flex-1">
@@ -149,7 +149,7 @@ export default function AddToHomeScreenPrompt() {
               Install it and you'll be able to get notified when a Jio needs
               your vote — no more finding out after everyone's already
               decided. Tap{" "}
-              <Share
+              <ShareIcon
                 className="mx-0.5 inline h-3.5 w-3.5 -translate-y-px"
                 strokeWidth={1.75}
                 aria-hidden="true"
@@ -157,7 +157,7 @@ export default function AddToHomeScreenPrompt() {
               Share (look for{" "}
               <span aria-hidden="true">•••</span> or "More" first if you
               don't see it), then{" "}
-              <PlusSquare
+              <AddSquareIcon
                 className="mx-0.5 inline h-3.5 w-3.5 -translate-y-px"
                 strokeWidth={1.75}
                 aria-hidden="true"
@@ -207,7 +207,7 @@ export default function AddToHomeScreenPrompt() {
           aria-label="Dismiss"
           className="text-stone hover:text-ink shrink-0 p-1"
         >
-          <X className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
+          <CloseIcon className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
         </button>
       </div>
     </div>

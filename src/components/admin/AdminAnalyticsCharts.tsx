@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Download } from "lucide-react";
+import { DownloadIcon } from "@/components/icons";
 import { Card, SectionHeading } from "@/components/ui";
 import { cn, dateKey, formatCuisine, sgtToday } from "@/lib/utils";
 import { downloadCsv, toCsv } from "@/lib/csv";
@@ -55,7 +55,7 @@ export function ExportCsvButton({
       onClick={() => downloadCsv(filename, toCsv(headers, rows))}
       className="text-stone hover:text-ink inline-flex shrink-0 items-center gap-1 text-xs underline"
     >
-      <Download className="h-3 w-3" aria-hidden="true" />
+      <DownloadIcon className="h-3 w-3" aria-hidden="true" />
       Export CSV
     </button>
   );

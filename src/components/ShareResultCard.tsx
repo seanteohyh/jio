@@ -39,10 +39,22 @@ interface ShareResultCardProps {
    * than a single share that might silently lose the image.
    */
   mapsUrl?: string;
+  /**
+   * UX review log #25 — the Jio's own invite link (`eventInviteUrl`), as a
+   * separate "Copy Jio link" button, same reasoning as `mapsUrl`: kept out
+   * of the share text so the image itself isn't dropped by a chat client's
+   * link-preview handling. Deliberately a plain button, not a QR code — two
+   * decisions locked in the review, no host-facing toggle for either.
+   */
+  inviteUrl?: string;
 }
 
 const CARD_W = 1200;
 const CARD_H = 760;
+/** Where the ticket's perforated notches (and the dashed divider) sit,
+ *  splitting the card into a "header" body and a footer "stub." */
+const DIVIDER_Y = CARD_H - 168;
+const NOTCH_R = 28;
 
 const COLOR = {
   paper: "#fbf6ef",
@@ -59,6 +71,8 @@ const COLOR = {
    *  not one color per row, so every other row shares this same tone. */
   muted: "#c9bfae",
 };
+
+const MONO_FONT = "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
 
 /** Wraps `text` to fit `maxWidth`, returning at most `maxLines` lines (the
  *  last one ellipsized if there was more). Canvas has no native wrapping. */
@@ -103,6 +117,59 @@ function wrapText(
   return lines;
 }
 
+/** A small deterministic string hash → seeded PRNG (mulberry32), so the
+ *  barcode's bars are stable for a given Jio rather than reshuffling on
+ *  every re-render. Purely decorative — this is not a real, scannable
+ *  barcode encoding anything. */
+function seededRandom(seed: string): () => number {
+  let h = 1779033703 ^ seed.length;
+  for (let i = 0; i < seed.length; i++) {
+    h = Math.imul(h ^ seed.charCodeAt(i), 3432918353);
+    h = (h << 13) | (h >>> 19);
+  }
+  let a = h >>> 0;
+  return () => {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function drawBarcode(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  seed: string
+) {
+  const rand = seededRandom(seed);
+  let cx = x;
+  ctx.fillStyle = COLOR.espresso;
+  while (cx < x + w) {
+    const barW = 2 + Math.floor(rand() * 5);
+    if (rand() > 0.4) ctx.fillRect(cx, y, barW, h);
+    cx += barW + 2 + Math.floor(rand() * 3);
+  }
+}
+
+/** Cuts the two ticket-stub notches out of the card, using
+ *  destination-out compositing so the paper colour behind shows through —
+ *  must run before any content is drawn on top of that region. */
+function cutNotches(ctx: CanvasRenderingContext2D, pad: number) {
+  ctx.save();
+  ctx.globalCompositeOperation = "destination-out";
+  ctx.beginPath();
+  ctx.arc(pad / 2, DIVIDER_Y, NOTCH_R, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(CARD_W - pad / 2, DIVIDER_Y, NOTCH_R, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
 function draw(
   canvas: HTMLCanvasElement,
   { title, placeName, whenLabel, standings = [] }: ShareResultCardProps
@@ -118,10 +185,23 @@ function draw(
 
   const pad = 72;
 
-  // Card
+  // The ticket body — a rounded card with two semicircular notches cut into
+  // its long edges at the header/stub divider, per the chit redesign.
   ctx.fillStyle = COLOR.cream;
   roundRect(ctx, pad / 2, pad / 2, CARD_W - pad, CARD_H - pad, 28);
   ctx.fill();
+  cutNotches(ctx, pad);
+
+  // The dashed divider, level with the notches.
+  ctx.save();
+  ctx.strokeStyle = COLOR.line;
+  ctx.lineWidth = 2;
+  ctx.setLineDash([10, 8]);
+  ctx.beginPath();
+  ctx.moveTo(pad, DIVIDER_Y);
+  ctx.lineTo(CARD_W - pad, DIVIDER_Y);
+  ctx.stroke();
+  ctx.restore();
 
   // "DECIDED" pill, echoing the in-app resolved-vote card.
   ctx.fillStyle = COLOR.sageTint;
@@ -144,9 +224,9 @@ function draw(
     y += 80;
   }
 
-  // Jio title + time.
+  // Jio title + time — monospace, part of the ticket's stated affectation.
   ctx.fillStyle = COLOR.stone;
-  ctx.font = "500 32px system-ui, -apple-system, sans-serif";
+  ctx.font = `500 30px ${MONO_FONT}`;
   const subLine = `${title} · ${whenLabel}`;
   const subLines = wrapText(ctx, subLine, CARD_W - pad * 2, 1);
   const subBaseline = y + 20;
@@ -209,14 +289,43 @@ function draw(
     }
   }
 
-  // "jio" wordmark, bottom-right — brand attribution on a card that will
-  // travel outside the app entirely.
+  // The stub — "jio" wordmark on the left, a seeded barcode pattern on the
+  // right, both below the dashed divider.
+  const stubMid = DIVIDER_Y + (CARD_H - pad - DIVIDER_Y) / 2;
   ctx.fillStyle = COLOR.ember;
   ctx.font = "800 34px system-ui, -apple-system, sans-serif";
-  ctx.textBaseline = "alphabetic";
+  ctx.textBaseline = "middle";
+  ctx.fillText("jio", pad, stubMid);
+
+  const barcodeW = 340;
+  const barcodeH = 46;
+  drawBarcode(
+    ctx,
+    CARD_W - pad - barcodeW,
+    stubMid - barcodeH / 2,
+    barcodeW,
+    barcodeH,
+    `${title}-${placeName}`
+  );
+  ctx.fillStyle = COLOR.stone;
+  ctx.font = `500 16px ${MONO_FONT}`;
   ctx.textAlign = "right";
-  ctx.fillText("jio", CARD_W - pad, CARD_H - pad - 8);
+  ctx.fillText(
+    "JIO-" + hashToCode(`${title}-${placeName}`),
+    CARD_W - pad,
+    stubMid + barcodeH / 2 + 20
+  );
   ctx.textAlign = "left";
+}
+
+/** A short, stable-looking alphanumeric "ticket code" under the barcode —
+ *  cosmetic only, not a real reference anyone can look up. */
+function hashToCode(seed: string): string {
+  const rand = seededRandom(seed);
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let out = "";
+  for (let i = 0; i < 6; i++) out += chars[Math.floor(rand() * chars.length)];
+  return out;
 }
 
 function roundRect(
@@ -237,12 +346,15 @@ function roundRect(
 }
 
 /**
- * Renders the decided-Jio result as a shareable PNG — CHANGES_20260803.md
- * §12c. A link only tells you where to look; this is the thing you'd
- * actually paste into a chat.
+ * Renders the decided-Jio result as a shareable ticket — CHANGES_20260803.md
+ * §12c, redesigned as a chit per UX review log #25. A link only tells you
+ * where to look; this is the thing you'd actually paste into a chat.
  *
  * Client-side canvas render rather than a server screenshot service: no
- * extra infra, and it works from the same data already on the page.
+ * extra infra, and it works from the same data already on the page. The
+ * perforated notches, dashed divider and barcode all need real canvas draw
+ * calls to render correctly in the exported PNG — a CSS approximation only
+ * looks right in the live DOM, not in the flattened image someone shares.
  * Copy/Share both need a real user gesture on the button that triggers
  * them, so `toBlob` runs fresh in each handler rather than being cached
  * from the draw effect.
@@ -253,6 +365,9 @@ export default function ShareResultCard(props: ShareResultCardProps) {
     "idle"
   );
   const [mapsLinkCopyState, setMapsLinkCopyState] = useState<
+    "idle" | "copied" | "error"
+  >("idle");
+  const [inviteLinkCopyState, setInviteLinkCopyState] = useState<
     "idle" | "copied" | "error"
   >("idle");
   const [canCopyImage, setCanCopyImage] = useState(false);
@@ -289,6 +404,12 @@ export default function ShareResultCard(props: ShareResultCardProps) {
     const timer = setTimeout(() => setMapsLinkCopyState("idle"), 2000);
     return () => clearTimeout(timer);
   }, [mapsLinkCopyState]);
+
+  useEffect(() => {
+    if (inviteLinkCopyState !== "copied") return;
+    const timer = setTimeout(() => setInviteLinkCopyState("idle"), 2000);
+    return () => clearTimeout(timer);
+  }, [inviteLinkCopyState]);
 
   const toBlob = (): Promise<Blob | null> =>
     new Promise((resolve) =>
@@ -337,6 +458,17 @@ export default function ShareResultCard(props: ShareResultCardProps) {
     }
   };
 
+  /** See `inviteUrl`'s doc comment — same reasoning as `copyMapsLink`. */
+  const copyInviteLink = async () => {
+    if (!props.inviteUrl) return;
+    try {
+      await navigator.clipboard.writeText(props.inviteUrl);
+      setInviteLinkCopyState("copied");
+    } catch {
+      setInviteLinkCopyState("error");
+    }
+  };
+
   const downloadImage = async () => {
     const blob = await toBlob();
     if (!blob) return;
@@ -377,12 +509,20 @@ export default function ShareResultCard(props: ShareResultCardProps) {
             {mapsLinkCopyState === "copied" ? "Copied" : "Copy Maps link"}
           </Button>
         )}
+        {props.inviteUrl && (
+          <Button size="sm" variant="ghost" onClick={copyInviteLink}>
+            {inviteLinkCopyState === "copied" ? "Copied" : "Copy Jio link"}
+          </Button>
+        )}
       </div>
 
       {copyState === "error" && (
         <ErrorNote>Could not copy the image — try Download instead.</ErrorNote>
       )}
       {mapsLinkCopyState === "error" && (
+        <ErrorNote>Could not copy the link.</ErrorNote>
+      )}
+      {inviteLinkCopyState === "error" && (
         <ErrorNote>Could not copy the link.</ErrorNote>
       )}
     </div>

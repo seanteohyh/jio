@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import useSWR from "swr";
 import { Button, ErrorNote, inputClass } from "@/components/ui";
+import { useToast } from "@/components/Toast";
 import { fetcher, mutateJson } from "@/lib/fetcher";
 import type { UserPrefs } from "@/types";
 
@@ -38,19 +39,13 @@ export default function ReminderSettingsPanel() {
   const [leadMinutes, setLeadMinutes] = useState(30);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
+  const showToast = useToast();
 
   useEffect(() => {
     if (!data) return;
     setEnabled(data.prefs?.reminders_enabled ?? true);
     setLeadMinutes(data.prefs?.reminder_lead_minutes ?? 30);
   }, [data]);
-
-  useEffect(() => {
-    if (!saved) return;
-    const timer = setTimeout(() => setSaved(false), 2000);
-    return () => clearTimeout(timer);
-  }, [saved]);
 
   const save = async (nextEnabled: boolean, nextLeadMinutes: number) => {
     setBusy(true);
@@ -61,7 +56,7 @@ export default function ReminderSettingsPanel() {
         reminder_lead_minutes: nextLeadMinutes,
       });
       await mutate();
-      setSaved(true);
+      showToast("Saved");
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Could not save that setting"
@@ -121,7 +116,6 @@ export default function ReminderSettingsPanel() {
         </label>
       )}
 
-      {saved && <p className="text-sage text-xs">Saved.</p>}
       {error && <ErrorNote>{error}</ErrorNote>}
     </div>
   );

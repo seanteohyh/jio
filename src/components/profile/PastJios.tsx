@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import useSWR from "swr";
 import { Button, Card, EmptyState, SectionHeading } from "../ui";
+import { AlertIcon } from "@/components/icons";
 import SendLobangPanel from "./SendLobangPanel";
 import { fetcher } from "@/lib/fetcher";
 import { features } from "@/lib/config";
@@ -17,7 +18,7 @@ import type { LunchEvent } from "@/types";
  * a one-click thing.
  */
 export default function PastJios({ selfId }: { selfId: string }) {
-  const { data, error, isLoading } = useSWR<{ events: LunchEvent[] }>(
+  const { data, error, isLoading, mutate } = useSWR<{ events: LunchEvent[] }>(
     "/api/events",
     fetcher
   );
@@ -25,7 +26,26 @@ export default function PastJios({ selfId }: { selfId: string }) {
   const [justSent, setJustSent] = useState<string | null>(null);
 
   if (isLoading) return null;
-  if (error) return null;
+
+  // UX review log #7 — this used to fail silently (`return null`), so your
+  // own history just vanished with no explanation. Core enough to warrant a
+  // visible retry rather than the silent-failure treatment.
+  if (error) {
+    return (
+      <section>
+        <SectionHeading>Past Jios</SectionHeading>
+        <Card className="flex items-center justify-between gap-3">
+          <p className="text-stone flex items-center gap-2 text-sm">
+            <AlertIcon className="text-ember h-4 w-4 shrink-0" aria-hidden="true" />
+            Couldn&apos;t load your past Jios.
+          </p>
+          <Button variant="secondary" size="sm" onClick={() => mutate()}>
+            Try again
+          </Button>
+        </Card>
+      </section>
+    );
+  }
 
   const past = (data?.events ?? [])
     .filter((e) => e.status === "closed")
