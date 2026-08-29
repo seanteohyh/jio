@@ -15,6 +15,7 @@ import type {
   FlagReason,
   FlagResolution,
   FoodIdentityCard,
+  HangoutZone,
   Kaki,
   KakiDetail,
   KakiFoodIdentityCard,
@@ -97,6 +98,21 @@ export interface Repo {
    * longer resolves confidently).
    */
   setGooglePlaceId(placeId: string, googlePlaceId: string | null): Promise<void>;
+
+  // ---- Hangout Zones (CHANGES_20260821_combined2.md follow-up — see
+  // twinkly-drifting-hennessy.md) ----
+  /** All zones — public, same footing as `places`. `search` narrows by name. */
+  listHangoutZones(search?: string): Promise<HangoutZone[]>;
+  createHangoutZone(
+    userId: string,
+    data: { name: string; address?: string | null; lat: number; lng: number }
+  ): Promise<HangoutZone>;
+  /** Any signed-in user, not just the creator — same open-edit norm as
+   *  `updatePlace`. */
+  updateHangoutZone(
+    id: string,
+    data: Partial<Pick<HangoutZone, "name" | "address" | "lat" | "lng">>
+  ): Promise<HangoutZone>;
 
   // ---- Visits & reviews ----
   listVisits(placeId?: string, userId?: string): Promise<Visit[]>;
@@ -886,6 +902,9 @@ export const REPO_METHODS = [
   "updatePlace",
   "deletePlace",
   "setGooglePlaceId",
+  "listHangoutZones",
+  "createHangoutZone",
+  "updateHangoutZone",
   "listVisits",
   "createVisit",
   "updateVisit",

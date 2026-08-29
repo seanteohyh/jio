@@ -178,6 +178,39 @@ export interface UserPrefs {
   /** Default lead time in minutes, overridable per-Jio (see
    *  `EventReminderState`). */
   reminder_lead_minutes: number;
+  /**
+   * Which reference point Places/Map/a Jio's place-search compute walking
+   * distance from. 'home'/'hangout' each carry their own supporting data
+   * below, enforced present at write time (see the `/api/user-prefs`
+   * route) so every read site can trust this field alone. Staged behind
+   * an admin-only gate for now — see that same route.
+   */
+  location_mode: "office" | "home" | "hangout";
+  /** Private, always — never exposed to anyone but the owner. Display
+   *  only; distance math uses `home_lat`/`home_lng`. */
+  home_address?: string | null;
+  home_lat?: number | null;
+  home_lng?: number | null;
+  /** Which `HangoutZone` is active when `location_mode === "hangout"`. */
+  active_hangout_zone_id?: string | null;
+}
+
+/**
+ * A public, informal reference point — a church, a mall, wherever a
+ * specific friend group actually meets — functionally a lightweight
+ * cousin of `Office`, but anyone can add or edit one (same open norm as
+ * `Place`), not just an admin. What makes it work as "a mini office
+ * where everyone's the same place": any account can select any zone as
+ * their active `location_mode`, no invite or membership needed.
+ */
+export interface HangoutZone {
+  id: string;
+  name: string;
+  address?: string | null;
+  lat: number;
+  lng: number;
+  created_by: string;
+  created_at?: string;
 }
 
 /**
@@ -725,6 +758,13 @@ export interface Filters {
   status: PlaceStatus | "all";
   search: string;
   officeId: string;
+  /**
+   * Overrides `officeId` when set — the caller's own Home or Hangout Zone
+   * coordinates, resolved by the API route from their `user_prefs`
+   * (never a client-supplied value). Skips `walk_cache` entirely in favor
+   * of a haversine estimate; see `enrich()`/`walkTimes()`.
+   */
+  activeLocation?: { lat: number; lng: number } | null;
   /**
    * Defaults to "walk" (nearest first) when omitted. "kaki_rating" is
    * handled entirely at the API route layer (see §12f in
