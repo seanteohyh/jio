@@ -13,30 +13,26 @@ beforeEach(() => {
 });
 
 describe("qualifiesForDecidedCelebration", () => {
-  it("qualifies for a closed, still-upcoming Jio the viewer RSVP'd and voted on", () => {
+  it("qualifies for a closed, still-upcoming Jio the viewer voted on", () => {
     expect(
       qualifiesForDecidedCelebration({
         alreadySeen: false,
         eventStatus: "closed",
         isUpcoming: true,
-        myRsvp: "yes",
         myVoteCount: 1,
       })
     ).toBe(true);
   });
 
-  it("any RSVP answer counts, not just yes", () => {
-    for (const myRsvp of ["yes", "maybe", "no"] as const) {
-      expect(
-        qualifiesForDecidedCelebration({
-          alreadySeen: false,
-          eventStatus: "closed",
-          isUpcoming: true,
-          myRsvp,
-          myVoteCount: 1,
-        })
-      ).toBe(true);
-    }
+  it("fires even without an RSVP — RSVP and voting are independent actions, and a cast vote is itself a sufficient participation signal", () => {
+    expect(
+      qualifiesForDecidedCelebration({
+        alreadySeen: false,
+        eventStatus: "closed",
+        isUpcoming: true,
+        myVoteCount: 1,
+      })
+    ).toBe(true);
   });
 
   it("never fires again for a Jio it's already been seen on", () => {
@@ -45,7 +41,6 @@ describe("qualifiesForDecidedCelebration", () => {
         alreadySeen: true,
         eventStatus: "closed",
         isUpcoming: true,
-        myRsvp: "yes",
         myVoteCount: 1,
       })
     ).toBe(false);
@@ -57,7 +52,6 @@ describe("qualifiesForDecidedCelebration", () => {
         alreadySeen: false,
         eventStatus: "open",
         isUpcoming: true,
-        myRsvp: "yes",
         myVoteCount: 1,
       })
     ).toBe(false);
@@ -69,19 +63,6 @@ describe("qualifiesForDecidedCelebration", () => {
         alreadySeen: false,
         eventStatus: "closed",
         isUpcoming: false,
-        myRsvp: "yes",
-        myVoteCount: 1,
-      })
-    ).toBe(false);
-  });
-
-  it("does not fire without an RSVP", () => {
-    expect(
-      qualifiesForDecidedCelebration({
-        alreadySeen: false,
-        eventStatus: "closed",
-        isUpcoming: true,
-        myRsvp: null,
         myVoteCount: 1,
       })
     ).toBe(false);
@@ -93,7 +74,6 @@ describe("qualifiesForDecidedCelebration", () => {
         alreadySeen: false,
         eventStatus: "closed",
         isUpcoming: true,
-        myRsvp: "yes",
         myVoteCount: 0,
       })
     ).toBe(false);
@@ -172,8 +152,6 @@ describe("end to end: the API route's condition, wired through a real close", ()
     const closed = await demoRepo.closeEvent(event.id, DEMO_USER_ID);
     const detail = await demoRepo.getEvent(event.id);
 
-    const myRsvp =
-      detail?.rsvps.find((r) => r.user_id === DEMO_USER_ID)?.response ?? null;
     const myVoteCount =
       detail?.votes.filter((v) => v.user_id === DEMO_USER_ID).length ?? 0;
     const alreadySeen = await demoRepo.hasSeenDecidedCelebration(
@@ -186,7 +164,6 @@ describe("end to end: the API route's condition, wired through a real close", ()
         alreadySeen,
         eventStatus: closed.status,
         isUpcoming: new Date(closed.scheduled_at).getTime() > Date.now(),
-        myRsvp,
         myVoteCount,
       })
     ).toBe(true);
@@ -194,7 +171,6 @@ describe("end to end: the API route's condition, wired through a real close", ()
 
   it("does not qualify once the Jio's own lunch date has already passed", async () => {
     const event = await makeEvent(YESTERDAY);
-    await demoRepo.rsvp(event.id, DEMO_USER_ID, "yes");
     await demoRepo.castBallot(event.id, DEMO_USER_ID, ["demo-place-01"]);
     const closed = await demoRepo.closeEvent(event.id, DEMO_USER_ID);
 
@@ -203,7 +179,6 @@ describe("end to end: the API route's condition, wired through a real close", ()
         alreadySeen: false,
         eventStatus: closed.status,
         isUpcoming: new Date(closed.scheduled_at).getTime() > Date.now(),
-        myRsvp: "yes",
         myVoteCount: 1,
       })
     ).toBe(false);
@@ -216,9 +191,6 @@ describe("end to end: the API route's condition, wired through a real close", ()
     const closed = await demoRepo.closeEvent(event.id, DEMO_USER_ID);
 
     const detail = await demoRepo.getEvent(event.id);
-    const myRsvp =
-      detail?.rsvps.find((r) => r.user_id === DEMO_TEAMMATE_A)?.response ??
-      null;
     const myVoteCount =
       detail?.votes.filter((v) => v.user_id === DEMO_TEAMMATE_A).length ?? 0;
 
@@ -227,9 +199,30 @@ describe("end to end: the API route's condition, wired through a real close", ()
         alreadySeen: false,
         eventStatus: closed.status,
         isUpcoming: new Date(closed.scheduled_at).getTime() > Date.now(),
-        myRsvp,
         myVoteCount,
       })
     ).toBe(false);
+  });
+
+  it("qualifies for someone who voted but never RSVP'd — voting alone is a sufficient participation signal", async () => {
+    const event = await makeEvent();
+    await demoRepo.castBallot(event.id, DEMO_USER_ID, ["demo-place-01"]);
+    const closed = await demoRepo.closeEvent(event.id, DEMO_USER_ID);
+
+    const detail = await demoRepo.getEvent(event.id);
+    const myVoteCount =
+      detail?.votes.filter((v) => v.user_id === DEMO_USER_ID).length ?? 0;
+    const myRsvp =
+      detail?.rsvps.find((r) => r.user_id === DEMO_USER_ID)?.response ?? null;
+
+    expect(myRsvp).toBeNull();
+    expect(
+      qualifiesForDecidedCelebration({
+        alreadySeen: false,
+        eventStatus: closed.status,
+        isUpcoming: new Date(closed.scheduled_at).getTime() > Date.now(),
+        myVoteCount,
+      })
+    ).toBe(true);
   });
 });
