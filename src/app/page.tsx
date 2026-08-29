@@ -12,6 +12,7 @@ import AddToHomeScreenCard from "@/components/profile/AddToHomeScreenCard";
 import HintCard from "@/components/HintCard";
 import { LinkButton, SectionHeading } from "@/components/ui";
 import JioLockup from "@/components/brand/JioLockup";
+import JioMark from "@/components/brand/JioMark";
 import { formatTime, isSameSgtDay } from "@/lib/utils";
 import type { InviteSelection } from "@/components/InvitePicker";
 import {
@@ -235,13 +236,23 @@ export default async function HomePage() {
         </div>
       )}
 
+      {/*
+        UX review log #23 — a calm-zone card, not the ember action hero, is
+        where the real JioMark actually contrasts (true colours on cream,
+        not faded onto ember), so this is where it belongs.
+      */}
       {features.events && lastHosted && (
         <Link
           href={`/events/new?repeatFrom=${lastHosted.id}`}
-          className="text-ember text-xs underline"
+          className="border-line bg-cream hover:border-ember/40 flex items-center gap-3 rounded-2xl border p-4 shadow-[var(--shadow-sm)] transition-colors"
         >
-          Same as last time? Start a Jio like &ldquo;{lastHosted.title}
-          &rdquo;
+          <JioMark className="h-8 w-8 shrink-0" />
+          <p className="min-w-0 flex-1 text-sm">
+            <span className="text-ink font-medium">Same as last time?</span>{" "}
+            <span className="text-stone">
+              Start a Jio like &ldquo;{lastHosted.title}&rdquo;
+            </span>
+          </p>
         </Link>
       )}
 
