@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Button, ErrorNote } from "./ui";
+import { computeFingerprint, FINGERPRINT_DOT } from "@/lib/placeFingerprint";
 
 /** One row of the top-3 vote breakdown — CHANGES_20260819c.md §3. */
 export interface ShareResultStanding {
@@ -25,9 +26,18 @@ interface ShareResultCardProps {
   /**
    * Top 3 (or fewer) options by Borda points, winner-first-if-present. Empty
    * or omitted skips the chart entirely — e.g. a Jio closed with no votes at
-   * all has nothing to break down.
+   * all has nothing to break down. The winner's own row (if present) isn't
+   * drawn as a fourth list item — its points fold into the summary line
+   * instead, per the hawker-chit redesign — only the runners-up print below
+   * the divider.
    */
   standings?: ShareResultStanding[];
+  /** Distinct voters, for the "N votes" summary line. */
+  voteCount?: number;
+  /** Pre-formatted time the Jio actually closed, e.g. "12:04 pm". */
+  closedAtLabel?: string;
+  /** Pre-formatted lunch time, e.g. "12:30 pm", for the "see you at" footer. */
+  seeYouAtLabel?: string;
   /**
    * Google Maps link for the winning place, if it's a real one (a free-text
    * winner has nothing to link to). NOT folded into `Share…`'s text: a
@@ -51,28 +61,26 @@ interface ShareResultCardProps {
 
 const CARD_W = 1200;
 const CARD_H = 760;
-/** Where the ticket's perforated notches (and the dashed divider) sit,
- *  splitting the card into a "header" body and a footer "stub." */
-const DIVIDER_Y = CARD_H - 168;
-const NOTCH_R = 28;
+const NOTCH_R = 26;
 
+/**
+ * Redesigned per Sean's own hawker-order-chit reference (2026-08-29): a
+ * lighter card floating on a deeper warm ground, rather than the earlier
+ * cream-on-paper pairing — `outer`/`card` are the same two brand tokens as
+ * before, just swapped, so the card now reads as the lighter surface.
+ */
 const COLOR = {
-  paper: "#fbf6ef",
-  cream: "#f7e9de",
+  outer: "#f7e9de",
+  card: "#fbf6ef",
   ember: "#c0392b",
-  emberTint: "#f7e4e0",
   espresso: "#3d342c",
   ink: "#2b2b2b",
   stone: "#6b665c",
-  sage: "#567b57",
-  sageTint: "#e4eee5",
   line: "#ece5d8",
-  /** Neutral bar fill for a non-winning row — one hue means "this one won,"
-   *  not one color per row, so every other row shares this same tone. */
-  muted: "#c9bfae",
 };
 
 const MONO_FONT = "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
+const SERIF_FONT = "Georgia, 'Times New Roman', serif";
 
 /** Wraps `text` to fit `maxWidth`, returning at most `maxLines` lines (the
  *  last one ellipsized if there was more). Canvas has no native wrapping. */
@@ -117,224 +125,35 @@ function wrapText(
   return lines;
 }
 
-/** A small deterministic string hash → seeded PRNG (mulberry32), so the
- *  barcode's bars are stable for a given Jio rather than reshuffling on
- *  every re-render. Purely decorative — this is not a real, scannable
- *  barcode encoding anything. */
-function seededRandom(seed: string): () => number {
-  let h = 1779033703 ^ seed.length;
-  for (let i = 0; i < seed.length; i++) {
-    h = Math.imul(h ^ seed.charCodeAt(i), 3432918353);
-    h = (h << 13) | (h >>> 19);
-  }
-  let a = h >>> 0;
-  return () => {
-    a |= 0;
-    a = (a + 0x6d2b79f5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-function drawBarcode(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-  seed: string
-) {
-  const rand = seededRandom(seed);
-  let cx = x;
-  ctx.fillStyle = COLOR.espresso;
-  while (cx < x + w) {
-    const barW = 2 + Math.floor(rand() * 5);
-    if (rand() > 0.4) ctx.fillRect(cx, y, barW, h);
-    cx += barW + 2 + Math.floor(rand() * 3);
-  }
+/** Inserts a thin space between every character — canvas has no
+ *  `letter-spacing` property that's safe to rely on across engines yet, so
+ *  small tracked-out labels ("DECIDED", the footer line) space themselves
+ *  out this way instead. */
+function tracked(text: string): string {
+  return text.split("").join(" ");
 }
 
 /**
  * Cuts the two ticket-stub notches out of the card. Paints solid
- * paper-coloured discs on top of the cream card, rather than erasing with
+ * outer-coloured discs on top of the card, rather than erasing with
  * `destination-out` compositing: that operation doesn't reveal a layer
  * drawn earlier, it erases down to true transparency (alpha 0) — which
- * looked right in the live canvas (its cream parent card shows through
+ * looked right in the live canvas (its own parent card shows through
  * transparent pixels) but left the *exported* PNG with a real alpha hole.
  * Sharing or converting that file (Messages, WhatsApp, a screenshot tool)
- * commonly flattens transparent pixels to solid black, which is exactly
- * the "black circles instead of notches" bug this replaces. A solid,
- * opaque fill is correct everywhere the image ends up.
+ * commonly flattens transparent pixels to solid black. A solid, opaque
+ * fill is correct everywhere the image ends up.
  */
-function cutNotches(ctx: CanvasRenderingContext2D, pad: number) {
+function cutNotches(ctx: CanvasRenderingContext2D, pad: number, dividerY: number) {
   ctx.save();
-  ctx.fillStyle = COLOR.paper;
+  ctx.fillStyle = COLOR.outer;
   ctx.beginPath();
-  ctx.arc(pad / 2, DIVIDER_Y, NOTCH_R, 0, Math.PI * 2);
+  ctx.arc(pad / 2, dividerY, NOTCH_R, 0, Math.PI * 2);
   ctx.fill();
   ctx.beginPath();
-  ctx.arc(CARD_W - pad / 2, DIVIDER_Y, NOTCH_R, 0, Math.PI * 2);
+  ctx.arc(CARD_W - pad / 2, dividerY, NOTCH_R, 0, Math.PI * 2);
   ctx.fill();
   ctx.restore();
-}
-
-function draw(
-  canvas: HTMLCanvasElement,
-  { title, placeName, whenLabel, standings = [] }: ShareResultCardProps
-) {
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return;
-
-  canvas.width = CARD_W;
-  canvas.height = CARD_H;
-
-  ctx.fillStyle = COLOR.paper;
-  ctx.fillRect(0, 0, CARD_W, CARD_H);
-
-  const pad = 72;
-
-  // The ticket body — a rounded card with two semicircular notches cut into
-  // its long edges at the header/stub divider, per the chit redesign.
-  ctx.fillStyle = COLOR.cream;
-  roundRect(ctx, pad / 2, pad / 2, CARD_W - pad, CARD_H - pad, 28);
-  ctx.fill();
-  cutNotches(ctx, pad);
-
-  // The dashed divider, level with the notches.
-  ctx.save();
-  ctx.strokeStyle = COLOR.line;
-  ctx.lineWidth = 2;
-  ctx.setLineDash([10, 8]);
-  ctx.beginPath();
-  ctx.moveTo(pad, DIVIDER_Y);
-  ctx.lineTo(CARD_W - pad, DIVIDER_Y);
-  ctx.stroke();
-  ctx.restore();
-
-  // "DECIDED" pill, echoing the in-app resolved-vote card.
-  ctx.fillStyle = COLOR.sageTint;
-  const pillY = pad + 8;
-  roundRect(ctx, pad, pillY, 168, 44, 22);
-  ctx.fill();
-  ctx.fillStyle = COLOR.sage;
-  ctx.font = "700 20px system-ui, -apple-system, sans-serif";
-  ctx.textBaseline = "middle";
-  ctx.fillText("✓ DECIDED", pad + 20, pillY + 23);
-
-  // Place name — the headline.
-  ctx.fillStyle = COLOR.ink;
-  ctx.font = "800 74px system-ui, -apple-system, sans-serif";
-  ctx.textBaseline = "alphabetic";
-  const nameLines = wrapText(ctx, placeName, CARD_W - pad * 2, 2);
-  let y = 292;
-  for (const line of nameLines) {
-    ctx.fillText(line, pad, y);
-    y += 80;
-  }
-
-  // Jio title + time — monospace, part of the ticket's stated affectation.
-  ctx.fillStyle = COLOR.stone;
-  ctx.font = `500 30px ${MONO_FONT}`;
-  const subLine = `${title} · ${whenLabel}`;
-  const subLines = wrapText(ctx, subLine, CARD_W - pad * 2, 1);
-  const subBaseline = y + 20;
-  ctx.fillText(subLines[0] ?? subLine, pad, subBaseline);
-
-  // Top-3 vote breakdown — a compact horizontal bar chart, winner's row in
-  // full ember (its points folded into the same pill this card used to show
-  // standalone), the rest in one shared muted tone. Skipped entirely when
-  // there's nothing to show (a Jio closed with no votes at all).
-  if (standings.length > 0) {
-    const ROW_H = 40;
-    const ROW_GAP = 12;
-    const barWidth = CARD_W - pad * 2;
-    const maxPoints = Math.max(1, ...standings.map((s) => s.points));
-    let rowY = subBaseline + 40;
-
-    for (const row of standings.slice(0, 3)) {
-      const pointsLabel = `${row.points} pt${row.points === 1 ? "" : "s"}`;
-
-      ctx.textBaseline = "alphabetic";
-      ctx.font = row.isWinner
-        ? "700 26px system-ui, -apple-system, sans-serif"
-        : "500 24px system-ui, -apple-system, sans-serif";
-      ctx.fillStyle = row.isWinner ? COLOR.ink : COLOR.stone;
-      const labelLines = wrapText(ctx, row.name, barWidth - 150, 1);
-      ctx.fillText(labelLines[0] ?? row.name, pad, rowY + 18);
-
-      if (row.isWinner) {
-        ctx.font = "700 20px system-ui, -apple-system, sans-serif";
-        const textWidth = ctx.measureText(pointsLabel).width;
-        const pillW = textWidth + 28;
-        const pillH = 32;
-        const pillX = CARD_W - pad - pillW;
-        const pillY2 = rowY - 8;
-        ctx.fillStyle = COLOR.emberTint;
-        roundRect(ctx, pillX, pillY2, pillW, pillH, pillH / 2);
-        ctx.fill();
-        ctx.fillStyle = COLOR.ember;
-        ctx.textBaseline = "middle";
-        ctx.fillText(pointsLabel, pillX + 14, pillY2 + pillH / 2);
-      } else {
-        ctx.font = "500 20px system-ui, -apple-system, sans-serif";
-        ctx.fillStyle = COLOR.stone;
-        ctx.textAlign = "right";
-        ctx.fillText(pointsLabel, CARD_W - pad, rowY + 16);
-        ctx.textAlign = "left";
-      }
-
-      const barY = rowY + 26;
-      const barH = 10;
-      ctx.fillStyle = COLOR.line;
-      roundRect(ctx, pad, barY, barWidth, barH, barH / 2);
-      ctx.fill();
-      const fillWidth = Math.max(barH, (row.points / maxPoints) * barWidth);
-      ctx.fillStyle = row.isWinner ? COLOR.ember : COLOR.muted;
-      roundRect(ctx, pad, barY, fillWidth, barH, barH / 2);
-      ctx.fill();
-
-      rowY += ROW_H + ROW_GAP;
-    }
-  }
-
-  // The stub — "jio" wordmark on the left, a seeded barcode pattern on the
-  // right, both below the dashed divider.
-  const stubMid = DIVIDER_Y + (CARD_H - pad - DIVIDER_Y) / 2;
-  ctx.fillStyle = COLOR.ember;
-  ctx.font = "800 34px system-ui, -apple-system, sans-serif";
-  ctx.textBaseline = "middle";
-  ctx.fillText("jio", pad, stubMid);
-
-  const barcodeW = 340;
-  const barcodeH = 46;
-  drawBarcode(
-    ctx,
-    CARD_W - pad - barcodeW,
-    stubMid - barcodeH / 2,
-    barcodeW,
-    barcodeH,
-    `${title}-${placeName}`
-  );
-  ctx.fillStyle = COLOR.stone;
-  ctx.font = `500 16px ${MONO_FONT}`;
-  ctx.textAlign = "right";
-  ctx.fillText(
-    "JIO-" + hashToCode(`${title}-${placeName}`),
-    CARD_W - pad,
-    stubMid + barcodeH / 2 + 20
-  );
-  ctx.textAlign = "left";
-}
-
-/** A short, stable-looking alphanumeric "ticket code" under the barcode —
- *  cosmetic only, not a real reference anyone can look up. */
-function hashToCode(seed: string): string {
-  const rand = seededRandom(seed);
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  let out = "";
-  for (let i = 0; i < 6; i++) out += chars[Math.floor(rand() * chars.length)];
-  return out;
 }
 
 function roundRect(
@@ -355,15 +174,241 @@ function roundRect(
 }
 
 /**
+ * Draws the shared generative place fingerprint (see
+ * `lib/placeFingerprint.ts` for the hash/grid/tone it's built from — the
+ * same computation `PlaceFingerprint` renders as inline SVG everywhere else
+ * a place is shown) onto the ticket's canvas. Drawn low-opacity here, as a
+ * watermark rather than a loud graphic — the one surface where that's the
+ * right treatment, since it sits on top of the ticket's own header rather
+ * than occupying its own dedicated slot.
+ */
+function drawPlaceFingerprint(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  size: number,
+  seed: string
+) {
+  const { cells, tone } = computeFingerprint(seed);
+  const cols = cells.length;
+  const cell = size / cols;
+
+  ctx.save();
+  // Deliberately more opaque than the logo watermark's 0.14 — that mark is
+  // a recognisable brand shape that reads fine barely-there, but this
+  // pattern's whole point is a perceptible hue distinguishing one place
+  // from another. At the logo's low alpha every tone desaturates toward
+  // the cream card and reads as plain grey, silently defeating the feature.
+  ctx.globalAlpha = 0.34;
+  ctx.fillStyle = tone;
+  for (let col = 0; col < cols; col++) {
+    for (let row = 0; row < cols; row++) {
+      if (cells[col][row]) {
+        ctx.fillRect(x + col * cell, y + row * cell, cell, cell);
+      }
+    }
+  }
+  // The grounded centre dot — always present, never hash-driven.
+  ctx.fillStyle = FINGERPRINT_DOT;
+  ctx.beginPath();
+  ctx.arc(x + size / 2, y + size / 2, cell * 0.22, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+/**
+ * The real brand mark (`public/logo.svg`), cached once at module scope so
+ * repeated draws (every prop change re-renders the canvas) don't re-fetch
+ * it. Loading is asynchronous; `draw()` below draws everything else
+ * immediately and, if the mark isn't ready yet, re-runs once it is rather
+ * than approximating it with canvas-drawn shapes — a shareable ticket
+ * should carry the actual logo, not a stand-in.
+ */
+let logoImage: HTMLImageElement | null = null;
+let logoLoaded = false;
+function getLogoImage(onReady: () => void): HTMLImageElement | null {
+  if (typeof window === "undefined") return null;
+  if (!logoImage) {
+    logoImage = new Image();
+    logoImage.src = "/logo.svg";
+    logoImage.onload = () => {
+      logoLoaded = true;
+      onReady();
+    };
+  } else if (logoLoaded) {
+    return logoImage;
+  }
+  return logoLoaded ? logoImage : null;
+}
+
+function draw(
+  canvas: HTMLCanvasElement,
+  {
+    title,
+    placeName,
+    whenLabel,
+    standings = [],
+    voteCount = 0,
+    closedAtLabel,
+    seeYouAtLabel,
+  }: ShareResultCardProps,
+  onLogoReady: () => void
+) {
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+
+  canvas.width = CARD_W;
+  canvas.height = CARD_H;
+
+  ctx.fillStyle = COLOR.outer;
+  ctx.fillRect(0, 0, CARD_W, CARD_H);
+
+  const pad = 72;
+
+  // The ticket body — a lighter card floating on the deeper outer ground,
+  // matching the hawker-chit reference rather than the earlier reversed
+  // pairing.
+  ctx.fillStyle = COLOR.card;
+  roundRect(ctx, pad / 2, pad / 2, CARD_W - pad, CARD_H - pad, 28);
+  ctx.fill();
+
+  // The real brand mark, watermarked in the header's top-right corner —
+  // drawn low-opacity so it reads as a mark on the paper, not a logo
+  // competing with the headline.
+  const logo = getLogoImage(onLogoReady);
+  if (logo) {
+    const logoSize = 64;
+    ctx.save();
+    ctx.globalAlpha = 0.14;
+    ctx.drawImage(
+      logo,
+      CARD_W - pad - logoSize,
+      pad - 8,
+      logoSize,
+      logoSize
+    );
+    ctx.restore();
+  }
+
+  // The winning place's own generative fingerprint, bookending the header
+  // opposite the brand mark — a unique, deterministic pattern rather than
+  // a repeat of the same logo in both corners.
+  if (placeName) {
+    drawPlaceFingerprint(ctx, pad / 2, pad - 8, 64, placeName);
+  }
+
+  let y = pad + 40;
+
+  // "DECIDED" — small, tracked-out, centred.
+  ctx.fillStyle = COLOR.stone;
+  ctx.font = `600 20px ${MONO_FONT}`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "alphabetic";
+  ctx.fillText(tracked("DECIDED"), CARD_W / 2, y);
+
+  // The winner headline — a serif, not the app's usual display sans, per
+  // the reference: this is the one place the chit deliberately breaks from
+  // the rest of the brand's type system, reading as a printed notice
+  // rather than an app screen.
+  y += 56;
+  ctx.fillStyle = COLOR.ink;
+  ctx.font = `700 62px ${SERIF_FONT}`;
+  const headline = `✓ ${placeName} wins`;
+  const headlineLines = wrapText(ctx, headline, CARD_W - pad * 2, 2);
+  for (const line of headlineLines) {
+    ctx.fillText(line, CARD_W / 2, y);
+    y += 68;
+  }
+
+  // Line 1: which Jio, and when — context a recipient outside the app
+  // still needs, even though the reference itself omits it.
+  y += 10;
+  ctx.fillStyle = COLOR.stone;
+  ctx.font = `500 26px ${MONO_FONT}`;
+  const contextLine = wrapText(ctx, `${title} · ${whenLabel}`, CARD_W - pad * 2, 1);
+  ctx.fillText(contextLine[0] ?? "", CARD_W / 2, y);
+
+  // Line 2: the summary the reference actually shows — winner's points (if
+  // it's among the standings shown), vote count, close time.
+  y += 40;
+  const winnerRow = standings.find((s) => s.isWinner);
+  const summaryParts = [
+    winnerRow
+      ? `${winnerRow.points} pt${winnerRow.points === 1 ? "" : "s"}`
+      : null,
+    voteCount > 0 ? `${voteCount} vote${voteCount === 1 ? "" : "s"}` : null,
+    closedAtLabel ? `closed ${closedAtLabel}` : null,
+  ].filter((p): p is string => Boolean(p));
+  if (summaryParts.length > 0) {
+    ctx.fillText(summaryParts.join(" · "), CARD_W / 2, y);
+    y += 40;
+  } else {
+    y += 4;
+  }
+
+  // The dashed divider, with the ticket-stub notches cut at the same level.
+  const dividerY = y + 26;
+  cutNotches(ctx, pad, dividerY);
+  ctx.save();
+  ctx.strokeStyle = COLOR.line;
+  ctx.lineWidth = 2;
+  ctx.setLineDash([10, 8]);
+  ctx.beginPath();
+  ctx.moveTo(pad, dividerY);
+  ctx.lineTo(CARD_W - pad, dividerY);
+  ctx.stroke();
+  ctx.restore();
+
+  // The runners-up — plain rows, name left / points right, no bars and no
+  // repeat of the winner's own row (already named above). Skipped
+  // entirely when there's nothing left to show.
+  const runnersUp = standings.filter((s) => !s.isWinner).slice(0, 2);
+  let rowY = dividerY + 60;
+  ctx.textAlign = "left";
+  for (const row of runnersUp) {
+    ctx.font = `500 30px ${MONO_FONT}`;
+    ctx.fillStyle = COLOR.ink;
+    const nameLines = wrapText(ctx, row.name, CARD_W - pad * 2 - 120, 1);
+    ctx.fillText(nameLines[0] ?? row.name, pad, rowY);
+
+    ctx.font = `700 30px ${MONO_FONT}`;
+    ctx.textAlign = "right";
+    ctx.fillText(
+      `${row.points} pt${row.points === 1 ? "" : "s"}`,
+      CARD_W - pad,
+      rowY
+    );
+    ctx.textAlign = "left";
+
+    rowY += 56;
+  }
+
+  // The footer — a plain, quiet sign-off rather than a barcode/wordmark
+  // stub, matching the reference's minimal close.
+  if (seeYouAtLabel) {
+    ctx.textAlign = "center";
+    ctx.fillStyle = COLOR.stone;
+    ctx.font = `500 24px ${MONO_FONT}`;
+    ctx.fillText(
+      tracked(`THANK YOU · SEE YOU AT ${seeYouAtLabel}`),
+      CARD_W / 2,
+      CARD_H - pad - 12
+    );
+  }
+  ctx.textAlign = "left";
+}
+
+/**
  * Renders the decided-Jio result as a shareable ticket — CHANGES_20260803.md
- * §12c, redesigned as a chit per UX review log #25. A link only tells you
- * where to look; this is the thing you'd actually paste into a chat.
+ * §12c, redesigned as a hawker-style order chit per UX review log #25 and
+ * Sean's own reference (2026-08-29). A link only tells you where to look;
+ * this is the thing you'd actually paste into a chat.
  *
  * Client-side canvas render rather than a server screenshot service: no
  * extra infra, and it works from the same data already on the page. The
- * perforated notches, dashed divider and barcode all need real canvas draw
- * calls to render correctly in the exported PNG — a CSS approximation only
- * looks right in the live DOM, not in the flattened image someone shares.
+ * perforated notches and dashed divider need real canvas draw calls to
+ * render correctly in the exported PNG — a CSS approximation only looks
+ * right in the live DOM, not in the flattened image someone shares.
  * Copy/Share both need a real user gesture on the button that triggers
  * them, so `toBlob` runs fresh in each handler rather than being cached
  * from the draw effect.
@@ -383,9 +428,22 @@ export default function ShareResultCard(props: ShareResultCardProps) {
   const [canShareFiles, setCanShareFiles] = useState(false);
 
   useEffect(() => {
-    if (canvasRef.current) draw(canvasRef.current, props);
+    if (canvasRef.current) {
+      const redraw = () => {
+        if (canvasRef.current) draw(canvasRef.current, props, redraw);
+      };
+      redraw();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [props.title, props.placeName, props.whenLabel, props.standings]);
+  }, [
+    props.title,
+    props.placeName,
+    props.whenLabel,
+    props.standings,
+    props.voteCount,
+    props.closedAtLabel,
+    props.seeYouAtLabel,
+  ]);
 
   useEffect(() => {
     setCanCopyImage(

@@ -3,6 +3,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { getRepoAsync } from "@/lib/data/repo";
 import { BudgetBadge, Card, Chip, LinkButton, SectionHeading, Stars } from "@/components/ui";
 import ShareLink from "@/components/ShareLink";
+import PlaceFingerprint from "@/components/PlaceFingerprint";
 import { placeShareUrl } from "@/lib/shareUrl";
 import { config } from "@/lib/config";
 import { formatCuisine, googleMapsPlaceUrl } from "@/lib/utils";
@@ -67,10 +68,21 @@ export default async function PublicPlacePage({
   return (
     <div className="space-y-5">
       <header>
-        <h1 className="text-2xl font-semibold tracking-tight">{place.name}</h1>
-        {place.address && (
-          <p className="text-stone mt-1 text-sm">{place.address}</p>
-        )}
+        <div className="flex items-start gap-3">
+          <PlaceFingerprint
+            name={place.name}
+            size={56}
+            className="border-line mt-0.5 shrink-0 rounded-xl border"
+          />
+          <div className="min-w-0">
+            <h1 className="text-2xl font-semibold tracking-tight">
+              {place.name}
+            </h1>
+            {place.address && (
+              <p className="text-stone mt-1 text-sm">{place.address}</p>
+            )}
+          </div>
+        </div>
 
         <div className="text-stone mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
           <BudgetBadge tier={place.budget_tier} />

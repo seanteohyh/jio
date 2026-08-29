@@ -46,6 +46,7 @@ import {
   cn,
   formatDate,
   formatDateTime,
+  formatTime,
   googleMapsPlaceUrl,
   placeDescriptor,
   sgtDateKey,
@@ -718,6 +719,11 @@ export default function EventDetailPage({
             placeName={event.winner_place_name ?? event.winner_label ?? ""}
             whenLabel={formatDateTime(event.scheduled_at)}
             standings={shareStandings}
+            voteCount={voterCount}
+            closedAtLabel={
+              event.closed_at ? formatTime(event.closed_at) : undefined
+            }
+            seeYouAtLabel={formatTime(event.scheduled_at)}
             mapsUrl={
               event.winner_place
                 ? googleMapsPlaceUrl(event.winner_place)
