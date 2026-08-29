@@ -155,12 +155,21 @@ function drawBarcode(
   }
 }
 
-/** Cuts the two ticket-stub notches out of the card, using
- *  destination-out compositing so the paper colour behind shows through —
- *  must run before any content is drawn on top of that region. */
+/**
+ * Cuts the two ticket-stub notches out of the card. Paints solid
+ * paper-coloured discs on top of the cream card, rather than erasing with
+ * `destination-out` compositing: that operation doesn't reveal a layer
+ * drawn earlier, it erases down to true transparency (alpha 0) — which
+ * looked right in the live canvas (its cream parent card shows through
+ * transparent pixels) but left the *exported* PNG with a real alpha hole.
+ * Sharing or converting that file (Messages, WhatsApp, a screenshot tool)
+ * commonly flattens transparent pixels to solid black, which is exactly
+ * the "black circles instead of notches" bug this replaces. A solid,
+ * opaque fill is correct everywhere the image ends up.
+ */
 function cutNotches(ctx: CanvasRenderingContext2D, pad: number) {
   ctx.save();
-  ctx.globalCompositeOperation = "destination-out";
+  ctx.fillStyle = COLOR.paper;
   ctx.beginPath();
   ctx.arc(pad / 2, DIVIDER_Y, NOTCH_R, 0, Math.PI * 2);
   ctx.fill();

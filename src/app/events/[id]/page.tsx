@@ -898,7 +898,7 @@ export default function EventDetailPage({
                 type="date"
                 value={newCandidateDate}
                 onChange={(e) => setNewCandidateDate(e.target.value)}
-                className={inputClass}
+                className={`${inputClass} min-w-0`}
               />
               <Button
                 size="sm"
@@ -1483,7 +1483,7 @@ export default function EventDetailPage({
                 type="datetime-local"
                 value={rescheduleValue}
                 onChange={(e) => setRescheduleValue(e.target.value)}
-                className={inputClass}
+                className={`${inputClass} min-w-0`}
               />
               <Button
                 size="sm"

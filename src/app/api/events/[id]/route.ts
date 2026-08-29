@@ -47,14 +47,15 @@ export async function GET(_request: NextRequest, { params }: Params) {
     // UX review log #25 — the decided-Jio celebration, distinct from the
     // everyday "Decided" card. Generalised from a one-time account-wide
     // flag (migration 067) to one per (user, event): every decided Jio a
-    // viewer RSVP'd and voted on gets its own celebration, gated on the
-    // lunch itself still being ahead of it. Fires the next time this
-    // account loads a qualifying Jio's page while it hasn't seen that
-    // one's celebration yet — not just live at the moment of closing (most
-    // closes happen while nobody's watching: auto-close, or the host
-    // closing it) — so this check runs on every load, not only on a state
-    // transition. Stamped immediately once it qualifies, right here, so it
-    // can never fire twice even across a rapid double-load.
+    // viewer voted on gets its own celebration, gated on the lunch itself
+    // still being ahead of it. Fires the next time this account loads a
+    // qualifying Jio's page while it hasn't seen that one's celebration
+    // yet — not just live at the moment of closing (most closes happen
+    // while nobody's watching: auto-close, or the host closing it) — so
+    // this check runs on every load, not only on a state transition.
+    // Stamped immediately once it qualifies, right here, so it can never
+    // fire twice even across a rapid double-load. No longer also requires
+    // an RSVP — see qualifiesForDecidedCelebration's own comment for why.
     const alreadySeenCelebration = await repo.hasSeenDecidedCelebration(
       user.id,
       id
@@ -63,7 +64,6 @@ export async function GET(_request: NextRequest, { params }: Params) {
       alreadySeen: alreadySeenCelebration,
       eventStatus: event.status,
       isUpcoming: new Date(event.scheduled_at).getTime() > Date.now(),
-      myRsvp,
       myVoteCount: myVote.length,
     });
     if (decidedCelebration) {
