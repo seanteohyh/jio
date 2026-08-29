@@ -3,8 +3,30 @@
 import { useState } from "react";
 import { Button, Card } from "@/components/ui";
 import ShareFoodIdentityCard from "@/components/ShareFoodIdentityCard";
-import { formatMonthKey } from "@/lib/utils";
-import type { KakiFoodIdentitySnapshot } from "@/types";
+import { formatCuisine, formatMonthKey } from "@/lib/utils";
+import type { KakiFoodIdentitySnapshot, KakiMetrics } from "@/types";
+
+/**
+ * UX review log #24 — one new narrated sentence, built only from fields the
+ * app already computes: the top cuisine and its share, and the top
+ * favourite place's visit count and rating. No new data invented.
+ */
+export function narrateVibe(metrics: KakiMetrics): string | null {
+  const [topCuisine, topShare] =
+    Object.entries(metrics.groupCuisineBreakdown).sort((a, b) => b[1] - a[1])[0] ?? [];
+  const topFav = metrics.groupFavouritePlaces[0];
+
+  if (topCuisine && topFav) {
+    return `${Math.round(topShare * 100)}% ${formatCuisine(topCuisine)}, and everyone keeps coming back to ${topFav.place_name} — ${topFav.visit_count} visit${topFav.visit_count === 1 ? "" : "s"} at ${topFav.avg_rating.toFixed(1)}★.`;
+  }
+  if (topCuisine) {
+    return `${Math.round(topShare * 100)}% ${formatCuisine(topCuisine)} — this group knows what it likes.`;
+  }
+  if (topFav) {
+    return `Everyone keeps coming back to ${topFav.place_name} — ${topFav.visit_count} visit${topFav.visit_count === 1 ? "" : "s"} at ${topFav.avg_rating.toFixed(1)}★.`;
+  }
+  return null;
+}
 
 /**
  * CHANGES_20260821_combined2.md Item 1 — replaces the "Most active" and
@@ -17,10 +39,13 @@ import type { KakiFoodIdentitySnapshot } from "@/types";
 export default function KakiFoodIdentityCard({
   snapshot,
   nameFor,
+  metrics,
 }: {
   snapshot: KakiFoodIdentitySnapshot | null;
   nameFor: (userId: string) => string;
+  metrics: KakiMetrics;
 }) {
+  const vibeSentence = narrateVibe(metrics);
   const [sharing, setSharing] = useState(false);
 
   if (!snapshot) {
@@ -56,6 +81,7 @@ export default function KakiFoodIdentityCard({
         {snapshot.headline}
       </p>
       <p className="text-stone text-sm">{snapshot.description}</p>
+      {vibeSentence && <p className="text-ink text-sm">{vibeSentence}</p>}
 
       {awards.length > 0 && (
         <div className="border-line grid grid-cols-2 gap-3 border-t pt-3">

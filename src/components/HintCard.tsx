@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { X } from "lucide-react";
+import { CloseIcon } from "@/components/icons";
 
 /**
  * A one-line, dismissible hint shown once per page on a user's first visit
@@ -57,7 +57,7 @@ export default function HintCard({
         aria-label="Dismiss"
         className="text-stone hover:text-ink shrink-0 p-0.5"
       >
-        <X className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
+        <CloseIcon className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
       </button>
     </div>
   );

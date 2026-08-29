@@ -120,6 +120,9 @@ interface DemoStore {
   candidateDates: EventCandidateDate[];
   dateVotes: EventDateVote[];
   wishlist: WishlistEntry[];
+  /** UX review log #25 / migration 070 — one row per (user, event) that has
+   *  already seen its decided-Jio celebration. */
+  decidedCelebrationViews: { user_id: string; event_id: string; shown_at: string }[];
   reviewLikes: { visit_id: string; user_id: string; created_at: string }[];
   lobangs: Lobang[];
   /** Recipients, snapshotted at send time. */
@@ -176,6 +179,7 @@ function seed(): DemoStore {
     candidateDates: [],
     dateVotes: [],
     wishlist: demoWishlist.map((w) => ({ ...w })),
+    decidedCelebrationViews: [],
     reviewLikes: [],
     lobangs: demoLobangs.map((l) => ({ ...l })),
     lobangRecipients: demoLobangRecipients.map((r) => ({ ...r })),
@@ -881,16 +885,27 @@ export const demoRepo: Repo = {
     return s.profiles[index];
   },
 
-  async markFirstDecidedCelebrationShown(userId) {
+  async hasSeenDecidedCelebration(userId, eventId) {
     const s = store();
-    const index = s.profiles.findIndex((p) => p.user_id === userId);
-    if (index === -1 || s.profiles[index].first_decided_celebration_shown_at) {
+    return s.decidedCelebrationViews.some(
+      (v) => v.user_id === userId && v.event_id === eventId
+    );
+  },
+
+  async markDecidedCelebrationShown(userId, eventId) {
+    const s = store();
+    if (
+      s.decidedCelebrationViews.some(
+        (v) => v.user_id === userId && v.event_id === eventId
+      )
+    ) {
       return;
     }
-    s.profiles[index] = {
-      ...s.profiles[index],
-      first_decided_celebration_shown_at: new Date().toISOString(),
-    };
+    s.decidedCelebrationViews.push({
+      user_id: userId,
+      event_id: eventId,
+      shown_at: new Date().toISOString(),
+    });
   },
 
   async getDisplayNames(userIds) {
@@ -1210,6 +1225,18 @@ export const demoRepo: Repo = {
         return { id: o.place_id, name: place?.name ?? o.label ?? "A place" };
       });
 
+    // UX review log #25 — same derivation `getEvent` uses just above: a
+    // real place's name if `winner_place_id` matches one, else the
+    // free-text option's own label if it doesn't (a placeless winner).
+    const winnerPlaceName =
+      event.status === "closed" && event.winner_place_id
+        ? (s.places.find((p) => p.id === event.winner_place_id)?.name ??
+          s.options.find(
+            (o) => o.event_id === event.id && o.place_id === event.winner_place_id
+          )?.label ??
+          null)
+        : null;
+
     return {
       title: event.title,
       hostName: displayNameFor(event.host_id),
@@ -1218,6 +1245,7 @@ export const demoRepo: Repo = {
       status: event.status,
       goingCount,
       placeOptions,
+      winnerPlaceName,
     };
   },
 

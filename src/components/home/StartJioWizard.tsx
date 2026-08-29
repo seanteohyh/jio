@@ -19,6 +19,8 @@ import type { InviteSelection } from "@/components/InvitePicker";
  */
 export default function StartJioWizard({
   initialInvite,
+  label = "Start a Jio",
+  variant = "primary",
 }: {
   /**
    * CHANGES_20260821_combined2.md §3C — pre-checked co-attendees for a
@@ -28,13 +30,22 @@ export default function StartJioWizard({
    * `initialInvite` being absent for a normal "Start a Jio" tap today.
    */
   initialInvite?: InviteSelection;
+  /**
+   * UX review log #23 — Home's three-state hero. When today's Jio still
+   * has an open vote, this becomes the secondary "+ New Jio" action beside
+   * "Cast your vote" rather than the leading action — starting a new Jio
+   * is never blocked behind one already in progress, so the label and
+   * emphasis change, not the availability.
+   */
+  label?: string;
+  variant?: "primary" | "secondary";
 }) {
   const [open, setOpen] = useState(false);
 
   if (!open) {
     return (
-      <Button className="w-full" onClick={() => setOpen(true)}>
-        Start a Jio
+      <Button className="w-full" variant={variant} onClick={() => setOpen(true)}>
+        {label}
       </Button>
     );
   }
@@ -42,7 +53,7 @@ export default function StartJioWizard({
   return (
     <Card className="animate-fade-in space-y-3">
       <div className="flex items-center justify-between">
-        <h2 className="font-semibold">Start a Jio</h2>
+        <h2 className="font-semibold">{label}</h2>
         <button
           type="button"
           onClick={() => setOpen(false)}

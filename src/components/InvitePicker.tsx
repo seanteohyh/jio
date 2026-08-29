@@ -2,8 +2,8 @@
 
 import { useMemo, useState } from "react";
 import useSWR from "swr";
-import { Check, Users, X } from "lucide-react";
-import { Field, inputClass } from "./ui";
+import { AlertIcon, CheckIcon, CloseIcon, KakiIcon } from "@/components/icons";
+import { Button, Field, inputClass } from "./ui";
 import { fetcher } from "@/lib/fetcher";
 import { features } from "@/lib/config";
 import type { Kaki, TeamUser } from "@/types";
@@ -54,10 +54,11 @@ export default function InvitePicker({
   const params = new URLSearchParams();
   if (needle) params.set("q", needle);
   for (const id of value.userIds) params.append("include_id", id);
-  const { data: userData } = useSWR<{ users: TeamUser[] }>(
-    `/api/users?${params.toString()}`,
-    fetcher
-  );
+  const {
+    data: userData,
+    error: userError,
+    mutate: mutateUsers,
+  } = useSWR<{ users: TeamUser[] }>(`/api/users?${params.toString()}`, fetcher);
   const { data: kakiData } = useSWR<{ kakis: Kaki[] }>(
     features.kakis ? "/api/kakis" : null,
     fetcher
@@ -127,12 +128,12 @@ export default function InvitePicker({
               onClick={() => toggleKaki(kaki.id)}
               className="bg-ember flex items-center gap-1 rounded-full px-2.5 py-1 text-xs text-white"
             >
-              <Users className="h-3.5 w-3.5" aria-hidden="true" />
+              <KakiIcon className="h-3.5 w-3.5" aria-hidden="true" />
               {kaki.name}
               {typeof kaki.member_count === "number" && (
                 <span className="opacity-75"> · {kaki.member_count}</span>
               )}
-              <X className="h-3.5 w-3.5" aria-hidden="true" />
+              <CloseIcon className="h-3.5 w-3.5" aria-hidden="true" />
             </button>
           ))}
           {selectedUsers.map((user) => (
@@ -143,14 +144,30 @@ export default function InvitePicker({
               className="bg-ember flex items-center gap-1 rounded-full px-2.5 py-1 text-xs text-white"
             >
               {user.display_name}
-              <X className="h-3.5 w-3.5" aria-hidden="true" />
+              <CloseIcon className="h-3.5 w-3.5" aria-hidden="true" />
             </button>
           ))}
         </div>
       )}
 
       <div className="max-h-56 space-y-1 overflow-y-auto">
-        {results.length === 0 && (
+        {/* UX review log #7 — previously didn't check for a failed fetch at
+            all, so a broken /api/users call just left the list empty with
+            zero explanation. Core to the form, so it gets a visible retry
+            rather than the silent-failure treatment. */}
+        {userError && (
+          <div className="border-line bg-paper flex items-center justify-between gap-3 rounded-lg border px-2.5 py-2">
+            <p className="text-stone flex items-center gap-2 text-xs">
+              <AlertIcon className="text-ember h-4 w-4 shrink-0" aria-hidden="true" />
+              Couldn&apos;t load people to invite.
+            </p>
+            <Button variant="secondary" size="sm" onClick={() => mutateUsers()}>
+              Try again
+            </Button>
+          </div>
+        )}
+
+        {!userError && results.length === 0 && (
           <p className="text-stone text-xs">
             {needle ? `Nobody matching “${query}”.` : "Nobody to invite yet."}
           </p>
@@ -172,7 +189,7 @@ export default function InvitePicker({
                 }
               >
                 <span className="flex items-center gap-2">
-                  <Users className="h-4 w-4" aria-hidden="true" />
+                  <KakiIcon className="h-4 w-4" aria-hidden="true" />
                   <span className="font-medium">{row.kaki.name}</span>
                 </span>
                 <span className="text-stone text-xs">
@@ -198,7 +215,7 @@ export default function InvitePicker({
               }
             >
               <span>{row.user.display_name}</span>
-              {active && <Check className="h-4 w-4" aria-hidden="true" />}
+              {active && <CheckIcon className="h-4 w-4" aria-hidden="true" />}
             </button>
           );
         })}

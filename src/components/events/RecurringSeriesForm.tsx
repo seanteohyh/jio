@@ -272,7 +272,12 @@ export default function RecurringSeriesForm({
                 key={id}
                 type="button"
                 onClick={() => toggleVotePlace(id)}
-                className="bg-ember-tint text-ember-tint-text flex items-center gap-1 rounded-full px-2.5 py-1 text-xs"
+                // UX review log #3 — the report claimed this was already
+                // correct (hides the × from screen readers), but it never
+                // added "Remove" anywhere, so the accessible name was still
+                // just the place name. Fixed for real with aria-label.
+                aria-label={`Remove ${nameFor(id)}`}
+                className="bg-ember-tint text-ember-tint-text flex items-center gap-1 rounded-full px-2.5 py-3.5 text-xs"
               >
                 {nameFor(id)}
                 <span aria-hidden="true">×</span>

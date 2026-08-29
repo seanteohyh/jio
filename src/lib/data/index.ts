@@ -234,13 +234,15 @@ export interface Repo {
    */
   completeOnboarding(userId: string, displayName: string): Promise<Profile>;
   /**
-   * CHANGES_20260821_combined2.md §3D — stamps
-   * `first_decided_celebration_shown_at` if it isn't already set. Idempotent
-   * by design: called every time the one-time celebration's condition is
-   * met, which is itself gated on this column still being null, so a
-   * caller never has to check first.
+   * UX review log #25 — whether this account has already seen the decided-
+   * Jio celebration for this specific event. One row per (user, event),
+   * migration 070; superseded the account-wide once-ever flag migration 067
+   * started with, now that every decided Jio gets its own celebration
+   * rather than only the very first one.
    */
-  markFirstDecidedCelebrationShown(userId: string): Promise<void>;
+  hasSeenDecidedCelebration(userId: string, eventId: string): Promise<boolean>;
+  /** Idempotent — safe to call every time the celebration's condition is met. */
+  markDecidedCelebrationShown(userId: string, eventId: string): Promise<void>;
 
   // ---- Lunch events ----
   createEvent(
@@ -909,7 +911,8 @@ export const REPO_METHODS = [
   "getPushTargets",
   "listAllUsers",
   "completeOnboarding",
-  "markFirstDecidedCelebrationShown",
+  "hasSeenDecidedCelebration",
+  "markDecidedCelebrationShown",
   "createEvent",
   "createFlexiEvent",
   "getEvent",

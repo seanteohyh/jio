@@ -21,6 +21,7 @@ import LobangInbox from "@/components/profile/LobangInbox";
 import AttachEmailPanel from "@/components/profile/AttachEmailPanel";
 import MyFlagsList from "@/components/profile/MyFlagsList";
 import PushNotificationToggle from "@/components/profile/PushNotificationToggle";
+import HapticsToggle from "@/components/profile/HapticsToggle";
 import ReminderSettingsPanel from "@/components/profile/ReminderSettingsPanel";
 import AddToHomeScreenCard from "@/components/profile/AddToHomeScreenCard";
 import RecoveryLinkPanel from "@/components/profile/RecoveryLinkPanel";
@@ -175,7 +176,7 @@ export default function ProfilePage() {
     !!me?.user?.id;
 
   return (
-    <div className="space-y-6">
+    <div className="animate-fade-in space-y-6">
       <header className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">You</h1>
@@ -256,14 +257,26 @@ export default function ProfilePage() {
                     : dislikes.includes(c.slug)
                       ? ("dislike" as const)
                       : undefined;
+                  const label = formatCuisine(c.slug);
                   return (
                     <Chip
                       key={c.slug}
                       active={!!tone}
                       tone={tone}
                       onClick={() => cycleCuisine(c.slug)}
+                      // UX review log #3 — this cycles through three
+                      // states (neutral/like/dislike), so `aria-pressed`
+                      // (a true two-state idea) doesn't fit. Stating the
+                      // value directly in the name is the fix instead.
+                      ariaLabel={
+                        tone === "like"
+                          ? `${label}, liked`
+                          : tone === "dislike"
+                            ? `${label}, disliked`
+                            : label
+                      }
                     >
-                      {formatCuisine(c.slug)}
+                      {label}
                     </Chip>
                   );
                 })}
@@ -444,6 +457,10 @@ export default function ProfilePage() {
 
           <div className="py-3 first:pt-0 last:pb-0">
             <PushNotificationToggle />
+          </div>
+
+          <div className="py-3 first:pt-0 last:pb-0">
+            <HapticsToggle />
           </div>
 
           {features.events && (

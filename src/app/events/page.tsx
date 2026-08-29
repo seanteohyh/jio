@@ -287,7 +287,7 @@ export default function EventsPage() {
   ];
 
   return (
-    <div className="space-y-5">
+    <div className="animate-fade-in space-y-5">
       <header className="flex items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Jios</h1>

@@ -60,7 +60,7 @@ export default function MapPage() {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="animate-fade-in space-y-4">
       <header>
         <h1 className="text-2xl font-semibold tracking-tight">Map</h1>
         <p className="text-stone mt-1 text-sm">

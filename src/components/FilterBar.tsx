@@ -53,9 +53,9 @@ export default function FilterBar({
   value: FilterState;
   onChange: (next: FilterState) => void;
   showSearch?: boolean;
-  /** /places is the only list actually ordered by this — /suggest sorts by
-   *  recommendation score and /map has no list order, so the control would
-   *  be there but do nothing. */
+  /** /places is the only list actually ordered by this — /map has no list
+   *  order, so the control would be there but do nothing. (/suggest, which
+   *  sorted by recommendation score, is retired — UX review log #6.) */
   showSort?: boolean;
 }) {
   const { data: cuisinesData } = useSWR<{ cuisines: CuisineOption[] }>(
@@ -90,6 +90,7 @@ export default function FilterBar({
             key={cuisine.slug}
             active={value.cuisines.includes(cuisine.slug)}
             onClick={() => toggleCuisine(cuisine.slug)}
+            pressed={value.cuisines.includes(cuisine.slug)}
           >
             {formatCuisine(cuisine.slug)}
           </Chip>
@@ -129,6 +130,7 @@ export default function FilterBar({
                 kakiFavouritesOnly: !value.kakiFavouritesOnly,
               })
             }
+            pressed={value.kakiFavouritesOnly}
           >
             Kaki favourites only
           </Chip>

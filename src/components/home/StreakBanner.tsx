@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import useSWR from "swr";
+import CountUp from "@/components/CountUp";
 import { fetcher } from "@/lib/fetcher";
 import { formatCuisine } from "@/lib/utils";
 import type { CuisineStreak } from "@/types";
@@ -26,12 +27,16 @@ export default function StreakBanner() {
     <div className="border-ember-tint bg-ember-tint/30 flex items-center justify-between gap-3 rounded-xl border px-4 py-3">
       <p className="text-ink text-sm">
         <span className="font-medium">
-          {streak.days} days of {formatCuisine(streak.cuisine)}
+          <CountUp value={streak.days} /> days of {formatCuisine(streak.cuisine)}
         </span>
         <span className="text-stone"> in a row.</span>
       </p>
+      {/* UX review log #6 — this used to point at /suggest?exclude=…, but
+          that param was read nowhere (dead code) and /suggest itself is now
+          retired. Places' "New to try" rail is cuisine-exclude-aware for
+          real, so this wires the streak's cuisine into that instead. */}
       <Link
-        href={`/suggest?exclude=${streak.cuisine}`}
+        href={`/places?exclude=${streak.cuisine}`}
         className="text-ember shrink-0 text-sm font-medium underline"
       >
         Break it

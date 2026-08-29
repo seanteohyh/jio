@@ -16,7 +16,9 @@ import InvitePicker, {
   type InviteSelection,
 } from "@/components/InvitePicker";
 import HintCard from "@/components/HintCard";
+import { useToast } from "@/components/Toast";
 import { fetcher, mutateJson } from "@/lib/fetcher";
+import { features } from "@/lib/config";
 import type { Place, ScoredPlace } from "@/types";
 
 function defaultDateTime(): string {
@@ -62,6 +64,7 @@ export default function JioForm({
   initialInvite?: InviteSelection;
 }) {
   const router = useRouter();
+  const showToast = useToast();
 
   const [mode, setMode] = useState<Mode>("fixed");
   const [title, setTitle] = useState(initialTitle ?? "Lunch");
@@ -82,8 +85,17 @@ export default function JioForm({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // UX review log #6 — group-aware scoring, single-Kaki-group case only:
+  // the invite list can mix individual people and multiple Kaki groups, but
+  // the group-scoring endpoint only understands one `kakiId`. Anything
+  // mixed or ad-hoc-only falls back to today's personal-taste suggestions.
+  const groupScoped =
+    features.kakis && invite.kakiIds.length === 1 && invite.userIds.length === 0;
+  const suggestQuery = groupScoped
+    ? `/api/suggest?mode=group&kakiId=${invite.kakiIds[0]}&limit=15`
+    : "/api/suggest?limit=15";
   const { data: suggestData } = useSWR<{ suggestions: ScoredPlace[] }>(
-    "/api/suggest?limit=15",
+    suggestQuery,
     fetcher
   );
 
@@ -105,20 +117,45 @@ export default function JioForm({
   );
 
   /**
-   * What the option list shows. Searching replaces the suggestions rather than
-   * filtering them — the whole point of the box is reaching places the
-   * recommender did not surface.
+   * What the option list shows, clustered into labelled groups (UX review
+   * log #6) rather than one flat row — so it's clear *why* a place is
+   * showing up (suggested for you/the group, a search match, or already
+   * picked) instead of everything reading as one undifferentiated pool.
    *
-   * Anything already selected is pinned on so a search can never make a
-   * chosen option disappear from view.
+   * Searching replaces the suggestions rather than filtering them — the
+   * whole point of the box is reaching places the recommender did not
+   * surface. Anything already selected but not otherwise in view gets its
+   * own small group, so a search (or the group/personal suggestion switch)
+   * can never make a chosen option disappear from sight.
    */
-  const optionPool: Place[] = useMemo(() => {
-    const base = trimmedQuery.length >= 2 ? (searchData?.places ?? []) : suggested;
+  const optionGroups: { label: string; places: Place[] }[] = useMemo(() => {
+    const isSearching = trimmedQuery.length >= 2;
+    const base = isSearching ? (searchData?.places ?? []) : suggested;
     const pinned = suggested.filter(
       (p) => selected.includes(p.id) && !base.some((b) => b.id === p.id)
     );
-    return [...base, ...pinned];
-  }, [trimmedQuery, searchData, suggested, selected]);
+
+    const groups: { label: string; places: Place[] }[] = [];
+    if (base.length > 0) {
+      groups.push({
+        label: isSearching
+          ? "Search results"
+          : groupScoped
+            ? "Suggested for the group"
+            : "Suggested for you",
+        places: base,
+      });
+    }
+    if (pinned.length > 0) {
+      groups.push({ label: "Already selected", places: pinned });
+    }
+    return groups;
+  }, [trimmedQuery, searchData, suggested, selected, groupScoped]);
+
+  const optionPool: Place[] = useMemo(
+    () => optionGroups.flatMap((g) => g.places),
+    [optionGroups]
+  );
 
   const addCandidateDate = () => {
     if (!newCandidateDate || candidateDates.includes(newCandidateDate)) return;
@@ -164,6 +201,7 @@ export default function JioForm({
               place_ids: selected,
             }
       );
+      showToast("Jio started");
       router.push(`/events/${payload.event.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not create it");
@@ -263,9 +301,10 @@ export default function JioForm({
                             prev.filter((d) => d !== date)
                           )
                         }
-                        className="border-line text-stone rounded-full border px-2.5 py-1 text-xs hover:border-ember hover:text-ember"
+                        aria-label={`Remove ${date}`}
+                        className="border-line text-stone rounded-full border px-2.5 py-3.5 text-xs hover:border-ember hover:text-ember"
                       >
-                        {date} ×
+                        {date} <span aria-hidden="true">×</span>
                       </button>
                     ))}
                   </div>
@@ -301,41 +340,51 @@ export default function JioForm({
               />
             </Field>
 
-            <p className="text-stone text-xs">
-              {trimmedQuery.length >= 2
-                ? searching
-                  ? "Searching…"
-                  : `${optionPool.length} match${optionPool.length === 1 ? "" : "es"}`
-                : "Suggested for you, best first. Invitees can add more once it is open."}
-            </p>
+            {trimmedQuery.length >= 2 && searching && (
+              <p className="text-stone text-xs">Searching…</p>
+            )}
 
-            <div className="flex flex-wrap gap-1.5">
-              {optionPool.length === 0 && !searching && (
-                <span className="text-stone text-xs">
-                  {trimmedQuery.length >= 2 ? "Nothing found." : "Loading…"}
-                </span>
-              )}
-              {optionPool.map((place) => {
-                const active = selected.includes(place.id);
-                return (
-                  <button
-                    key={place.id}
-                    type="button"
-                    onClick={() => toggleOption(place.id)}
-                    className={
-                      active
-                        ? "bg-ember rounded-full px-2.5 py-1 text-xs text-white"
-                        : "border-line text-stone hover:border-ember rounded-full border px-2.5 py-1 text-xs"
-                    }
-                  >
-                    {place.name}
-                    {typeof place.walk_minutes === "number" && (
-                      <span className="opacity-70"> · {place.walk_minutes}m</span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
+            {optionPool.length === 0 && !searching && (
+              <p className="text-stone text-xs">
+                {trimmedQuery.length >= 2 ? "Nothing found." : "Loading…"}
+              </p>
+            )}
+
+            {/* UX review log #6 — clustered into labelled groups (suggested
+                for you/the group, search results, already selected) rather
+                than one flat row, so it's clear why each place is showing
+                up. */}
+            {optionGroups.map((group) => (
+              <div key={group.label}>
+                <p className="text-stone text-xs">
+                  {group.label}
+                  {group.label === "Search results" &&
+                    ` — ${group.places.length} match${group.places.length === 1 ? "" : "es"}`}
+                </p>
+                <div className="mt-1 flex flex-wrap gap-1.5">
+                  {group.places.map((place) => {
+                    const active = selected.includes(place.id);
+                    return (
+                      <button
+                        key={place.id}
+                        type="button"
+                        onClick={() => toggleOption(place.id)}
+                        className={
+                          active
+                            ? "bg-ember rounded-full px-2.5 py-1 text-xs text-white"
+                            : "border-line text-stone hover:border-ember rounded-full border px-2.5 py-1 text-xs"
+                        }
+                      >
+                        {place.name}
+                        {typeof place.walk_minutes === "number" && (
+                          <span className="opacity-70"> · {place.walk_minutes}m</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
 
             <p className="text-stone text-xs">
               {selected.length} selected.{" "}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { QrCode as QrCodeIcon, X } from "lucide-react";
+import { CloseIcon, QrIcon } from "@/components/icons";
 import ShareLink from "@/components/ShareLink";
 import QrCode from "@/components/QrCode";
 import type { usePersonalInviteLink } from "./PersonalInvitePanel";
@@ -43,13 +43,13 @@ export default function QrShortcutButton({
         aria-label="Show your QR code"
         className="text-stone hover:text-ink -mr-2 shrink-0 rounded-full p-2"
       >
-        <QrCodeIcon className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
+        <QrIcon className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
       </button>
 
       {open && (
         <div className="fixed inset-x-0 bottom-16 z-40 px-4 pb-[env(safe-area-inset-bottom)] md:bottom-4 md:left-64 md:right-4">
           <div
-            className="border-line bg-cream mx-auto flex max-w-lg items-start gap-3 rounded-2xl border p-4"
+            className="border-line bg-cream animate-fade-in mx-auto flex max-w-lg items-start gap-3 rounded-2xl border p-4"
             style={{ boxShadow: "var(--shadow-sm)" }}
             role="dialog"
             aria-label="Your QR code"
@@ -87,7 +87,7 @@ export default function QrShortcutButton({
               aria-label="Close"
               className="text-stone hover:text-ink shrink-0 p-1"
             >
-              <X className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
+              <CloseIcon className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
             </button>
           </div>
         </div>

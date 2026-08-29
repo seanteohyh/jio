@@ -853,7 +853,7 @@ export const supabaseRepo: Repo = {
     const { data, error } = await client
       .from("profiles")
       .select(
-        "user_id, display_name, created_at, onboarded_at, notify_events, first_decided_celebration_shown_at"
+        "user_id, display_name, created_at, onboarded_at, notify_events"
       )
       .eq("user_id", userId)
       .maybeSingle();
@@ -901,16 +901,33 @@ export const supabaseRepo: Repo = {
     return data as Profile;
   },
 
-  async markFirstDecidedCelebrationShown(userId) {
+  // ---- Decided-Jio celebration (UX review log #25) ----
+  // Migration 070 — one row per (user, event) rather than the one
+  // account-wide flag migration 067 started with, since every decided Jio
+  // now gets its own celebration rather than only the very first one.
+
+  async hasSeenDecidedCelebration(userId, eventId) {
     const client = await db();
-    // `.is(..., null)` — idempotent, and avoids a redundant write once
-    // already stamped; the value itself is only ever "has this fired," not
-    // meaningful as a real timestamp to compare against.
-    const { error } = await client
-      .from("profiles")
-      .update({ first_decided_celebration_shown_at: new Date().toISOString() })
+    const { data, error } = await client
+      .from("decided_celebration_views")
+      .select("user_id")
       .eq("user_id", userId)
-      .is("first_decided_celebration_shown_at", null);
+      .eq("event_id", eventId)
+      .maybeSingle();
+
+    if (error) fail("Could not check that", error);
+    return Boolean(data);
+  },
+
+  async markDecidedCelebrationShown(userId, eventId) {
+    const client = await db();
+    // `ignoreDuplicates` — idempotent, matching the old column's semantics:
+    // only ever "has this fired for this Jio," never a timestamp worth
+    // overwriting on a second call.
+    const { error } = await client.from("decided_celebration_views").upsert(
+      { user_id: userId, event_id: eventId },
+      { onConflict: "user_id,event_id", ignoreDuplicates: true }
+    );
 
     if (error) fail("Could not save that", error);
   },

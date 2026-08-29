@@ -4,7 +4,6 @@ import { use, useState } from "react";
 import { useRouter } from "next/navigation";
 import useSWR from "swr";
 import {
-  Avatar,
   Button,
   Card,
   ErrorNote,
@@ -12,8 +11,10 @@ import {
   SkeletonDetail,
 } from "@/components/ui";
 import { KakiMetricsCharts } from "@/components/MetricsCharts";
+import { useToast } from "@/components/Toast";
 import AddKakiMemberPanel from "@/components/kakis/AddKakiMemberPanel";
 import KakiFoodIdentityCard from "@/components/kakis/KakiFoodIdentityCard";
+import PebbleAvatar from "@/components/kakis/PebbleAvatar";
 import { fetcher, mutateJson } from "@/lib/fetcher";
 import { formatDate } from "@/lib/utils";
 import type { KakiDetail, KakiFoodIdentitySnapshot, KakiMetrics } from "@/types";
@@ -32,6 +33,7 @@ export default function KakiDetailPage({
 }) {
   const { id } = use(params);
   const router = useRouter();
+  const showToast = useToast();
 
   const { data, error, isLoading, mutate } = useSWR<KakiResponse>(
     `/api/kakis/${id}`,
@@ -75,6 +77,7 @@ export default function KakiDetailPage({
     setActionError(null);
     try {
       await mutateJson(`/api/kakis/${id}`, "DELETE");
+      showToast("Left the group");
       router.push("/kakis");
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Could not leave");
@@ -98,12 +101,26 @@ export default function KakiDetailPage({
 
       {actionError && <ErrorNote>{actionError}</ErrorNote>}
 
+      {/*
+        UX review log #24 — reorder, not rebuild: "This group's vibe" moves
+        from last-and-conditional to the opening card, directly under the
+        header, since it's the page's best feature. Members and the
+        invite-link card move down, otherwise unchanged.
+      */}
+      {metrics.groupTotalVisits > 0 && (
+        <KakiFoodIdentityCard
+          snapshot={foodIdentity}
+          nameFor={nameFor}
+          metrics={metrics}
+        />
+      )}
+
       <Card>
         <SectionHeading>Members</SectionHeading>
         <ul className="space-y-2">
           {kaki.members.map((member) => (
             <li key={member.user_id} className="flex items-center gap-2.5">
-              <Avatar
+              <PebbleAvatar
                 name={member.display_name ?? "Teammate"}
                 id={member.user_id}
               />
@@ -162,10 +179,6 @@ export default function KakiDetailPage({
         </p>
         <KakiMetricsCharts metrics={metrics} />
       </section>
-
-      {metrics.groupTotalVisits > 0 && (
-        <KakiFoodIdentityCard snapshot={foodIdentity} nameFor={nameFor} />
-      )}
 
       {viewer.isMember && (
         <Button variant="danger" onClick={leave} disabled={busy}>

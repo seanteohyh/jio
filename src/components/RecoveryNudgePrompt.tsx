@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { X, ShieldCheck } from "lucide-react";
+import { CloseIcon, ShieldIcon } from "@/components/icons";
 import { Button } from "./ui";
 import ShareLink from "./ShareLink";
 import { mutateJson } from "@/lib/fetcher";
@@ -82,13 +82,13 @@ export default function RecoveryNudgePrompt() {
   return (
     <div className="fixed inset-x-0 bottom-16 z-40 px-4 pb-[env(safe-area-inset-bottom)] md:bottom-4 md:left-64 md:right-4">
       <div
-        className="border-line bg-cream mx-auto flex max-w-lg items-start gap-3 rounded-2xl border p-4"
+        className="border-line bg-cream animate-fade-in mx-auto flex max-w-lg items-start gap-3 rounded-2xl border p-4"
         style={{ boxShadow: "var(--shadow-sm)" }}
         role="dialog"
         aria-label="Get a recovery link"
       >
         <span className="bg-ember-tint text-ember flex h-9 w-9 shrink-0 items-center justify-center rounded-full">
-          <ShieldCheck className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
+          <ShieldIcon className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
         </span>
 
         <div className="min-w-0 flex-1">
@@ -133,7 +133,7 @@ export default function RecoveryNudgePrompt() {
           aria-label="Dismiss"
           className="text-stone hover:text-ink shrink-0 p-1"
         >
-          <X className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
+          <CloseIcon className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
         </button>
       </div>
     </div>

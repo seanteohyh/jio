@@ -8,6 +8,8 @@ import ServiceWorkerRegister from "@/components/ServiceWorkerRegister";
 import AddToHomeScreenPrompt from "@/components/AddToHomeScreenPrompt";
 import RecoveryNudgePrompt from "@/components/RecoveryNudgePrompt";
 import { InstallPromptProvider } from "@/components/InstallPromptProvider";
+import { LiveAnnouncerProvider } from "@/components/LiveAnnouncer";
+import { ToastProvider } from "@/components/Toast";
 import { config } from "@/lib/config";
 
 /**
@@ -64,19 +66,23 @@ export default function RootLayout({
       <body
         className={`${bricolage.variable} ${geistSans.variable} ${geistMono.variable} bg-paper text-ink min-h-screen`}
       >
-        <InstallPromptProvider>
-          {/* Bottom nav on mobile, side rail on desktop — the main region is
-              padded to clear whichever is showing. */}
-          <div className="md:pl-60">
-            <main className="mx-auto w-full max-w-3xl px-4 pt-4 pb-28 md:pb-10 md:pt-8">
-              {children}
-            </main>
-          </div>
-          <BottomNav />
-          <ServiceWorkerRegister />
-          <AddToHomeScreenPrompt />
-          <RecoveryNudgePrompt />
-        </InstallPromptProvider>
+        <LiveAnnouncerProvider>
+          <ToastProvider>
+            <InstallPromptProvider>
+              {/* Bottom nav on mobile, side rail on desktop — the main
+                  region is padded to clear whichever is showing. */}
+              <div className="md:pl-60">
+                <main className="mx-auto w-full max-w-3xl px-4 pt-4 pb-28 md:pb-10 md:pt-8">
+                  {children}
+                </main>
+              </div>
+              <BottomNav />
+              <ServiceWorkerRegister />
+              <AddToHomeScreenPrompt />
+              <RecoveryNudgePrompt />
+            </InstallPromptProvider>
+          </ToastProvider>
+        </LiveAnnouncerProvider>
         <Analytics />
         <SpeedInsights />
       </body>
