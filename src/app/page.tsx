@@ -221,7 +221,7 @@ export default async function HomePage() {
         */}
         <div className="bg-ember rounded-2xl p-5 text-white">
           <p className="text-xs text-white/70">{heroDateLine(now)}</p>
-          <h1 className="font-display mt-1 text-2xl leading-tight font-bold tracking-tight text-balance">
+          <h1 className="font-display !text-white mt-1 text-2xl leading-tight font-bold tracking-tight text-balance">
             {todaysJio ? todaysJio.title : "What’s for lunch?"}
           </h1>
 
