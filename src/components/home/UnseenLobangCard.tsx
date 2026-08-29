@@ -3,6 +3,7 @@
 import Link from "next/link";
 import useSWR from "swr";
 import { Card } from "../ui";
+import { LobangIcon } from "@/components/icons";
 import { fetcher } from "@/lib/fetcher";
 import type { Lobang } from "@/types";
 
@@ -31,9 +32,11 @@ export default function UnseenLobangCard() {
   return (
     <Link href="/lobangs" className="block">
       <Card className="border-ember/30 bg-ember-tint flex items-start gap-2.5">
-        <span className="text-xl" aria-hidden="true">
-          📌
-        </span>
+        <LobangIcon
+          className="text-ember h-5 w-5 shrink-0"
+          strokeWidth={1.75}
+          aria-hidden="true"
+        />
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium">
             {unseen.length === 1

@@ -396,3 +396,142 @@ export function BudgetIcon(props: IconProps) {
     </Svg>
   );
 }
+
+// ---------------------------------------------------------------------
+// Action & status icons — added per the finalized visual spec's reference
+// sheets, which show several action/status glyphs the earlier pass never
+// actually built. Each keeps the same grounded-dot convention as above.
+// ---------------------------------------------------------------------
+
+/** Invite someone — a person plus a grounded "+", the dot sitting as the
+ *  plus's own tip rather than floating beside it. */
+export function InviteIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <circle cx="8" cy="7" r="2.6" />
+      <path d="M3.5 19c0-3.3 2-5.6 4.5-5.6" />
+      <path d="M14.5 9.5h6M17.5 6.5v6" />
+      <circle cx="20.5" cy="9.5" r="1" fill="currentColor" stroke="none" />
+    </Svg>
+  );
+}
+
+/** Vote / ballot — a checked box, dot grounded on the box's own corner. */
+export function BallotIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <rect x="3.5" y="4.5" width="15" height="15" rx="2.5" />
+      <path d="M7.5 12.3 10.3 15l5.2-6" />
+      <circle cx="18.5" cy="4.5" r="1" fill="currentColor" stroke="none" />
+    </Svg>
+  );
+}
+
+/** RSVP: Going — distinct from the generic `CheckCircleIcon` used
+ *  elsewhere for a settled vote, so that icon's other call sites don't
+ *  pick up a dot they weren't designed around. Dot grounded on the
+ *  circle's own edge. */
+export function GoingIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="m8.5 12.3 2.6 2.6 4.4-5.2" />
+      <circle cx="17.7" cy="6.3" r="1" fill="currentColor" stroke="none" />
+    </Svg>
+  );
+}
+
+/** RSVP: Maybe — a half-filled circle, dot grounded at the exact centre
+ *  where the filled and outline halves meet. */
+export function MaybeIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M12 3.5A8.5 8.5 0 0 1 12 20.5Z" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" />
+    </Svg>
+  );
+}
+
+/** RSVP: Can't make it — a circled X, dot grounded at the X's own
+ *  crossing point. */
+export function CantMakeItIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M9 9l6 6M15 9l-6 6" />
+      <circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" />
+    </Svg>
+  );
+}
+
+/**
+ * The abstract node-and-line share glyph — distinct from `ShareIcon`
+ * (which deliberately keeps iOS's real share-sheet glyph for copy that
+ * tells someone to tap their actual system UI). This is for the app's
+ * own in-page "Share" buttons that never had an icon at all. Dot grounded
+ * as the source node's own centre.
+ */
+export function ShareNodesIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <circle cx="6" cy="12" r="2.6" />
+      <circle cx="18" cy="6" r="2.6" />
+      <circle cx="18" cy="18" r="2.6" />
+      <path d="M8.3 10.7 15.7 7.3M8.3 13.3l7.4 3.4" />
+      <circle cx="6" cy="12" r="1" fill="currentColor" stroke="none" />
+    </Svg>
+  );
+}
+
+/** Search — dot grounded at the lens's own centre. */
+export function SearchIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <circle cx="10.5" cy="10.5" r="6.5" />
+      <path d="m20 20-4.8-4.8" />
+      <circle cx="10.5" cy="10.5" r="1" fill="currentColor" stroke="none" />
+    </Svg>
+  );
+}
+
+/** Closing soon — a clock, dot grounded as the hands' own pivot. Built
+ *  per the finalized visual spec; no call site consumes it yet (the app
+ *  has no "closing soon" indicator today — see the "starting soon"
+ *  reminder instead, a different, already-built feature). */
+export function ClockIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M12 7.5V12l3.2 2" />
+      <circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" />
+    </Svg>
+  );
+}
+
+/** A lobang / tip — a speech bubble, its three dots doubling as both the
+ *  "someone's telling you something" ellipsis and the grounded-dot motif. */
+export function LobangIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M4 5.5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H9l-4 3.5v-3.5H6a2 2 0 0 1-2-2Z" />
+      <circle cx="9" cy="9.5" r="0.9" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="9.5" r="0.9" fill="currentColor" stroke="none" />
+      <circle cx="15" cy="9.5" r="0.9" fill="currentColor" stroke="none" />
+    </Svg>
+  );
+}
+
+/** Drinks / boba — a cup and straw, the boba pearl as the grounded dot at
+ *  the cup's own base. Built per the finalized visual spec; no cuisine tag
+ *  needs it yet (the app's 18-tag seed list has no "drinks" or "boba"
+ *  entry), so no call site consumes it — same as `BudgetIcon` above. */
+export function DrinksIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M7 8h10l-1 12a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1Z" />
+      <path d="M14.5 3.5 12.8 8M9.5 6h7" />
+      <circle cx="12" cy="16" r="1" fill="currentColor" stroke="none" />
+    </Svg>
+  );
+}

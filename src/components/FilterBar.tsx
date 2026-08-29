@@ -6,6 +6,7 @@ import { BUDGET_TIERS } from "@/lib/constants";
 import { formatCuisine } from "@/lib/utils";
 import { fetcher } from "@/lib/fetcher";
 import { features } from "@/lib/config";
+import { SearchIcon } from "@/components/icons";
 import type { BudgetTier, CuisineOption } from "@/types";
 
 export interface FilterState {
@@ -74,14 +75,20 @@ export default function FilterBar({
   return (
     <div className="space-y-3">
       {showSearch && (
-        <input
-          type="search"
-          value={value.search}
-          onChange={(e) => onChange({ ...value, search: e.target.value })}
-          placeholder="Search places, dishes, cuisines"
-          className={inputClass}
-          aria-label="Search places"
-        />
+        <div className="relative">
+          <SearchIcon
+            className="text-stone pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2"
+            aria-hidden="true"
+          />
+          <input
+            type="search"
+            value={value.search}
+            onChange={(e) => onChange({ ...value, search: e.target.value })}
+            placeholder="Search places, dishes, cuisines"
+            className={`${inputClass} pl-9`}
+            aria-label="Search places"
+          />
+        </div>
       )}
 
       <div className="no-scrollbar -mx-4 flex gap-1.5 overflow-x-auto px-4">

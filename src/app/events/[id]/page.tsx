@@ -3,7 +3,15 @@
 import { use, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import useSWR from "swr";
-import { CheckCircleIcon, PlaceIcon, PlusCircleIcon } from "@/components/icons";
+import {
+  BallotIcon,
+  CantMakeItIcon,
+  CheckCircleIcon,
+  GoingIcon,
+  MaybeIcon,
+  PlaceIcon,
+  PlusCircleIcon,
+} from "@/components/icons";
 import {
   Avatar,
   Button,
@@ -974,9 +982,20 @@ export default function EventDetailPage({
                     : response === "maybe"
                       ? "Maybe"
                       : "Can't make it";
+                const ResponseIcon =
+                  response === "yes"
+                    ? GoingIcon
+                    : response === "maybe"
+                      ? MaybeIcon
+                      : CantMakeItIcon;
                 return (
                   <div key={response}>
-                    <p className="text-stone text-xs font-medium tracking-wide uppercase">
+                    <p className="text-stone flex items-center gap-1 text-xs font-medium tracking-wide uppercase">
+                      <ResponseIcon
+                        className="h-3.5 w-3.5"
+                        strokeWidth={1.75}
+                        aria-hidden="true"
+                      />
                       {label} · {people.length}
                     </p>
                     <div className="mt-1 flex flex-wrap gap-2">
@@ -1224,7 +1243,12 @@ export default function EventDetailPage({
       {/* --- Ballot --- */}
       {isOpen && !isDatePolling && orderedBallot.length > 0 && (
         <Card>
-          <SectionHeading>Your ranking</SectionHeading>
+          <SectionHeading>
+            <span className="inline-flex items-center gap-1.5">
+              <BallotIcon className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
+              Your ranking
+            </span>
+          </SectionHeading>
           <p className="text-stone mb-3 text-xs">
             Order them best first. You do not have to rank all of them.
           </p>

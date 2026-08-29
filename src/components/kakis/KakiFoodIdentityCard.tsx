@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Button, Card } from "@/components/ui";
+import { ShareNodesIcon } from "@/components/icons";
 import ShareFoodIdentityCard from "@/components/ShareFoodIdentityCard";
 import { formatCuisine, formatMonthKey } from "@/lib/utils";
 import type { KakiFoodIdentitySnapshot, KakiMetrics } from "@/types";
@@ -102,6 +103,9 @@ export default function KakiFoodIdentityCard({
         variant="ghost"
         onClick={() => setSharing((prev) => !prev)}
       >
+        {!sharing && (
+          <ShareNodesIcon className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
+        )}
         {sharing ? "Hide share card" : "Share"}
       </Button>
 
