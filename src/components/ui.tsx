@@ -37,7 +37,7 @@ export function Button({
   className,
   ...props
 }: React.ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: "primary" | "secondary" | "ghost" | "danger";
+  variant?: "primary" | "secondary" | "ghost" | "danger" | "inverse" | "outlineInverse";
   size?: "sm" | "md";
 }) {
   return (
@@ -57,6 +57,13 @@ export function Button({
           "text-stone hover:bg-cream active:bg-cream hover:text-ink",
         variant === "danger" &&
           "border-ember-tint bg-ember-tint text-ember-tint-text hover:bg-ember-tint/70 active:bg-ember-tint/70 border",
+        // UX review log #23 — for a button sitting directly on the ember
+        // hero block, where the ordinary ember-on-white primary would have
+        // no contrast against its own background.
+        variant === "inverse" &&
+          "bg-white text-ember-deep hover:bg-white/90 active:bg-white/90 shadow-[var(--shadow-sm)]",
+        variant === "outlineInverse" &&
+          "border border-white/50 bg-transparent text-white hover:bg-white/10 active:bg-white/10",
         className
       )}
       {...props}
@@ -77,7 +84,7 @@ export function LinkButton({
 }: {
   href: string;
   children: React.ReactNode;
-  variant?: "primary" | "secondary" | "ghost";
+  variant?: "primary" | "secondary" | "ghost" | "inverse" | "outlineInverse";
   size?: "sm" | "md";
   className?: string;
   /** For an external link (e.g. `target="_blank"`) — `next/link` forwards
@@ -100,6 +107,11 @@ export function LinkButton({
           "border-line bg-paper text-ink hover:bg-cream active:bg-cream border",
         variant === "ghost" &&
           "text-stone hover:bg-cream active:bg-cream hover:text-ink",
+        // UX review log #23 — buttons sitting directly on the ember hero block.
+        variant === "inverse" &&
+          "bg-white text-ember-deep hover:bg-white/90 active:bg-white/90 shadow-[var(--shadow-sm)]",
+        variant === "outlineInverse" &&
+          "border border-white/50 bg-transparent text-white hover:bg-white/10 active:bg-white/10",
         className
       )}
     >
