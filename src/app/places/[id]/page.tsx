@@ -30,6 +30,8 @@ import {
   socialsLabel,
 } from "@/lib/utils";
 import SocialsIcon from "@/components/SocialsIcon";
+import { DEFAULT_FILTERS, MAX_WALK_MINUTES } from "@/components/FilterBar";
+import { walkTimeVisibilityNotice } from "@/lib/walkTimeNotice";
 import type { AuthUser, FlagReason, Place, Visit } from "@/types";
 
 interface PlaceResponse {
@@ -313,6 +315,11 @@ export default function PlaceDetailPage({
     }
   };
 
+  const walkNotice = walkTimeVisibilityNotice(place.walk_minutes, {
+    defaultMaxWalk: DEFAULT_FILTERS.maxWalk,
+    sliderMax: MAX_WALK_MINUTES,
+  });
+
   const isAdmin = me?.user?.is_admin ?? false;
   const canBlock =
     place.status === "active" &&
@@ -341,6 +348,14 @@ export default function PlaceDetailPage({
             </span>
           )}
         </div>
+
+        {/*
+          This page is reachable regardless of status/filters (see the API
+          route), so it's the one place that can explain why a place a
+          filter is hiding elsewhere isn't actually missing — see
+          walkTimeNotice.ts for the exact thresholds and reasoning.
+        */}
+        {walkNotice && <p className="text-stone mt-2 text-xs">{walkNotice}</p>}
 
         {(place.cuisine.length > 0 ||
           place.custom_cuisine_tags.length > 0) && (

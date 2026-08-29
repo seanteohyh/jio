@@ -31,6 +31,13 @@ export const DEFAULT_FILTERS: FilterState = {
   kakiFavouritesOnly: false,
 };
 
+/** The walk-time slider's ceiling — a place farther than this can never
+ *  appear in Places or Map no matter how the slider is set, not just while
+ *  it's at the default. Exported so a place far enough away can say so
+ *  accurately rather than suggesting "widen the filter" when nothing would
+ *  help. */
+export const MAX_WALK_MINUTES = 45;
+
 /**
  * Cuisine / budget / walk-time filters.
  *
@@ -155,7 +162,7 @@ export default function FilterBar({
           <input
             type="range"
             min={5}
-            max={45}
+            max={MAX_WALK_MINUTES}
             step={5}
             value={value.maxWalk}
             onChange={(e) =>
