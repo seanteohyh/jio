@@ -3,13 +3,13 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { getRepoAsync } from "@/lib/data/repo";
 import { config, features } from "@/lib/config";
-import StartJioWizard from "@/components/home/StartJioWizard";
+import HomeHero from "@/components/home/HomeHero";
 import NeedsAvailability from "@/components/home/NeedsAvailability";
 import UnseenLobangCard from "@/components/home/UnseenLobangCard";
 import StreakBanner from "@/components/home/StreakBanner";
 import AddToHomeScreenCard from "@/components/profile/AddToHomeScreenCard";
 import HintCard from "@/components/HintCard";
-import { LinkButton, SectionHeading } from "@/components/ui";
+import { SectionHeading } from "@/components/ui";
 import JioLockup from "@/components/brand/JioLockup";
 import JioMark from "@/components/brand/JioMark";
 import { JiosIcon, YouIcon } from "@/components/icons";
@@ -207,102 +207,20 @@ export default async function HomePage() {
       </div>
 
       {/*
-        The three-state action block. Headline keeps showing the real
-        Jio's own title (or "What's for lunch?" with nothing on) rather
-        than a generic templated phrase — confirmed against the shipped,
-        tested version rather than the mockup's placeholder copy.
-        1. No upcoming Jio today: "+ Start a Jio" leads, quick-pick beside it.
-        2. Today's Jio still has an open vote: "Cast your vote" leads —
-           starting a new one is a secondary action beside it, never
-           blocked behind one already in progress.
-        3. Today's Jio needs nothing further (closed): "+ Start a Jio"
-           leads again, with a quiet "View" beside it and the decided
-           place surfaced directly in the block.
+        The three-state action block (UX review log #23). Headline keeps
+        showing the real Jio's own title (or "What's for lunch?" with
+        nothing on) rather than a generic templated phrase — confirmed
+        against the shipped, tested version rather than the mockup's
+        placeholder copy. The expanded "Start a Jio" form `HomeHero` opens
+        renders as its own card right after the hero, not nested inside
+        it — see that component's own note for why.
       */}
-      <div className="bg-ember rounded-2xl p-5 text-white">
-        <p className="text-xs text-white/70">{heroDateLine(now)}</p>
-        <h1 className="font-display !text-white mt-1 text-2xl leading-tight font-bold tracking-tight text-balance">
-          {todaysJio ? todaysJio.title : "What’s for lunch?"}
-        </h1>
-
-        {features.events && todaysJio && todaysJio.status === "open" ? (
-          <>
-            <div className="mt-4 flex flex-col gap-2 sm:flex-row">
-              <LinkButton
-                href={`/events/${todaysJio.id}`}
-                variant="inverse"
-                className="flex-1"
-              >
-                Cast your vote
-              </LinkButton>
-              <div className="flex-1">
-                <StartJioWizard
-                  label="New Jio"
-                  variant="outlineInverse"
-                  initialInvite={firstHostInvite}
-                />
-              </div>
-            </div>
-            {typeof todaysJio.going_count === "number" &&
-              todaysJio.going_count > 0 && (
-                <p className="mt-3 text-xs text-white/80">
-                  {todaysJio.going_count} going
-                </p>
-              )}
-          </>
-        ) : todaysJio ? (
-          <>
-            <div className="mt-4 flex flex-col gap-2 sm:flex-row">
-              {features.events && (
-                <div className="flex-1">
-                  <StartJioWizard
-                    variant="inverse"
-                    initialInvite={firstHostInvite}
-                  />
-                </div>
-              )}
-              <LinkButton
-                href={`/events/${todaysJio.id}`}
-                variant="outlineInverse"
-                className="flex-1"
-              >
-                View
-              </LinkButton>
-            </div>
-            {decidedPlaceName && (
-              <p className="mt-3 text-xs text-white/80">
-                {decidedPlaceName} · {formatTime(todaysJio.scheduled_at)}
-              </p>
-            )}
-          </>
-        ) : (
-          <>
-            <div className="mt-4 flex flex-col gap-2 sm:flex-row">
-              {features.events && (
-                <div className="flex-1">
-                  <StartJioWizard
-                    variant="inverse"
-                    initialInvite={firstHostInvite}
-                  />
-                </div>
-              )}
-              {/* UX review log #6 — /suggest itself is retired; Places
-                  carries the same personal picks now ("Quick & nearby,"
-                  "New to try"), so that's where this now leads. */}
-              <LinkButton
-                href="/places"
-                variant="outlineInverse"
-                className="flex-1"
-              >
-                Just tell me where to go
-              </LinkButton>
-            </div>
-            <p className="mt-3 text-xs text-white/80">
-              Pick somewhere, or let the votes decide.
-            </p>
-          </>
-        )}
-      </div>
+      <HomeHero
+        todaysJio={todaysJio}
+        dateLine={heroDateLine(now)}
+        decidedPlaceName={decidedPlaceName}
+        firstHostInvite={firstHostInvite}
+      />
 
       {/*
         UX review log #23 — a calm-zone card, not the ember action hero, is
