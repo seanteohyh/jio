@@ -9,7 +9,7 @@ import UnseenLobangCard from "@/components/home/UnseenLobangCard";
 import StreakBanner from "@/components/home/StreakBanner";
 import AddToHomeScreenCard from "@/components/profile/AddToHomeScreenCard";
 import HintCard from "@/components/HintCard";
-import { LinkButton } from "@/components/ui";
+import { LinkButton, SectionHeading } from "@/components/ui";
 import JioLockup from "@/components/brand/JioLockup";
 import JioMark from "@/components/brand/JioMark";
 import { JiosIcon, YouIcon } from "@/components/icons";
@@ -41,11 +41,12 @@ function heroDateLine(now: Date): string {
   return `${weekday} · ${formatTime(now)}`;
 }
 
-/** A compact icon-avatar row inside the hero card — shared shape for the
- *  "Upcoming" and "Same as last time?" rows (UX review log #23). Not
- *  `EventRow`: that component is deliberately shared between the Jios list
- *  and Home's old full-width cards, and this redesign's row is a distinct,
- *  smaller shape that only exists inside this card. */
+/** A standalone icon-avatar card — shared shape for the "Upcoming" and
+ *  "Same as last time?" entries (UX review log #23). Sits flat on the page
+ *  like every other Home card (`HintCard`, `UnseenLobangCard`), not nested
+ *  inside a shared wrapper. Not `EventRow`: that component is deliberately
+ *  shared between the Jios list and its own full-width cards, and this is a
+ *  distinct, smaller shape that only exists here. */
 function HomeRow({
   href,
   icon,
@@ -60,7 +61,7 @@ function HomeRow({
   return (
     <Link
       href={href}
-      className="hover:bg-cream flex items-center gap-3 rounded-xl p-2 transition-colors"
+      className="border-line bg-cream hover:border-ember/40 flex items-center gap-3 rounded-2xl border p-3 shadow-[var(--shadow-sm)] transition-colors"
     >
       <span
         className="bg-ember-tint flex h-10 w-10 shrink-0 items-center justify-center rounded-full"
@@ -187,171 +188,165 @@ export default async function HomePage() {
   return (
     <div className="animate-fade-in space-y-6">
       {/*
-        UX review log #23 — the whole hero (identity bar, action block,
-        "same as last time," Upcoming) now lives inside one floating card,
-        rather than as separate flat sections on the page background.
+        UX review log #23 — identity bar, hero, "same as last time," and
+        Upcoming each sit flat on the page, same as every other Home card
+        (HintCard, UnseenLobangCard) — no extra wrapping card around them.
       */}
-      <div className="bg-frost border-line space-y-4 rounded-3xl border p-4 shadow-[var(--shadow-md)]">
-        <div className="flex items-center justify-between">
-          {/* The lockup only appears on Home. Everywhere else the side rail
-              or the page title carries the identity, and repeating it would
-              be noise. */}
-          <JioLockup className="md:hidden" size="sm" beta={config.isDemo} />
-          <Link
-            href="/profile"
-            aria-label={`Your profile, ${name}`}
-            className="bg-cream text-stone ml-auto flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
-          >
-            <YouIcon className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
-          </Link>
-        </div>
+      <div className="flex items-center justify-between">
+        {/* The lockup only appears on Home. Everywhere else the side rail
+            or the page title carries the identity, and repeating it would
+            be noise. */}
+        <JioLockup className="md:hidden" size="sm" beta={config.isDemo} />
+        <Link
+          href="/profile"
+          aria-label={`Your profile, ${name}`}
+          className="bg-cream text-stone ml-auto flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
+        >
+          <YouIcon className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
+        </Link>
+      </div>
 
-        {/*
-          The three-state action block. Headline keeps showing the real
-          Jio's own title (or "What's for lunch?" with nothing on) rather
-          than a generic templated phrase — confirmed against the shipped,
-          tested version rather than the mockup's placeholder copy.
-          1. No upcoming Jio today: "+ Start a Jio" leads, quick-pick beside it.
-          2. Today's Jio still has an open vote: "Cast your vote" leads —
-             starting a new one is a secondary action beside it, never
-             blocked behind one already in progress.
-          3. Today's Jio needs nothing further (closed): "+ Start a Jio"
-             leads again, with a quiet "View" beside it and the decided
-             place surfaced directly in the block.
-        */}
-        <div className="bg-ember rounded-2xl p-5 text-white">
-          <p className="text-xs text-white/70">{heroDateLine(now)}</p>
-          <h1 className="font-display !text-white mt-1 text-2xl leading-tight font-bold tracking-tight text-balance">
-            {todaysJio ? todaysJio.title : "What’s for lunch?"}
-          </h1>
+      {/*
+        The three-state action block. Headline keeps showing the real
+        Jio's own title (or "What's for lunch?" with nothing on) rather
+        than a generic templated phrase — confirmed against the shipped,
+        tested version rather than the mockup's placeholder copy.
+        1. No upcoming Jio today: "+ Start a Jio" leads, quick-pick beside it.
+        2. Today's Jio still has an open vote: "Cast your vote" leads —
+           starting a new one is a secondary action beside it, never
+           blocked behind one already in progress.
+        3. Today's Jio needs nothing further (closed): "+ Start a Jio"
+           leads again, with a quiet "View" beside it and the decided
+           place surfaced directly in the block.
+      */}
+      <div className="bg-ember rounded-2xl p-5 text-white">
+        <p className="text-xs text-white/70">{heroDateLine(now)}</p>
+        <h1 className="font-display !text-white mt-1 text-2xl leading-tight font-bold tracking-tight text-balance">
+          {todaysJio ? todaysJio.title : "What’s for lunch?"}
+        </h1>
 
-          {features.events && todaysJio && todaysJio.status === "open" ? (
-            <>
-              <div className="mt-4 flex flex-col gap-2 sm:flex-row">
-                <LinkButton
-                  href={`/events/${todaysJio.id}`}
-                  variant="inverse"
-                  className="flex-1"
-                >
-                  Cast your vote
-                </LinkButton>
+        {features.events && todaysJio && todaysJio.status === "open" ? (
+          <>
+            <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+              <LinkButton
+                href={`/events/${todaysJio.id}`}
+                variant="inverse"
+                className="flex-1"
+              >
+                Cast your vote
+              </LinkButton>
+              <div className="flex-1">
+                <StartJioWizard
+                  label="New Jio"
+                  variant="outlineInverse"
+                  initialInvite={firstHostInvite}
+                />
+              </div>
+            </div>
+            {typeof todaysJio.going_count === "number" &&
+              todaysJio.going_count > 0 && (
+                <p className="mt-3 text-xs text-white/80">
+                  {todaysJio.going_count} going
+                </p>
+              )}
+          </>
+        ) : todaysJio ? (
+          <>
+            <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+              {features.events && (
                 <div className="flex-1">
                   <StartJioWizard
-                    label="New Jio"
-                    variant="outlineInverse"
+                    variant="inverse"
                     initialInvite={firstHostInvite}
                   />
                 </div>
-              </div>
-              {typeof todaysJio.going_count === "number" &&
-                todaysJio.going_count > 0 && (
-                  <p className="mt-3 text-xs text-white/80">
-                    {todaysJio.going_count} going
-                  </p>
-                )}
-            </>
-          ) : todaysJio ? (
-            <>
-              <div className="mt-4 flex flex-col gap-2 sm:flex-row">
-                {features.events && (
-                  <div className="flex-1">
-                    <StartJioWizard
-                      variant="inverse"
-                      initialInvite={firstHostInvite}
-                    />
-                  </div>
-                )}
-                <LinkButton
-                  href={`/events/${todaysJio.id}`}
-                  variant="outlineInverse"
-                  className="flex-1"
-                >
-                  View
-                </LinkButton>
-              </div>
-              {decidedPlaceName && (
-                <p className="mt-3 text-xs text-white/80">
-                  {decidedPlaceName} · {formatTime(todaysJio.scheduled_at)}
-                </p>
               )}
-            </>
-          ) : (
-            <>
-              <div className="mt-4 flex flex-col gap-2 sm:flex-row">
-                {features.events && (
-                  <div className="flex-1">
-                    <StartJioWizard
-                      variant="inverse"
-                      initialInvite={firstHostInvite}
-                    />
-                  </div>
-                )}
-                {/* UX review log #6 — /suggest itself is retired; Places
-                    carries the same personal picks now ("Quick & nearby,"
-                    "New to try"), so that's where this now leads. */}
-                <LinkButton
-                  href="/places"
-                  variant="outlineInverse"
-                  className="flex-1"
-                >
-                  Just tell me where to go
-                </LinkButton>
-              </div>
+              <LinkButton
+                href={`/events/${todaysJio.id}`}
+                variant="outlineInverse"
+                className="flex-1"
+              >
+                View
+              </LinkButton>
+            </div>
+            {decidedPlaceName && (
               <p className="mt-3 text-xs text-white/80">
-                Pick somewhere, or let the votes decide.
+                {decidedPlaceName} · {formatTime(todaysJio.scheduled_at)}
               </p>
-            </>
-          )}
-        </div>
-
-        {/*
-          UX review log #23 — a calm-zone row, not the ember action hero, is
-          where the real JioMark actually contrasts (true colours on cream,
-          not faded onto ember), so this is where it belongs.
-        */}
-        {features.events && lastHosted && (
-          <HomeRow
-            href={`/events/new?repeatFrom=${lastHosted.id}`}
-            icon={<JioMark className="h-6 w-6" />}
-            title="Same as last time?"
-            subtitle={`Start a Jio like "${lastHosted.title}"`}
-          />
+            )}
+          </>
+        ) : (
+          <>
+            <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+              {features.events && (
+                <div className="flex-1">
+                  <StartJioWizard
+                    variant="inverse"
+                    initialInvite={firstHostInvite}
+                  />
+                </div>
+              )}
+              {/* UX review log #6 — /suggest itself is retired; Places
+                  carries the same personal picks now ("Quick & nearby,"
+                  "New to try"), so that's where this now leads. */}
+              <LinkButton
+                href="/places"
+                variant="outlineInverse"
+                className="flex-1"
+              >
+                Just tell me where to go
+              </LinkButton>
+            </div>
+            <p className="mt-3 text-xs text-white/80">
+              Pick somewhere, or let the votes decide.
+            </p>
+          </>
         )}
+      </div>
 
-        {features.events && upcomingList.length > 0 && (
-          <div className="space-y-1">
-            <div className="flex items-center justify-between px-2">
-              <span className="text-stone text-xs font-semibold tracking-wide uppercase">
-                Upcoming
-              </span>
+      {/*
+        UX review log #23 — a calm-zone card, not the ember action hero, is
+        where the real JioMark actually contrasts (true colours on cream,
+        not faded onto ember), so this is where it belongs.
+      */}
+      {features.events && lastHosted && (
+        <HomeRow
+          href={`/events/new?repeatFrom=${lastHosted.id}`}
+          icon={<JioMark className="h-6 w-6" />}
+          title="Same as last time?"
+          subtitle={`Start a Jio like "${lastHosted.title}"`}
+        />
+      )}
+
+      {features.events && upcomingList.length > 0 && (
+        <div className="space-y-2">
+          <SectionHeading
+            action={
               <Link href="/events" className="text-ember text-xs underline">
                 See all
               </Link>
-            </div>
-            {upcomingList.map((event) => {
-              const winner = event.winner_place_name ?? event.winner_label;
-              const subtitle =
-                event.status === "closed" && winner
-                  ? `${relativeDayLabel(event.scheduled_at, now)} · ${winner}`
-                  : `${relativeDayLabel(event.scheduled_at, now)} · ${formatTime(event.scheduled_at)}`;
-              return (
-                <HomeRow
-                  key={event.id}
-                  href={`/events/${event.id}`}
-                  icon={
-                    <JiosIcon
-                      className="text-ember h-5 w-5"
-                      strokeWidth={1.75}
-                    />
-                  }
-                  title={event.title}
-                  subtitle={subtitle}
-                />
-              );
-            })}
-          </div>
-        )}
-      </div>
+            }
+          >
+            Upcoming
+          </SectionHeading>
+          {upcomingList.map((event) => {
+            const winner = event.winner_place_name ?? event.winner_label;
+            const subtitle =
+              event.status === "closed" && winner
+                ? `${relativeDayLabel(event.scheduled_at, now)} · ${winner}`
+                : `${relativeDayLabel(event.scheduled_at, now)} · ${formatTime(event.scheduled_at)}`;
+            return (
+              <HomeRow
+                key={event.id}
+                href={`/events/${event.id}`}
+                icon={<JiosIcon className="text-ember h-5 w-5" strokeWidth={1.75} />}
+                title={event.title}
+                subtitle={subtitle}
+              />
+            );
+          })}
+        </div>
+      )}
 
       <HintCard page="home" icon="🍜">
         Start a Jio to vote with the group, or tap &ldquo;Just tell me where
