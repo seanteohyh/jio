@@ -55,47 +55,54 @@ export function HomeIcon(props: IconProps) {
   );
 }
 
-/** Nav: Jios. A Jio is a scheduled outing — dates on a calendar. */
+/**
+ * Nav: Jios. A serving-dome/bell shape — a Jio is a shared meal called
+ * together, not an entry on a calendar. Corrected to match the finalized
+ * visual spec's reference sheet exactly. The signature dot is grounded as
+ * the dome's own finial, on a short stem rising straight out of its peak.
+ */
 export function JiosIcon(props: IconProps) {
   return (
     <Svg {...props}>
-      <rect x="3" y="5" width="18" height="16" rx="2" />
-      <path d="M3 10h18M8 3v4M16 3v4" />
-      <circle cx="8.5" cy="15" r="1" fill="currentColor" stroke="none" />
-      <circle cx="15.5" cy="15" r="1" fill="currentColor" stroke="none" />
+      <path d="M6.5 15h11" />
+      <path d="M8 15Q8 8 12 8Q16 8 16 15" />
+      <path d="M12 8V6.3" />
+      <circle cx="12" cy="5.6" r="1" fill="currentColor" stroke="none" />
     </Svg>
   );
 }
 
 /**
  * Nav: Kaki, and any other "a group of people" context (InvitePicker's
- * group rows, PlaceCard's Kaki-favourite count). Two overlapping pebbles —
- * the brand mark's own stated meaning, "teammates gathering" — rather than
- * a literal person silhouette, so a Kaki visually says the same thing the
- * JioMark itself does.
+ * group rows, PlaceCard's Kaki-favourite count). Three overlapping
+ * pebbles — the brand mark's own stated meaning, "teammates gathering,"
+ * matching JioMark's own three-pebble arrangement rather than a pair.
+ * Corrected to three per the finalized visual spec's reference sheet. The
+ * signature dot sits grounded at the exact point all three circles meet.
  */
 export function KakiIcon(props: IconProps) {
   return (
     <Svg {...props}>
-      <circle cx="9" cy="13.5" r="5" />
-      <circle cx="16" cy="10" r="4.2" />
+      <circle cx="9" cy="9.6" r="4.3" />
+      <circle cx="15" cy="9.6" r="4.3" />
+      <circle cx="12" cy="15.2" r="4.3" />
+      <circle cx="12" cy="11.3" r="1" fill="currentColor" stroke="none" />
     </Svg>
   );
 }
 
 /**
- * Nav: You / Profile. One pebble, not two — the single-person counterpart
- * to `KakiIcon`'s pair. A simple face keeps it readable as "a person" at
- * nav-icon size; both eyes are grounded on the pebble's own face, not
- * floating above it.
+ * Nav: You / Profile. A plain person silhouette — head and shoulders, no
+ * face — per the finalized visual spec's reference sheet, replacing the
+ * earlier smiling-pebble treatment. The signature dot is grounded where
+ * the shoulder line meets the neck.
  */
 export function YouIcon(props: IconProps) {
   return (
     <Svg {...props}>
-      <circle cx="12" cy="12" r="8" />
-      <path d="M8.6 14.6c1 1.1 2.1 1.7 3.4 1.7s2.4-.6 3.4-1.7" />
-      <circle cx="9.3" cy="10.3" r="1" fill="currentColor" stroke="none" />
-      <circle cx="14.7" cy="10.3" r="1" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="7.6" r="3.2" />
+      <path d="M6.3 19c0-3.6 2.6-6.1 5.7-6.1s5.7 2.5 5.7 6.1" />
+      <circle cx="15.3" cy="14.1" r="1" fill="currentColor" stroke="none" />
     </Svg>
   );
 }
