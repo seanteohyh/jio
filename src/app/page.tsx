@@ -7,12 +7,13 @@ import StartJioWizard from "@/components/home/StartJioWizard";
 import NeedsAvailability from "@/components/home/NeedsAvailability";
 import UnseenLobangCard from "@/components/home/UnseenLobangCard";
 import StreakBanner from "@/components/home/StreakBanner";
-import EventRow from "@/components/events/EventRow";
 import AddToHomeScreenCard from "@/components/profile/AddToHomeScreenCard";
 import HintCard from "@/components/HintCard";
-import { LinkButton, SectionHeading } from "@/components/ui";
+import { LinkButton } from "@/components/ui";
 import JioLockup from "@/components/brand/JioLockup";
-import { formatTime, isSameSgtDay } from "@/lib/utils";
+import JioMark from "@/components/brand/JioMark";
+import { JiosIcon, YouIcon } from "@/components/icons";
+import { formatTime, isSameSgtDay, relativeDayLabel } from "@/lib/utils";
 import type { InviteSelection } from "@/components/InvitePicker";
 import {
   buildFirstHostInvite,
@@ -25,24 +26,56 @@ import type { LunchEvent } from "@/types";
 const NEW_USER_WINDOW_DAYS = 14;
 
 /**
- * Needs the hour *in Singapore*, not whatever timezone is running the code
- * — Home is the app's one Server Component, so this runs during SSR on
- * Vercel's UTC clock, not the visitor's phone (CHANGES_20260818.md §4).
- * `isSameSgtDay` below (imported from utils.ts) is the same fix for the
- * "is this today's Jio" check just below.
+ * "Friday · 11:42am" — the small date/time line at the top of the hero
+ * block (UX review log #23's redesign). Needs the day *in Singapore*, not
+ * whatever timezone is running the code — Home is the app's one Server
+ * Component, so this runs during SSR on Vercel's UTC clock, not the
+ * visitor's phone (CHANGES_20260818.md §4). `isSameSgtDay` below (imported
+ * from utils.ts) is the same fix for the "is this today's Jio" check.
  */
-function greeting(now = new Date()): string {
-  const hour = Number(
-    new Intl.DateTimeFormat("en-SG", {
-      hour: "numeric",
-      hourCycle: "h23",
-      timeZone: "Asia/Singapore",
-    }).format(now)
+function heroDateLine(now: Date): string {
+  const weekday = now.toLocaleDateString("en-SG", {
+    weekday: "long",
+    timeZone: "Asia/Singapore",
+  });
+  return `${weekday} · ${formatTime(now)}`;
+}
+
+/** A compact icon-avatar row inside the hero card — shared shape for the
+ *  "Upcoming" and "Same as last time?" rows (UX review log #23). Not
+ *  `EventRow`: that component is deliberately shared between the Jios list
+ *  and Home's old full-width cards, and this redesign's row is a distinct,
+ *  smaller shape that only exists inside this card. */
+function HomeRow({
+  href,
+  icon,
+  title,
+  subtitle,
+}: {
+  href: string;
+  icon: React.ReactNode;
+  title: string;
+  subtitle: string;
+}) {
+  return (
+    <Link
+      href={href}
+      className="hover:bg-cream flex items-center gap-3 rounded-xl p-2 transition-colors"
+    >
+      <span
+        className="bg-ember-tint flex h-10 w-10 shrink-0 items-center justify-center rounded-full"
+        aria-hidden="true"
+      >
+        {icon}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="text-ink block truncate text-sm font-medium">
+          {title}
+        </span>
+        <span className="text-stone block truncate text-xs">{subtitle}</span>
+      </span>
+    </Link>
   );
-  if (hour < 11) return "Morning";
-  if (hour < 15) return "Lunchtime";
-  if (hour < 18) return "Afternoon";
-  return "Evening";
 }
 
 export default async function HomePage() {
@@ -148,46 +181,177 @@ export default async function HomePage() {
     now.getTime() - new Date(profile.created_at).getTime() <
       NEW_USER_WINDOW_DAYS * 24 * 60 * 60 * 1000;
 
+  const decidedPlaceName =
+    todaysJio?.winner_place_name ?? todaysJio?.winner_label ?? null;
+
   return (
     <div className="animate-fade-in space-y-6">
-      {/* The lockup only appears on Home. Everywhere else the side rail or the
-          page title carries the identity, and repeating it would be noise. */}
-      <JioLockup className="md:hidden" size="sm" beta={config.isDemo} />
+      {/*
+        UX review log #23 — the whole hero (identity bar, action block,
+        "same as last time," Upcoming) now lives inside one floating card,
+        rather than as separate flat sections on the page background.
+      */}
+      <div className="bg-frost border-line space-y-4 rounded-3xl border p-4 shadow-[var(--shadow-md)]">
+        <div className="flex items-center justify-between">
+          {/* The lockup only appears on Home. Everywhere else the side rail
+              or the page title carries the identity, and repeating it would
+              be noise. */}
+          <JioLockup className="md:hidden" size="sm" beta={config.isDemo} />
+          <Link
+            href="/profile"
+            aria-label={`Your profile, ${name}`}
+            className="bg-cream text-stone ml-auto flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
+          >
+            <YouIcon className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
+          </Link>
+        </div>
 
-      <header>
-        <p className="text-stone text-sm">
-          {greeting()}, {name}.
-        </p>
-        {todaysJio ? (
-          <>
-            <h1 className="font-display text-ink mt-1 text-4xl leading-[1.05] font-bold tracking-tight">
-              {todaysJio.title}
-            </h1>
-            <p className="text-stone mt-2 text-sm">
-              Today, {formatTime(todaysJio.scheduled_at)}
-              {todaysJio.host_name && ` · hosted by ${todaysJio.host_name}`}
+        {/*
+          The three-state action block. Headline keeps showing the real
+          Jio's own title (or "What's for lunch?" with nothing on) rather
+          than a generic templated phrase — confirmed against the shipped,
+          tested version rather than the mockup's placeholder copy.
+          1. No upcoming Jio today: "+ Start a Jio" leads, quick-pick beside it.
+          2. Today's Jio still has an open vote: "Cast your vote" leads —
+             starting a new one is a secondary action beside it, never
+             blocked behind one already in progress.
+          3. Today's Jio needs nothing further (closed): "+ Start a Jio"
+             leads again, with a quiet "View" beside it and the decided
+             place surfaced directly in the block.
+        */}
+        <div className="bg-ember rounded-2xl p-5 text-white">
+          <p className="text-xs text-white/70">{heroDateLine(now)}</p>
+          <h1 className="font-display !text-white mt-1 text-2xl leading-tight font-bold tracking-tight text-balance">
+            {todaysJio ? todaysJio.title : "What’s for lunch?"}
+          </h1>
+
+          {features.events && todaysJio && todaysJio.status === "open" ? (
+            <>
+              <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+                <LinkButton
+                  href={`/events/${todaysJio.id}`}
+                  variant="inverse"
+                  className="flex-1"
+                >
+                  Cast your vote
+                </LinkButton>
+                <div className="flex-1">
+                  <StartJioWizard
+                    label="New Jio"
+                    variant="outlineInverse"
+                    initialInvite={firstHostInvite}
+                  />
+                </div>
+              </div>
               {typeof todaysJio.going_count === "number" &&
-                todaysJio.going_count > 0 &&
-                ` · ${todaysJio.going_count} going`}
-            </p>
-            <Link
-              href={`/events/${todaysJio.id}`}
-              className="text-ember mt-2 inline-block text-sm underline"
-            >
-              View the Jio
-            </Link>
-          </>
-        ) : (
-          <>
-            <h1 className="font-display text-ink mt-1 text-4xl leading-[1.05] font-bold tracking-tight">
-              What&rsquo;s for lunch?
-            </h1>
-            <p className="text-stone mt-2 text-sm">
-              Pick somewhere, or let the votes decide.
-            </p>
-          </>
+                todaysJio.going_count > 0 && (
+                  <p className="mt-3 text-xs text-white/80">
+                    {todaysJio.going_count} going
+                  </p>
+                )}
+            </>
+          ) : todaysJio ? (
+            <>
+              <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+                {features.events && (
+                  <div className="flex-1">
+                    <StartJioWizard
+                      variant="inverse"
+                      initialInvite={firstHostInvite}
+                    />
+                  </div>
+                )}
+                <LinkButton
+                  href={`/events/${todaysJio.id}`}
+                  variant="outlineInverse"
+                  className="flex-1"
+                >
+                  View
+                </LinkButton>
+              </div>
+              {decidedPlaceName && (
+                <p className="mt-3 text-xs text-white/80">
+                  {decidedPlaceName} · {formatTime(todaysJio.scheduled_at)}
+                </p>
+              )}
+            </>
+          ) : (
+            <>
+              <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+                {features.events && (
+                  <div className="flex-1">
+                    <StartJioWizard
+                      variant="inverse"
+                      initialInvite={firstHostInvite}
+                    />
+                  </div>
+                )}
+                {/* UX review log #6 — /suggest itself is retired; Places
+                    carries the same personal picks now ("Quick & nearby,"
+                    "New to try"), so that's where this now leads. */}
+                <LinkButton
+                  href="/places"
+                  variant="outlineInverse"
+                  className="flex-1"
+                >
+                  Just tell me where to go
+                </LinkButton>
+              </div>
+              <p className="mt-3 text-xs text-white/80">
+                Pick somewhere, or let the votes decide.
+              </p>
+            </>
+          )}
+        </div>
+
+        {/*
+          UX review log #23 — a calm-zone row, not the ember action hero, is
+          where the real JioMark actually contrasts (true colours on cream,
+          not faded onto ember), so this is where it belongs.
+        */}
+        {features.events && lastHosted && (
+          <HomeRow
+            href={`/events/new?repeatFrom=${lastHosted.id}`}
+            icon={<JioMark className="h-6 w-6" />}
+            title="Same as last time?"
+            subtitle={`Start a Jio like "${lastHosted.title}"`}
+          />
         )}
-      </header>
+
+        {features.events && upcomingList.length > 0 && (
+          <div className="space-y-1">
+            <div className="flex items-center justify-between px-2">
+              <span className="text-stone text-xs font-semibold tracking-wide uppercase">
+                Upcoming
+              </span>
+              <Link href="/events" className="text-ember text-xs underline">
+                See all
+              </Link>
+            </div>
+            {upcomingList.map((event) => {
+              const winner = event.winner_place_name ?? event.winner_label;
+              const subtitle =
+                event.status === "closed" && winner
+                  ? `${relativeDayLabel(event.scheduled_at, now)} · ${winner}`
+                  : `${relativeDayLabel(event.scheduled_at, now)} · ${formatTime(event.scheduled_at)}`;
+              return (
+                <HomeRow
+                  key={event.id}
+                  href={`/events/${event.id}`}
+                  icon={
+                    <JiosIcon
+                      className="text-ember h-5 w-5"
+                      strokeWidth={1.75}
+                    />
+                  }
+                  title={event.title}
+                  subtitle={subtitle}
+                />
+              );
+            })}
+          </div>
+        )}
+      </div>
 
       <HintCard page="home" icon="🍜">
         Start a Jio to vote with the group, or tap &ldquo;Just tell me where
@@ -195,70 +359,6 @@ export default async function HomePage() {
       </HintCard>
 
       {features.metrics && <StreakBanner />}
-
-      {/*
-        UX review log #23 — the three-state action block:
-        1. No upcoming Jio today: "+ Start a Jio" leads, quick-pick beside it.
-        2. Today's Jio still has an open vote: "Cast your vote" leads —
-           starting a new one is a secondary action beside it, never
-           blocked behind one already in progress.
-        3. Today's Jio needs nothing further (closed): "+ Start a Jio"
-           leads again; the quiet link back to it already sits in the
-           header above ("View the Jio").
-      */}
-      {features.events && todaysJio && todaysJio.status === "open" ? (
-        <div className="flex flex-col gap-2 sm:flex-row">
-          <LinkButton href={`/events/${todaysJio.id}`} className="flex-1">
-            Cast your vote
-          </LinkButton>
-          <div className="flex-1">
-            <StartJioWizard
-              label="New Jio"
-              variant="secondary"
-              initialInvite={firstHostInvite}
-            />
-          </div>
-        </div>
-      ) : (
-        <div className="flex flex-col gap-2 sm:flex-row">
-          {features.events ? (
-            <div className="flex-1">
-              <StartJioWizard initialInvite={firstHostInvite} />
-            </div>
-          ) : null}
-          {/* UX review log #6 — /suggest itself is retired; Places carries
-              the same personal picks now ("Quick & nearby," "New to try"),
-              so that's where this now leads. */}
-          <LinkButton href="/places" variant="secondary" className="flex-1">
-            Just tell me where to go
-          </LinkButton>
-        </div>
-      )}
-
-      {features.events && lastHosted && (
-        <Link
-          href={`/events/new?repeatFrom=${lastHosted.id}`}
-          className="text-ember text-xs underline"
-        >
-          Same as last time? Start a Jio like &ldquo;{lastHosted.title}
-          &rdquo;
-        </Link>
-      )}
-
-      {features.events && upcomingList.length > 0 && (
-        <div className="space-y-2">
-          <SectionHeading action={<Link href="/events" className="text-ember text-xs underline">See all</Link>}>
-            Upcoming
-          </SectionHeading>
-          <ul className="space-y-2">
-            {upcomingList.map((event) => (
-              <li key={event.id}>
-                <EventRow event={event} />
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
 
       {isNewerUser && <AddToHomeScreenCard standalone />}
 

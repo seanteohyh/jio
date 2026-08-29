@@ -38,7 +38,7 @@ export default function StartJioWizard({
    * emphasis change, not the availability.
    */
   label?: string;
-  variant?: "primary" | "secondary";
+  variant?: "primary" | "secondary" | "inverse" | "outlineInverse";
 }) {
   const [open, setOpen] = useState(false);
 

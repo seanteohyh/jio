@@ -15,6 +15,7 @@ import { useToast } from "@/components/Toast";
 import AddKakiMemberPanel from "@/components/kakis/AddKakiMemberPanel";
 import KakiFoodIdentityCard from "@/components/kakis/KakiFoodIdentityCard";
 import PebbleAvatar from "@/components/kakis/PebbleAvatar";
+import { InviteIcon } from "@/components/icons";
 import { fetcher, mutateJson } from "@/lib/fetcher";
 import { formatDate } from "@/lib/utils";
 import type { KakiDetail, KakiFoodIdentitySnapshot, KakiMetrics } from "@/types";
@@ -153,7 +154,12 @@ export default function KakiDetailPage({
       </Card>
 
       <Card>
-        <SectionHeading>Invite link</SectionHeading>
+        <SectionHeading>
+          <span className="inline-flex items-center gap-1.5">
+            <InviteIcon className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
+            Invite link
+          </span>
+        </SectionHeading>
         <p className="text-stone mb-2 text-xs">
           Anyone with this link can join. It is unguessable, but it is not a
           secret once you have shared it.

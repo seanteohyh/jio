@@ -55,47 +55,54 @@ export function HomeIcon(props: IconProps) {
   );
 }
 
-/** Nav: Jios. A Jio is a scheduled outing — dates on a calendar. */
+/**
+ * Nav: Jios. A serving-dome/bell shape — a Jio is a shared meal called
+ * together, not an entry on a calendar. Corrected to match the finalized
+ * visual spec's reference sheet exactly. The signature dot is grounded as
+ * the dome's own finial, on a short stem rising straight out of its peak.
+ */
 export function JiosIcon(props: IconProps) {
   return (
     <Svg {...props}>
-      <rect x="3" y="5" width="18" height="16" rx="2" />
-      <path d="M3 10h18M8 3v4M16 3v4" />
-      <circle cx="8.5" cy="15" r="1" fill="currentColor" stroke="none" />
-      <circle cx="15.5" cy="15" r="1" fill="currentColor" stroke="none" />
+      <path d="M6.5 15h11" />
+      <path d="M8 15Q8 8 12 8Q16 8 16 15" />
+      <path d="M12 8V6.3" />
+      <circle cx="12" cy="5.6" r="1" fill="currentColor" stroke="none" />
     </Svg>
   );
 }
 
 /**
  * Nav: Kaki, and any other "a group of people" context (InvitePicker's
- * group rows, PlaceCard's Kaki-favourite count). Two overlapping pebbles —
- * the brand mark's own stated meaning, "teammates gathering" — rather than
- * a literal person silhouette, so a Kaki visually says the same thing the
- * JioMark itself does.
+ * group rows, PlaceCard's Kaki-favourite count). Three overlapping
+ * pebbles — the brand mark's own stated meaning, "teammates gathering,"
+ * matching JioMark's own three-pebble arrangement rather than a pair.
+ * Corrected to three per the finalized visual spec's reference sheet. The
+ * signature dot sits grounded at the exact point all three circles meet.
  */
 export function KakiIcon(props: IconProps) {
   return (
     <Svg {...props}>
-      <circle cx="9" cy="13.5" r="5" />
-      <circle cx="16" cy="10" r="4.2" />
+      <circle cx="9" cy="9.6" r="4.3" />
+      <circle cx="15" cy="9.6" r="4.3" />
+      <circle cx="12" cy="15.2" r="4.3" />
+      <circle cx="12" cy="11.3" r="1" fill="currentColor" stroke="none" />
     </Svg>
   );
 }
 
 /**
- * Nav: You / Profile. One pebble, not two — the single-person counterpart
- * to `KakiIcon`'s pair. A simple face keeps it readable as "a person" at
- * nav-icon size; both eyes are grounded on the pebble's own face, not
- * floating above it.
+ * Nav: You / Profile. A plain person silhouette — head and shoulders, no
+ * face — per the finalized visual spec's reference sheet, replacing the
+ * earlier smiling-pebble treatment. The signature dot is grounded where
+ * the shoulder line meets the neck.
  */
 export function YouIcon(props: IconProps) {
   return (
     <Svg {...props}>
-      <circle cx="12" cy="12" r="8" />
-      <path d="M8.6 14.6c1 1.1 2.1 1.7 3.4 1.7s2.4-.6 3.4-1.7" />
-      <circle cx="9.3" cy="10.3" r="1" fill="currentColor" stroke="none" />
-      <circle cx="14.7" cy="10.3" r="1" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="7.6" r="3.2" />
+      <path d="M6.3 19c0-3.6 2.6-6.1 5.7-6.1s5.7 2.5 5.7 6.1" />
+      <circle cx="15.3" cy="14.1" r="1" fill="currentColor" stroke="none" />
     </Svg>
   );
 }
@@ -386,6 +393,145 @@ export function BudgetIcon(props: IconProps) {
     <Svg {...props}>
       <path d="M12.5 3.5H20v7.5a1 1 0 0 1-.3.7l-8 8a1 1 0 0 1-1.4 0l-6.5-6.5a1 1 0 0 1 0-1.4l8-8a1 1 0 0 1 .7-.3Z" />
       <circle cx="16" cy="8" r="1.2" fill="currentColor" stroke="none" />
+    </Svg>
+  );
+}
+
+// ---------------------------------------------------------------------
+// Action & status icons — added per the finalized visual spec's reference
+// sheets, which show several action/status glyphs the earlier pass never
+// actually built. Each keeps the same grounded-dot convention as above.
+// ---------------------------------------------------------------------
+
+/** Invite someone — a person plus a grounded "+", the dot sitting as the
+ *  plus's own tip rather than floating beside it. */
+export function InviteIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <circle cx="8" cy="7" r="2.6" />
+      <path d="M3.5 19c0-3.3 2-5.6 4.5-5.6" />
+      <path d="M14.5 9.5h6M17.5 6.5v6" />
+      <circle cx="20.5" cy="9.5" r="1" fill="currentColor" stroke="none" />
+    </Svg>
+  );
+}
+
+/** Vote / ballot — a checked box, dot grounded on the box's own corner. */
+export function BallotIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <rect x="3.5" y="4.5" width="15" height="15" rx="2.5" />
+      <path d="M7.5 12.3 10.3 15l5.2-6" />
+      <circle cx="18.5" cy="4.5" r="1" fill="currentColor" stroke="none" />
+    </Svg>
+  );
+}
+
+/** RSVP: Going — distinct from the generic `CheckCircleIcon` used
+ *  elsewhere for a settled vote, so that icon's other call sites don't
+ *  pick up a dot they weren't designed around. Dot grounded on the
+ *  circle's own edge. */
+export function GoingIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="m8.5 12.3 2.6 2.6 4.4-5.2" />
+      <circle cx="17.7" cy="6.3" r="1" fill="currentColor" stroke="none" />
+    </Svg>
+  );
+}
+
+/** RSVP: Maybe — a half-filled circle, dot grounded at the exact centre
+ *  where the filled and outline halves meet. */
+export function MaybeIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M12 3.5A8.5 8.5 0 0 1 12 20.5Z" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" />
+    </Svg>
+  );
+}
+
+/** RSVP: Can't make it — a circled X, dot grounded at the X's own
+ *  crossing point. */
+export function CantMakeItIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M9 9l6 6M15 9l-6 6" />
+      <circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" />
+    </Svg>
+  );
+}
+
+/**
+ * The abstract node-and-line share glyph — distinct from `ShareIcon`
+ * (which deliberately keeps iOS's real share-sheet glyph for copy that
+ * tells someone to tap their actual system UI). This is for the app's
+ * own in-page "Share" buttons that never had an icon at all. Dot grounded
+ * as the source node's own centre.
+ */
+export function ShareNodesIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <circle cx="6" cy="12" r="2.6" />
+      <circle cx="18" cy="6" r="2.6" />
+      <circle cx="18" cy="18" r="2.6" />
+      <path d="M8.3 10.7 15.7 7.3M8.3 13.3l7.4 3.4" />
+      <circle cx="6" cy="12" r="1" fill="currentColor" stroke="none" />
+    </Svg>
+  );
+}
+
+/** Search — dot grounded at the lens's own centre. */
+export function SearchIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <circle cx="10.5" cy="10.5" r="6.5" />
+      <path d="m20 20-4.8-4.8" />
+      <circle cx="10.5" cy="10.5" r="1" fill="currentColor" stroke="none" />
+    </Svg>
+  );
+}
+
+/** Closing soon — a clock, dot grounded as the hands' own pivot. Built
+ *  per the finalized visual spec; no call site consumes it yet (the app
+ *  has no "closing soon" indicator today — see the "starting soon"
+ *  reminder instead, a different, already-built feature). */
+export function ClockIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M12 7.5V12l3.2 2" />
+      <circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" />
+    </Svg>
+  );
+}
+
+/** A lobang / tip — a speech bubble, its three dots doubling as both the
+ *  "someone's telling you something" ellipsis and the grounded-dot motif. */
+export function LobangIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M4 5.5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H9l-4 3.5v-3.5H6a2 2 0 0 1-2-2Z" />
+      <circle cx="9" cy="9.5" r="0.9" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="9.5" r="0.9" fill="currentColor" stroke="none" />
+      <circle cx="15" cy="9.5" r="0.9" fill="currentColor" stroke="none" />
+    </Svg>
+  );
+}
+
+/** Drinks / boba — a cup and straw, the boba pearl as the grounded dot at
+ *  the cup's own base. Built per the finalized visual spec; no cuisine tag
+ *  needs it yet (the app's 18-tag seed list has no "drinks" or "boba"
+ *  entry), so no call site consumes it — same as `BudgetIcon` above. */
+export function DrinksIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M7 8h10l-1 12a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1Z" />
+      <path d="M14.5 3.5 12.8 8M9.5 6h7" />
+      <circle cx="12" cy="16" r="1" fill="currentColor" stroke="none" />
     </Svg>
   );
 }
