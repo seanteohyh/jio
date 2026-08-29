@@ -201,7 +201,7 @@ export default function RecurringSeriesForm({
             type="time"
             value={time}
             onChange={(e) => setTime(e.target.value)}
-            className={inputClass}
+            className={`${inputClass} min-w-0`}
           />
         </Field>
       </Card>

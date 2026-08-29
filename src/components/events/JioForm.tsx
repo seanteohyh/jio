@@ -264,7 +264,12 @@ export default function JioForm({
                 required
                 value={when}
                 onChange={(e) => setWhen(e.target.value)}
-                className={inputClass}
+                // A native datetime-local input can ignore `width: 100%` and
+                // size itself to its own content instead (a WebKit quirk),
+                // pushing past its card's padding on iOS. `min-w-0` forces
+                // it to actually respect the container like every other
+                // input does.
+                className={`${inputClass} min-w-0`}
               />
             </Field>
           ) : (
@@ -278,7 +283,7 @@ export default function JioForm({
                     type="date"
                     value={newCandidateDate}
                     onChange={(e) => setNewCandidateDate(e.target.value)}
-                    className={inputClass}
+                    className={`${inputClass} min-w-0`}
                   />
                   <Button
                     type="button"
@@ -319,7 +324,7 @@ export default function JioForm({
                   type="time"
                   value={flexiTime}
                   onChange={(e) => setFlexiTime(e.target.value)}
-                  className={inputClass}
+                  className={`${inputClass} min-w-0`}
                 />
               </Field>
             </>
