@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Button, ErrorNote } from "./ui";
+import { computeFingerprint, FINGERPRINT_DOT } from "@/lib/placeFingerprint";
 
 /** One row of the top-3 vote breakdown — CHANGES_20260819c.md §3. */
 export interface ShareResultStanding {
@@ -76,20 +77,7 @@ const COLOR = {
   ink: "#2b2b2b",
   stone: "#6b665c",
   line: "#ece5d8",
-  sage: "#517351",
-  slate: "#4f6e88",
-  amber: "#be7722",
 };
-
-/** The fingerprint's own tone palette — the app's existing semantic hues,
- *  not arbitrary colours, so a generated mark always reads as "on brand"
- *  regardless of which place it's for. */
-const FINGERPRINT_TONES = [
-  COLOR.ember,
-  COLOR.sage,
-  COLOR.slate,
-  COLOR.amber,
-];
 
 const MONO_FONT = "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
 const SERIF_FONT = "Georgia, 'Times New Roman', serif";
@@ -185,33 +173,14 @@ function roundRect(
   ctx.closePath();
 }
 
-/** A small deterministic string hash → seeded PRNG (mulberry32), so a given
- *  place name always generates the exact same fingerprint pattern. */
-function seededRandom(seed: string): () => number {
-  let h = 1779033703 ^ seed.length;
-  for (let i = 0; i < seed.length; i++) {
-    h = Math.imul(h ^ seed.charCodeAt(i), 3432918353);
-    h = (h << 13) | (h >>> 19);
-  }
-  let a = h >>> 0;
-  return () => {
-    a |= 0;
-    a = (a + 0x6d2b79f5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
 /**
- * A generative "place fingerprint" — same trick as a GitHub identicon or a
- * Spotify albumless-playlist tile: a 5×5 grid, mirrored left-right for
- * symmetry, filled from a hash of the place's own name. Deterministic — a
- * given place always draws the exact same mark, everywhere, with zero
- * photo required. The centre cell is always a plain dot rather than
- * hash-driven, echoing the icon set's own "every signature dot is grounded
- * on the shape it sits on" rule — here, grounded at the pattern's own
- * centre. Drawn low-opacity, as a watermark, not a loud graphic.
+ * Draws the shared generative place fingerprint (see
+ * `lib/placeFingerprint.ts` for the hash/grid/tone it's built from — the
+ * same computation `PlaceFingerprint` renders as inline SVG everywhere else
+ * a place is shown) onto the ticket's canvas. Drawn low-opacity here, as a
+ * watermark rather than a loud graphic — the one surface where that's the
+ * right treatment, since it sits on top of the ticket's own header rather
+ * than occupying its own dedicated slot.
  */
 function drawPlaceFingerprint(
   ctx: CanvasRenderingContext2D,
@@ -220,10 +189,9 @@ function drawPlaceFingerprint(
   size: number,
   seed: string
 ) {
-  const rand = seededRandom(seed);
-  const cols = 5;
+  const { cells, tone } = computeFingerprint(seed);
+  const cols = cells.length;
   const cell = size / cols;
-  const tone = FINGERPRINT_TONES[Math.floor(rand() * FINGERPRINT_TONES.length)];
 
   ctx.save();
   // Deliberately more opaque than the logo watermark's 0.14 — that mark is
@@ -233,24 +201,15 @@ function drawPlaceFingerprint(
   // the cream card and reads as plain grey, silently defeating the feature.
   ctx.globalAlpha = 0.34;
   ctx.fillStyle = tone;
-  // Generate columns 0-2 (left half + centre), mirror onto 3-4.
-  const filled: boolean[][] = [];
-  for (let col = 0; col < 3; col++) {
-    filled[col] = [];
-    for (let row = 0; row < cols; row++) {
-      filled[col][row] = rand() > 0.5;
-    }
-  }
   for (let col = 0; col < cols; col++) {
-    const sourceCol = col < 3 ? col : cols - 1 - col;
     for (let row = 0; row < cols; row++) {
-      if (filled[sourceCol][row]) {
+      if (cells[col][row]) {
         ctx.fillRect(x + col * cell, y + row * cell, cell, cell);
       }
     }
   }
   // The grounded centre dot — always present, never hash-driven.
-  ctx.fillStyle = COLOR.espresso;
+  ctx.fillStyle = FINGERPRINT_DOT;
   ctx.beginPath();
   ctx.arc(x + size / 2, y + size / 2, cell * 0.22, 0, Math.PI * 2);
   ctx.fill();
