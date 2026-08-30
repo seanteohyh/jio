@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Button, ErrorNote } from "./ui";
-import { computeFingerprint, FINGERPRINT_DOT } from "@/lib/placeFingerprint";
 
 /** One row of the top-3 vote breakdown — CHANGES_20260819c.md §3. */
 export interface ShareResultStanding {
@@ -174,49 +173,6 @@ function roundRect(
 }
 
 /**
- * Draws the shared generative place fingerprint (see
- * `lib/placeFingerprint.ts` for the hash/grid/tone it's built from — the
- * same computation `PlaceFingerprint` renders as inline SVG everywhere else
- * a place is shown) onto the ticket's canvas. Drawn low-opacity here, as a
- * watermark rather than a loud graphic — the one surface where that's the
- * right treatment, since it sits on top of the ticket's own header rather
- * than occupying its own dedicated slot.
- */
-function drawPlaceFingerprint(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  size: number,
-  seed: string
-) {
-  const { cells, tone } = computeFingerprint(seed);
-  const cols = cells.length;
-  const cell = size / cols;
-
-  ctx.save();
-  // Deliberately more opaque than the logo watermark's 0.14 — that mark is
-  // a recognisable brand shape that reads fine barely-there, but this
-  // pattern's whole point is a perceptible hue distinguishing one place
-  // from another. At the logo's low alpha every tone desaturates toward
-  // the cream card and reads as plain grey, silently defeating the feature.
-  ctx.globalAlpha = 0.34;
-  ctx.fillStyle = tone;
-  for (let col = 0; col < cols; col++) {
-    for (let row = 0; row < cols; row++) {
-      if (cells[col][row]) {
-        ctx.fillRect(x + col * cell, y + row * cell, cell, cell);
-      }
-    }
-  }
-  // The grounded centre dot — always present, never hash-driven.
-  ctx.fillStyle = FINGERPRINT_DOT;
-  ctx.beginPath();
-  ctx.arc(x + size / 2, y + size / 2, cell * 0.22, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
-}
-
-/**
  * The real brand mark (`public/logo.svg`), cached once at module scope so
  * repeated draws (every prop change re-renders the canvas) don't re-fetch
  * it. Loading is asynchronous; `draw()` below draws everything else
@@ -288,13 +244,6 @@ function draw(
       logoSize
     );
     ctx.restore();
-  }
-
-  // The winning place's own generative fingerprint, bookending the header
-  // opposite the brand mark — a unique, deterministic pattern rather than
-  // a repeat of the same logo in both corners.
-  if (placeName) {
-    drawPlaceFingerprint(ctx, pad / 2, pad - 8, 64, placeName);
   }
 
   let y = pad + 40;

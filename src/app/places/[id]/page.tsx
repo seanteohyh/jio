@@ -30,7 +30,6 @@ import {
   socialsLabel,
 } from "@/lib/utils";
 import SocialsIcon from "@/components/SocialsIcon";
-import PlaceFingerprint from "@/components/PlaceFingerprint";
 import { DEFAULT_FILTERS, MAX_WALK_MINUTES } from "@/components/FilterBar";
 import { walkTimeVisibilityNotice } from "@/lib/walkTimeNotice";
 import type { AuthUser, FlagReason, Place, Visit } from "@/types";
@@ -331,21 +330,10 @@ export default function PlaceDetailPage({
   return (
     <div className="space-y-5">
       <header>
-        <div className="flex items-start gap-3">
-          <PlaceFingerprint
-            name={place.name}
-            size={56}
-            className="border-line mt-0.5 shrink-0 rounded-xl border"
-          />
-          <div className="min-w-0">
-            <h1 className="text-2xl font-semibold tracking-tight">
-              {place.name}
-            </h1>
-            {place.address && (
-              <p className="text-stone mt-1 text-sm">{place.address}</p>
-            )}
-          </div>
-        </div>
+        <h1 className="text-2xl font-semibold tracking-tight">{place.name}</h1>
+        {place.address && (
+          <p className="text-stone mt-1 text-sm">{place.address}</p>
+        )}
 
         <div className="text-stone mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
           {typeof place.walk_minutes === "number" && (

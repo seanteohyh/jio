@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { ArrowRightIcon, KakiIcon, WalkIcon } from "@/components/icons";
 import { BudgetBadge, Stars, TintPill } from "./ui";
-import PlaceFingerprint from "./PlaceFingerprint";
 import { cn, formatCuisine } from "@/lib/utils";
 import type { Place } from "@/types";
 
@@ -35,11 +34,6 @@ export default function PlaceCard({
       )}
     >
       <div className="flex items-start gap-3">
-        <PlaceFingerprint
-          name={place.name}
-          size={compact ? 32 : 44}
-          className="border-line shrink-0 rounded-lg border"
-        />
         {typeof rank === "number" && (
           <span className="bg-ember-tint text-ember mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold">
             {rank}
