@@ -56,37 +56,42 @@ export function HomeIcon(props: IconProps) {
 }
 
 /**
- * Nav: Jios. A serving-dome/bell shape — a Jio is a shared meal called
- * together, not an entry on a calendar. Corrected to match the finalized
- * visual spec's reference sheet exactly. The signature dot is grounded as
- * the dome's own finial, on a short stem rising straight out of its peak.
+ * Nav: Jios. A hawker-stall noodle bowl with chopsticks resting on the
+ * rim — replacing the earlier serving-dome shape, which at nav size read
+ * as a bell clapper (notification), not "let's eat." Also on-brand with
+ * the hawker-chit ticket and kopitiam references elsewhere in the app.
+ * The signature dot is grounded as a grain of food sitting inside the bowl.
  */
 export function JiosIcon(props: IconProps) {
   return (
     <Svg {...props}>
-      <path d="M6.5 15h11" />
-      <path d="M8 15Q8 8 12 8Q16 8 16 15" />
-      <path d="M12 8V6.3" />
-      <circle cx="12" cy="5.6" r="1" fill="currentColor" stroke="none" />
+      <path d="M4.5 10.5h15" />
+      <path d="M4.5 10.5c0 4.8 3.2 6.7 7.5 6.7s7.5-1.9 7.5-6.7" />
+      <path d="M7 9L17.5 5" />
+      <path d="M8.4 10.3L18.5 6.5" />
+      <circle cx="12" cy="13.6" r="1" fill="currentColor" stroke="none" />
     </Svg>
   );
 }
 
 /**
  * Nav: Kaki, and any other "a group of people" context (InvitePicker's
- * group rows, PlaceCard's Kaki-favourite count). Three overlapping
- * pebbles — the brand mark's own stated meaning, "teammates gathering,"
- * matching JioMark's own three-pebble arrangement rather than a pair.
- * Corrected to three per the finalized visual spec's reference sheet. The
- * signature dot sits grounded at the exact point all three circles meet.
+ * group rows, PlaceCard's Kaki-favourite count). A round table seen from
+ * above, three seats around it — replacing the earlier three-overlapping-
+ * circles mark, which read as an abstract Venn diagram rather than
+ * anything human. Ties Kaki to exactly what it means in this app: the
+ * people you regularly sit down to eat with, not just "friends" in the
+ * abstract. The signature dot is grounded as the shared dish at the
+ * table's own centre.
  */
 export function KakiIcon(props: IconProps) {
   return (
     <Svg {...props}>
-      <circle cx="9" cy="9.6" r="4.3" />
-      <circle cx="15" cy="9.6" r="4.3" />
-      <circle cx="12" cy="15.2" r="4.3" />
-      <circle cx="12" cy="11.3" r="1" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="13" r="5" />
+      <path d="M9.7 6.3a2.4 1.7 0 0 1 4.6 0" />
+      <path d="M9.7 6.3a2.4 1.7 0 0 1 4.6 0" transform="rotate(120 12 13)" />
+      <path d="M9.7 6.3a2.4 1.7 0 0 1 4.6 0" transform="rotate(240 12 13)" />
+      <circle cx="12" cy="13" r="1" fill="currentColor" stroke="none" />
     </Svg>
   );
 }
