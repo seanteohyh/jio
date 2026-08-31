@@ -827,6 +827,18 @@ export const demoRepo: Repo = {
     return office;
   },
 
+  async updateOffice(id, patch) {
+    const office = store().offices.find((o) => o.id === id);
+    if (!office) throw new Error("That office does not exist");
+    Object.assign(office, patch);
+    return office;
+  },
+
+  async deleteOffice(id) {
+    const s = store();
+    s.offices = s.offices.filter((o) => o.id !== id);
+  },
+
   // ---- User preferences ----
 
   async getUserPrefs(userId) {

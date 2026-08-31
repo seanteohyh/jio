@@ -816,6 +816,25 @@ export const supabaseRepo: Repo = {
     return row as Office;
   },
 
+  async updateOffice(id, patch) {
+    const client = await db();
+    const { data: row, error } = await client
+      .from("offices")
+      .update(patch)
+      .eq("id", id)
+      .select()
+      .single();
+
+    if (error) fail("Could not update that office", error);
+    return row as Office;
+  },
+
+  async deleteOffice(id) {
+    const client = await db();
+    const { error } = await client.from("offices").delete().eq("id", id);
+    if (error) fail("Could not delete that office", error);
+  },
+
   // ---- User preferences ----
 
   async getUserPrefs(userId) {
