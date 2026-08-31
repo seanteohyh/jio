@@ -551,18 +551,29 @@ export default function EventDetailPage({
     run(() => mutateJson(`/api/events/${id}/cancel`, "POST"));
   };
 
-  // One-way — reveals a hidden-vote Jio's running standing early. There's
-  // no putting it back behind the blind once people have seen it, so this
-  // never turns hide_votes back on.
-  const revealVotes = () => {
+  // Toggles hide_votes after the fact — works either direction, since
+  // anyone can still revote even if the standing was briefly visible
+  // before the host hid it. `hide_votes` itself can't be set at all for a
+  // recurring Jio's occurrences (no creation-time form of their own), so
+  // this is the only way a host ever hides one of those.
+  const setHideVotes = (hide: boolean) => {
     if (
+      hide &&
       !window.confirm(
-        "Reveal the votes now? Everyone will be able to see the running standing — this can't be undone."
+        "Hide the votes now? Nobody, including you, will see the running standing until this Jio closes."
       )
     ) {
       return;
     }
-    run(() => mutateJson(`/api/events/${id}`, "PATCH", { reveal_votes: true }));
+    if (
+      !hide &&
+      !window.confirm(
+        "Reveal the votes now? Everyone will be able to see the running standing right away."
+      )
+    ) {
+      return;
+    }
+    run(() => mutateJson(`/api/events/${id}`, "PATCH", { hide_votes: hide }));
   };
 
   // Undoes a close. Existing ballots are left as-is — see reopenEvent's
@@ -1571,20 +1582,39 @@ export default function EventDetailPage({
             </Button>
           )}
 
-          {isOpen && Boolean(event.hide_votes) && (
+          {isOpen && (
             <div className="border-line space-y-2 border-t pt-3">
-              <p className="text-stone text-xs">
-                Votes are hidden until this Jio closes. Reveal the running
-                standing now instead — this can't be undone.
-              </p>
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={revealVotes}
-                disabled={busy}
-              >
-                Reveal votes now
-              </Button>
+              {event.hide_votes ? (
+                <>
+                  <p className="text-stone text-xs">
+                    Votes are hidden until this Jio closes. Reveal the
+                    running standing now instead.
+                  </p>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => setHideVotes(false)}
+                    disabled={busy}
+                  >
+                    Reveal votes now
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <p className="text-stone text-xs">
+                    The running standing is visible to everyone. Hide it
+                    until this Jio closes instead.
+                  </p>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => setHideVotes(true)}
+                    disabled={busy}
+                  >
+                    Hide votes
+                  </Button>
+                </>
+              )}
             </div>
           )}
 
