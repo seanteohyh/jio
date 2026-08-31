@@ -254,8 +254,27 @@ async function searchOneMap(searchVal: string): Promise<GeocodeResult | null> {
   };
 }
 
-/** Matches a bare 6-digit Singapore postal code anywhere in the input. */
-const POSTAL_CODE_RE = /\b\d{6}\b/;
+/** Matches a 6-digit Singapore postal code, optionally prefixed with a
+ *  leading "S" directly against the digits (the common "S018981" display
+ *  notation, no space) — see `extractPostalCode`'s own doc comment for why
+ *  that prefix needs its own handling. */
+const POSTAL_CODE_RE = /\bS?(\d{6})\b/i;
+
+/**
+ * Pulls a bare 6-digit Singapore postal code out of a free-form address, or
+ * `null` if none is present. Exported and tested on its own (unlike the
+ * network-calling functions below, which this file leaves untested by
+ * existing convention) because it's a real, previously-silent bug surface:
+ * a plain `\b\d{6}\b` misses the common "S018981" notation entirely — S and
+ * the first digit are both word characters, so there's no `\b` boundary
+ * between them for the regex to anchor on, and the whole match fails
+ * without a hint. Always returns the bare digits, never the S prefix —
+ * OneMap's index wants the plain code, not the display form.
+ */
+export function extractPostalCode(input: string): string | null {
+  const match = input.match(POSTAL_CODE_RE);
+  return match ? match[1] : null;
+}
 
 /**
  * Turns an address or postal code into coordinates, so adding a place never
@@ -281,9 +300,9 @@ export async function geocodeAddress(query: string): Promise<GeocodeResult | nul
   if (!trimmed) return null;
 
   try {
-    const postalMatch = trimmed.match(POSTAL_CODE_RE);
-    if (postalMatch) {
-      const byPostal = await searchOneMap(postalMatch[0]);
+    const postalCode = extractPostalCode(trimmed);
+    if (postalCode) {
+      const byPostal = await searchOneMap(postalCode);
       if (byPostal) return byPostal;
     }
 
