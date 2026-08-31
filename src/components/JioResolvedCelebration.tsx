@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, type CSSProperties } from "react";
 import JioMark from "@/components/brand/JioMark";
 import { Button } from "@/components/ui";
 
@@ -20,18 +20,19 @@ import { Button } from "@/components/ui";
  * back to the Jio itself rather than a backdrop tap or auto-dismiss timer.
  *
  * Three loose pebbles converge from scattered positions onto the exact spot
- * JioMark's own three pebbles sit at, then the real mark fades in over them
- * so the resting state is the authentic brand mark rather than an
- * approximation staying on screen. The backdrop is a tan/coffee-toned disc
- * — a scoped, documented exception to "colours are fixed, never recoloured
- * independently" (JioMark.tsx's own rule): true espresso-on-espresso is
- * invisible against this backdrop, and a lighter cream tested as too
- * washed-out, so the centre disc drawn *underneath* the settling mark
- * (never JioMark.tsx itself, which stays untouched) uses a lighter warm tan
- * instead, purely for the duration this splash is on screen. Sized to match
- * JioMark's own centre-dot proportions almost exactly (a real earlier bug:
- * an arbitrarily bigger stand-in disc left two visibly different-sized
- * circles on screen once the real, much smaller dot faded in on top of it).
+ * JioMark's own three pebbles sit at, then the real mark's centre dot
+ * resolves in a lighter warm tan — a scoped, documented exception to
+ * "colours are fixed, never recoloured independently" (JioMark.tsx's own
+ * rule): true espresso-on-espresso is invisible against this backdrop, and
+ * a lighter cream tested as too washed-out. Done via a local override of
+ * the `--color-espresso` CSS variable on the wrapper around this one
+ * `JioMark` usage (its centre-dot path reads `fill="var(--color-espresso,
+ * ...)"`, so the override cascades straight to it) rather than a separate
+ * stand-in disc drawn underneath — a stand-in disc sized to match the real
+ * dot is always fully hidden by it once JioMark paints on top, and sized
+ * bigger than the real dot it just leaves a visible ring around it. Nothing
+ * in JioMark.tsx itself changes, and no other `JioMark` usage is affected —
+ * the override is scoped to this component's own DOM subtree.
  */
 export default function JioResolvedCelebration({
   placeName,
@@ -67,17 +68,11 @@ export default function JioResolvedCelebration({
             "radial-gradient(circle at 50% 38%, #5c4a3a 0%, #3d342c 55%, #2b241e 100%)",
         }}
       >
-        <div className="relative mx-auto h-28 w-28" aria-hidden="true">
-          {/* The recoloured stand-in disc — see the exception noted above.
-              inset-[44%] matches JioMark's own centre-dot width almost
-              exactly (measured directly off a rendered screenshot, not
-              just the SVG path's bounding box — the two didn't quite agree)
-              — anything bigger leaves a visible ring of tan around the real
-              dot once it settles on top. */}
-          <div
-            className="animate-mark-settle absolute inset-[44%] rounded-full"
-            style={{ background: "#c9ab84" }}
-          />
+        <div
+          className="relative mx-auto h-28 w-28"
+          style={{ "--color-espresso": "#c9ab84" } as CSSProperties}
+          aria-hidden="true"
+        >
           {[1, 2, 3].map((n) => (
             <div
               key={n}
