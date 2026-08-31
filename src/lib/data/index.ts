@@ -532,6 +532,19 @@ export interface Repo {
    */
   reopenEvent(eventId: string, hostId: string): Promise<EventDetail>;
   /**
+   * Reveals a hidden-vote Jio's running standing early — host-only,
+   * one-way (there's no putting the standing back behind the blind once
+   * people have seen it, so this only ever turns `hide_votes` off, never
+   * back on). `hide_votes` itself was "set only at creation, never
+   * editable after" (034_hidden_votes.sql) until a real host asked for
+   * exactly this: closing a recurring Jio's poll early once it's obvious
+   * enough, without waiting for `tallyIsHidden` to fall away on its own by
+   * closing the whole Jio. A plain column update gated by `host_id`, same
+   * as `editEventWinner` — not a status-class field needing its own
+   * `SECURITY DEFINER` function the way `cancelled`/reopen do.
+   */
+  revealVotes(eventId: string, hostId: string): Promise<EventDetail>;
+  /**
    * CHANGES_20260821_combined.md Part 2 — closes this Jio itself, no host
    * action required, once every participant (`resolveEventParticipants`:
    * host, kaki members, invitees) has RSVP'd `yes` or `no` — `maybe` does
@@ -956,6 +969,7 @@ export const REPO_METHODS = [
   "rescheduleEvent",
   "editEventWinner",
   "reopenEvent",
+  "revealVotes",
   "maybeAutoCloseEvent",
   "createRecurringSeries",
   "listRecurringSeries",

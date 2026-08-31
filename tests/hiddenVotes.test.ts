@@ -1,6 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { redactHiddenVotes, tallyIsHidden } from "@/lib/voting";
 import type { EventDetail, EventVote } from "@/types";
+import { demoRepo, resetDemoStore } from "@/lib/data/demoRepo";
+import { DEFAULT_OFFICE, DEMO_USER_ID } from "@/lib/constants";
+import { DEMO_TEAMMATE_A } from "@/lib/data/demoData";
 
 /**
  * CHANGES_20260803_1.md §14 — a hidden-vote Jio blinds the running standing
@@ -109,5 +112,79 @@ describe("redactHiddenVotes", () => {
     });
 
     expect(redactHiddenVotes(e).voter_count).toBe(1);
+  });
+});
+
+/**
+ * A real host asked for this: closing a hidden-vote Jio's blind early,
+ * without waiting for `tallyIsHidden` to fall away on its own by closing
+ * the whole Jio. One-way only — there's no putting the standing back
+ * behind the blind once people have seen it, so `revealVotes` only ever
+ * turns `hide_votes` off, never back on.
+ */
+describe("revealVotes", () => {
+  const TOMORROW = new Date(Date.now() + 86400000).toISOString();
+
+  beforeEach(() => {
+    resetDemoStore();
+  });
+
+  async function makeHiddenEvent() {
+    return demoRepo.createEvent(
+      DEMO_USER_ID,
+      "Test lunch",
+      TOMORROW,
+      DEFAULT_OFFICE.id,
+      ["demo-place-01"],
+      null,
+      [],
+      true
+    );
+  }
+
+  it("lets the host reveal a hidden Jio's votes", async () => {
+    const created = await makeHiddenEvent();
+    expect(created.hide_votes).toBe(true);
+
+    const updated = await demoRepo.revealVotes(created.id, DEMO_USER_ID);
+    expect(updated.hide_votes).toBe(false);
+    expect(tallyIsHidden(updated)).toBe(false);
+  });
+
+  it("refuses anyone but the host", async () => {
+    const created = await makeHiddenEvent();
+    await expect(
+      demoRepo.revealVotes(created.id, DEMO_TEAMMATE_A)
+    ).rejects.toThrow();
+  });
+
+  it("refuses a Jio that was never hiding its votes", async () => {
+    const created = await demoRepo.createEvent(
+      DEMO_USER_ID,
+      "Open lunch",
+      TOMORROW,
+      DEFAULT_OFFICE.id,
+      ["demo-place-01"],
+      null,
+      [],
+      false
+    );
+    await expect(
+      demoRepo.revealVotes(created.id, DEMO_USER_ID)
+    ).rejects.toThrow();
+  });
+
+  it("actually surfaces votes and tally once revealed", async () => {
+    const created = await makeHiddenEvent();
+    await demoRepo.castBallot(created.id, DEMO_TEAMMATE_A, ["demo-place-01"]);
+
+    const hiddenDetail = await demoRepo.getEvent(created.id);
+    const hiddenView = redactHiddenVotes(hiddenDetail!);
+    expect(hiddenView.votes).toEqual([]);
+
+    await demoRepo.revealVotes(created.id, DEMO_USER_ID);
+    const revealedDetail = await demoRepo.getEvent(created.id);
+    const revealedView = redactHiddenVotes(revealedDetail!);
+    expect(revealedView.votes.length).toBeGreaterThan(0);
   });
 });

@@ -1956,6 +1956,26 @@ export const demoRepo: Repo = {
     return detail;
   },
 
+  async revealVotes(eventId, hostId) {
+    const s = store();
+    const index = s.events.findIndex((e) => e.id === eventId);
+    if (index === -1) throw new Error("Event not found");
+    const event = s.events[index];
+
+    if (event.host_id !== hostId) {
+      throw new Error("Only the host can reveal the votes");
+    }
+    if (!event.hide_votes) {
+      throw new Error("This Jio's votes aren't hidden");
+    }
+
+    s.events[index] = { ...event, hide_votes: false };
+
+    const detail = await demoRepo.getEvent(eventId);
+    if (!detail) throw new Error("Event vanished while revealing votes");
+    return detail;
+  },
+
   async reopenEvent(eventId, hostId) {
     const s = store();
     const index = s.events.findIndex((e) => e.id === eventId);
