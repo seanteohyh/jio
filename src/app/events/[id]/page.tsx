@@ -175,6 +175,11 @@ export default function EventDetailPage({
       setShowDecidedCelebration(true);
     }
   }, [data]);
+  // The splash's own "Continue" dismissal — separate from the state above,
+  // which must stay latched true (it is also the announce effect's own
+  // trigger below); this just controls whether the full-screen overlay is
+  // still covering the page underneath.
+  const [celebrationDismissed, setCelebrationDismissed] = useState(false);
 
   // UX review log #4 — announces the same milestone #25's celebration
   // shows visually, riding its generalized trigger rather than the old
@@ -666,9 +671,10 @@ export default function EventDetailPage({
         </Card>
       )}
 
-      {!isOpen && !isCancelled && showDecidedCelebration && (
+      {!isOpen && !isCancelled && showDecidedCelebration && !celebrationDismissed && (
         <JioResolvedCelebration
           placeName={event.winner_place_name ?? event.winner_label ?? "Somewhere good"}
+          onContinue={() => setCelebrationDismissed(true)}
         />
       )}
 
