@@ -116,20 +116,20 @@ describe("redactHiddenVotes", () => {
 });
 
 /**
- * A real host asked for this: closing a hidden-vote Jio's blind early,
- * without waiting for `tallyIsHidden` to fall away on its own by closing
- * the whole Jio. One-way only — there's no putting the standing back
- * behind the blind once people have seen it, so `revealVotes` only ever
- * turns `hide_votes` off, never back on.
+ * A real host asked for this: a recurring Jio's occurrences are generated
+ * with no creation-time form of their own (`generateDueOccurrences`), so
+ * they can never start hidden — the only way to hide one is after the
+ * fact. Works either direction; hiding even once some votes are already
+ * visible is fine, since anyone can still revote.
  */
-describe("revealVotes", () => {
+describe("setHideVotes", () => {
   const TOMORROW = new Date(Date.now() + 86400000).toISOString();
 
   beforeEach(() => {
     resetDemoStore();
   });
 
-  async function makeHiddenEvent() {
+  async function makeEvent(hideVotes: boolean) {
     return demoRepo.createEvent(
       DEMO_USER_ID,
       "Test lunch",
@@ -138,51 +138,64 @@ describe("revealVotes", () => {
       ["demo-place-01"],
       null,
       [],
-      true
+      hideVotes
     );
   }
 
+  it("lets the host hide an open Jio's votes", async () => {
+    const created = await makeEvent(false);
+    expect(created.hide_votes).toBe(false);
+
+    const updated = await demoRepo.setHideVotes(created.id, DEMO_USER_ID, true);
+    expect(updated.hide_votes).toBe(true);
+    expect(tallyIsHidden(updated)).toBe(true);
+  });
+
   it("lets the host reveal a hidden Jio's votes", async () => {
-    const created = await makeHiddenEvent();
+    const created = await makeEvent(true);
     expect(created.hide_votes).toBe(true);
 
-    const updated = await demoRepo.revealVotes(created.id, DEMO_USER_ID);
+    const updated = await demoRepo.setHideVotes(created.id, DEMO_USER_ID, false);
     expect(updated.hide_votes).toBe(false);
     expect(tallyIsHidden(updated)).toBe(false);
   });
 
   it("refuses anyone but the host", async () => {
-    const created = await makeHiddenEvent();
+    const created = await makeEvent(false);
     await expect(
-      demoRepo.revealVotes(created.id, DEMO_TEAMMATE_A)
+      demoRepo.setHideVotes(created.id, DEMO_TEAMMATE_A, true)
     ).rejects.toThrow();
   });
 
-  it("refuses a Jio that was never hiding its votes", async () => {
-    const created = await demoRepo.createEvent(
-      DEMO_USER_ID,
-      "Open lunch",
-      TOMORROW,
-      DEFAULT_OFFICE.id,
-      ["demo-place-01"],
-      null,
-      [],
-      false
-    );
+  it("refuses once the Jio isn't open", async () => {
+    const created = await makeEvent(false);
+    await demoRepo.closeEvent(created.id, DEMO_USER_ID, "demo-place-01");
     await expect(
-      demoRepo.revealVotes(created.id, DEMO_USER_ID)
+      demoRepo.setHideVotes(created.id, DEMO_USER_ID, true)
     ).rejects.toThrow();
+  });
+
+  it("hiding after some votes are already visible still blinds the standing", async () => {
+    const created = await makeEvent(false);
+    await demoRepo.castBallot(created.id, DEMO_TEAMMATE_A, ["demo-place-01"]);
+
+    const openDetail = await demoRepo.getEvent(created.id);
+    expect(redactHiddenVotes(openDetail!).votes.length).toBeGreaterThan(0);
+
+    await demoRepo.setHideVotes(created.id, DEMO_USER_ID, true);
+    const hiddenDetail = await demoRepo.getEvent(created.id);
+    expect(redactHiddenVotes(hiddenDetail!).votes).toEqual([]);
   });
 
   it("actually surfaces votes and tally once revealed", async () => {
-    const created = await makeHiddenEvent();
+    const created = await makeEvent(true);
     await demoRepo.castBallot(created.id, DEMO_TEAMMATE_A, ["demo-place-01"]);
 
     const hiddenDetail = await demoRepo.getEvent(created.id);
     const hiddenView = redactHiddenVotes(hiddenDetail!);
     expect(hiddenView.votes).toEqual([]);
 
-    await demoRepo.revealVotes(created.id, DEMO_USER_ID);
+    await demoRepo.setHideVotes(created.id, DEMO_USER_ID, false);
     const revealedDetail = await demoRepo.getEvent(created.id);
     const revealedView = redactHiddenVotes(revealedDetail!);
     expect(revealedView.votes.length).toBeGreaterThan(0);

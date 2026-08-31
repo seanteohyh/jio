@@ -112,9 +112,9 @@ export async function GET(_request: NextRequest, { params }: Params) {
 /**
  * CHANGES_20260819c.md §1/§2 — host-only corrections, sharing one route since
  * they live on the same page: "Change date & time" (any time except once
- * cancelled), "Where did you actually go?" (once closed only), and revealing
- * a hidden-vote Jio's standing early (`reveal_votes`, one-way — see
- * `revealVotes`'s own doc comment in src/lib/data/index.ts). Any of the
+ * cancelled), "Where did you actually go?" (once closed only), and toggling
+ * a Jio's hidden-vote setting after the fact (`hide_votes` — see
+ * `setHideVotes`'s own doc comment in src/lib/data/index.ts). Any of the
  * three may be sent alone or together.
  */
 export async function PATCH(request: NextRequest, { params }: Params) {
@@ -128,10 +128,14 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     const body = await readJson<{
       scheduled_at?: string;
       winner_place_id?: string;
-      reveal_votes?: boolean;
+      hide_votes?: boolean;
     }>(request);
     if (!body) return badRequest("Expected a JSON body");
-    if (!body.scheduled_at && !body.winner_place_id && !body.reveal_votes) {
+    if (
+      !body.scheduled_at &&
+      !body.winner_place_id &&
+      typeof body.hide_votes !== "boolean"
+    ) {
       return badRequest("Nothing to update");
     }
 
@@ -145,8 +149,8 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     if (body.winner_place_id) {
       await repo.editEventWinner(id, user.id, body.winner_place_id);
     }
-    if (body.reveal_votes) {
-      await repo.revealVotes(id, user.id);
+    if (typeof body.hide_votes === "boolean") {
+      await repo.setHideVotes(id, user.id, body.hide_votes);
     }
 
     const event = await repo.getEvent(id);

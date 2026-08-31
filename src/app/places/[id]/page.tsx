@@ -755,7 +755,7 @@ export default function PlaceDetailPage({
                       </div>
                       <Stars rating={review.rating} />
                       {review.best_dishes.length > 0 && (
-                        <p className="mt-1 text-sm">
+                        <p className="text-stone mt-1 text-sm">
                           <span className="font-medium">Recos:</span>{" "}
                           {review.best_dishes.join(", ")}
                         </p>

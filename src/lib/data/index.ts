@@ -532,18 +532,24 @@ export interface Repo {
    */
   reopenEvent(eventId: string, hostId: string): Promise<EventDetail>;
   /**
-   * Reveals a hidden-vote Jio's running standing early — host-only,
-   * one-way (there's no putting the standing back behind the blind once
-   * people have seen it, so this only ever turns `hide_votes` off, never
-   * back on). `hide_votes` itself was "set only at creation, never
-   * editable after" (034_hidden_votes.sql) until a real host asked for
-   * exactly this: closing a recurring Jio's poll early once it's obvious
-   * enough, without waiting for `tallyIsHidden` to fall away on its own by
-   * closing the whole Jio. A plain column update gated by `host_id`, same
-   * as `editEventWinner` — not a status-class field needing its own
+   * Toggles a Jio's hidden-vote setting after the fact — host-only, while
+   * still `open` (there's nothing left to hide or reveal once closed;
+   * `tallyIsHidden` already ignores `hide_votes` past that point). `hide_
+   * votes` itself was "set only at creation, never editable after"
+   * (034_hidden_votes.sql) until a real host asked for exactly this: a
+   * recurring Jio's occurrences are generated with no creation-time form
+   * of their own (`generateDueOccurrences`) and so can never start
+   * hidden, only after the fact. Works either direction — turning hiding
+   * on even once some votes are already visible is fine, since anyone can
+   * still revote — a plain column update gated by `host_id`, same as
+   * `editEventWinner`, not a status-class field needing its own
    * `SECURITY DEFINER` function the way `cancelled`/reopen do.
    */
-  revealVotes(eventId: string, hostId: string): Promise<EventDetail>;
+  setHideVotes(
+    eventId: string,
+    hostId: string,
+    hideVotes: boolean
+  ): Promise<EventDetail>;
   /**
    * CHANGES_20260821_combined.md Part 2 — closes this Jio itself, no host
    * action required, once every participant (`resolveEventParticipants`:
@@ -969,7 +975,7 @@ export const REPO_METHODS = [
   "rescheduleEvent",
   "editEventWinner",
   "reopenEvent",
-  "revealVotes",
+  "setHideVotes",
   "maybeAutoCloseEvent",
   "createRecurringSeries",
   "listRecurringSeries",
