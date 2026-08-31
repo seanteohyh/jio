@@ -754,13 +754,14 @@ export default function PlaceDetailPage({
                         </span>
                       </div>
                       <Stars rating={review.rating} />
+                      {review.best_dishes.length > 0 && (
+                        <p className="mt-1 text-sm">
+                          <span className="font-medium">Recos:</span>{" "}
+                          {review.best_dishes.join(", ")}
+                        </p>
+                      )}
                       {review.notes && (
                         <p className="mt-1 text-sm whitespace-pre-wrap">{review.notes}</p>
-                      )}
-                      {review.best_dishes.length > 0 && (
-                        <p className="text-stone mt-1 text-xs">
-                          Had: {review.best_dishes.join(", ")}
-                        </p>
                       )}
                       <div className="mt-1.5 flex items-center gap-3">
                         <button

@@ -551,6 +551,20 @@ export default function EventDetailPage({
     run(() => mutateJson(`/api/events/${id}/cancel`, "POST"));
   };
 
+  // One-way — reveals a hidden-vote Jio's running standing early. There's
+  // no putting it back behind the blind once people have seen it, so this
+  // never turns hide_votes back on.
+  const revealVotes = () => {
+    if (
+      !window.confirm(
+        "Reveal the votes now? Everyone will be able to see the running standing — this can't be undone."
+      )
+    ) {
+      return;
+    }
+    run(() => mutateJson(`/api/events/${id}`, "PATCH", { reveal_votes: true }));
+  };
+
   // Undoes a close. Existing ballots are left as-is — see reopenEvent's
   // doc comment in src/lib/data/index.ts.
   const reopenVoting = () => {
@@ -1555,6 +1569,23 @@ export default function EventDetailPage({
             >
               Change date &amp; time
             </Button>
+          )}
+
+          {isOpen && Boolean(event.hide_votes) && (
+            <div className="border-line space-y-2 border-t pt-3">
+              <p className="text-stone text-xs">
+                Votes are hidden until this Jio closes. Reveal the running
+                standing now instead — this can't be undone.
+              </p>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={revealVotes}
+                disabled={busy}
+              >
+                Reveal votes now
+              </Button>
+            </div>
           )}
 
           {!isOpen && (

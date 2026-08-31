@@ -2479,6 +2479,32 @@ export const supabaseRepo: Repo = {
     return detail;
   },
 
+  async revealVotes(eventId, hostId) {
+    const client = await db();
+
+    const { data: eventRow } = await client
+      .from("lunch_events")
+      .select("hide_votes")
+      .eq("id", eventId)
+      .maybeSingle();
+    if (!eventRow) throw new Error("Event not found");
+    if (!(eventRow as { hide_votes: boolean }).hide_votes) {
+      throw new Error("This Jio's votes aren't hidden");
+    }
+
+    const { error, count } = await client
+      .from("lunch_events")
+      .update({ hide_votes: false })
+      .eq("id", eventId)
+      .eq("host_id", hostId);
+    if (error) fail("Could not reveal the votes", error);
+    if (count === 0) throw new Error("Only the host can reveal the votes");
+
+    const detail = await supabaseRepo.getEvent(eventId);
+    if (!detail) throw new Error("Event vanished while revealing votes");
+    return detail;
+  },
+
   async reopenEvent(eventId, _hostId) {
     const client = await db();
     const { error } = await client.rpc("reopen_event", {

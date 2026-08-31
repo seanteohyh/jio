@@ -112,8 +112,10 @@ export async function GET(_request: NextRequest, { params }: Params) {
 /**
  * CHANGES_20260819c.md §1/§2 — host-only corrections, sharing one route since
  * they live on the same page: "Change date & time" (any time except once
- * cancelled) and "Where did you actually go?" (once closed only). Either
- * field may be sent alone or both together.
+ * cancelled), "Where did you actually go?" (once closed only), and revealing
+ * a hidden-vote Jio's standing early (`reveal_votes`, one-way — see
+ * `revealVotes`'s own doc comment in src/lib/data/index.ts). Any of the
+ * three may be sent alone or together.
  */
 export async function PATCH(request: NextRequest, { params }: Params) {
   const blocked = featureGate("events");
@@ -126,9 +128,10 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     const body = await readJson<{
       scheduled_at?: string;
       winner_place_id?: string;
+      reveal_votes?: boolean;
     }>(request);
     if (!body) return badRequest("Expected a JSON body");
-    if (!body.scheduled_at && !body.winner_place_id) {
+    if (!body.scheduled_at && !body.winner_place_id && !body.reveal_votes) {
       return badRequest("Nothing to update");
     }
 
@@ -141,6 +144,9 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     }
     if (body.winner_place_id) {
       await repo.editEventWinner(id, user.id, body.winner_place_id);
+    }
+    if (body.reveal_votes) {
+      await repo.revealVotes(id, user.id);
     }
 
     const event = await repo.getEvent(id);
