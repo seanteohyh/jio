@@ -162,6 +162,19 @@ export interface Repo {
   upsertWalkCache(entries: WalkCacheEntry[]): Promise<void>;
   listOffices(): Promise<Office[]>;
   createOffice(data: Omit<Office, "id" | "created_at">): Promise<Office>;
+  /**
+   * Edits an office's name/address/coordinates in place — the only way to
+   * actually move "the" office once it's created, since every write path
+   * that needs an office and wasn't given one explicitly (a new Jio, a
+   * recurring series, `/api/route`'s default) falls back to the same fixed
+   * `DEFAULT_OFFICE.id`. Adding a second office row doesn't change what any
+   * of those default to; editing the existing one does.
+   */
+  updateOffice(
+    id: string,
+    patch: Partial<Omit<Office, "id" | "created_at">>
+  ): Promise<Office>;
+  deleteOffice(id: string): Promise<void>;
 
   // ---- User preferences ----
   getUserPrefs(userId: string): Promise<UserPrefs | null>;
@@ -900,6 +913,8 @@ export const REPO_METHODS = [
   "upsertWalkCache",
   "listOffices",
   "createOffice",
+  "updateOffice",
+  "deleteOffice",
   "getUserPrefs",
   "upsertUserPrefs",
   "getProfile",
