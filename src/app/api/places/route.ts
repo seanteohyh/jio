@@ -34,6 +34,19 @@ export async function GET(request: NextRequest) {
     const page = pageParam ? Math.max(1, numberParam(params, "page", 1)) : null;
     const limit = numberParam(params, "limit", PAGE_SIZE);
 
+    // Walk times default to the caller's own `user_prefs.default_office_id`
+    // — the same resolution /api/users already uses for its office-scoped
+    // discovery — rather than the fixed DEFAULT_OFFICE, so someone who set
+    // a different office on their Profile page actually sees distances
+    // measured from it, matching that field's own "Walking times are
+    // measured from here" hint. An explicit `?officeId=` still wins over
+    // both, same as before this fix.
+    let defaultOfficeId: string = DEFAULT_OFFICE.id;
+    if (isEnabled("offices")) {
+      const prefs = await repo.getUserPrefs(user.id);
+      if (prefs?.default_office_id) defaultOfficeId = prefs.default_office_id;
+    }
+
     const baseFilters: Omit<Filters, "sortBy"> = {
       cuisines: listParam(params, "cuisines"),
       budgetMin: numberParam(params, "budgetMin", 1) as BudgetTier,
@@ -41,7 +54,7 @@ export async function GET(request: NextRequest) {
       maxWalkMinutes: numberParam(params, "maxWalk", 60),
       status: (params.get("status") as PlaceStatus | "all") ?? "active",
       search: params.get("q") ?? "",
-      officeId: params.get("officeId") ?? DEFAULT_OFFICE.id,
+      officeId: params.get("officeId") ?? defaultOfficeId,
     };
 
     const sortBy = params.get("sortBy");
