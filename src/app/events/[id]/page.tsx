@@ -118,9 +118,31 @@ export default function EventDetailPage({
   const [winnerQuery, setWinnerQuery] = useState("");
   const [editingReminder, setEditingReminder] = useState(false);
 
+  // UX review log #25 — set for the duration of this account's own
+  // optimistic vote/RSVP mutation (submitBallot/sendRsvp below) so the
+  // realtime handler just below can skip its own redundant refetch during
+  // that exact window. Voting is what typically auto-closes a Jio, which
+  // is also one of the two tables (event_votes) this same realtime
+  // subscription listens on — the vote write itself fires the realtime
+  // notification near-instantly, well before the same request's own
+  // maybeAutoCloseEvent() has actually flipped the status. If that
+  // realtime-triggered fetch and this action's own post-write fetch land
+  // close enough together, React can batch the two resulting re-renders
+  // into one, and only the *last* one survives — sometimes the earlier,
+  // "closed + decidedCelebration: true" response, sometimes the earlier
+  // still-open one, depending on which happened to resolve last. Either
+  // way, this account's own action already re-fetches once the real write
+  // (including auto-close) has actually landed, so a second, independent
+  // refetch triggered by that same write's own realtime echo adds no new
+  // information — only a chance to race it out.
+  const ownMutationInFlight = useRef(false);
+
   // Live updates while people vote. Falls back silently if realtime is off.
   useEffect(() => {
-    return subscribeToEventChanges(id, () => mutate());
+    return subscribeToEventChanges(id, () => {
+      if (ownMutationInFlight.current) return;
+      mutate();
+    });
   }, [id, mutate]);
 
   // The resolved-vote moment: animate only on the actual open -> closed
@@ -309,6 +331,7 @@ export default function EventDetailPage({
     setActionError(null);
     setBusy(true);
     const wasOpen = data.event.status === "open";
+    ownMutationInFlight.current = true;
     mutate(
       mutateJson(`/api/events/${id}/vote`, "POST", {
         ranked_place_ids: ballot,
@@ -331,7 +354,10 @@ export default function EventDetailPage({
       .catch((err) =>
         setActionError(err instanceof Error ? err.message : "Something failed")
       )
-      .finally(() => setBusy(false));
+      .finally(() => {
+        setBusy(false);
+        ownMutationInFlight.current = false;
+      });
   };
 
   const sendRsvp = (response: RsvpResponse) => {
@@ -341,6 +367,7 @@ export default function EventDetailPage({
     setBusy(true);
     const delta =
       (data.viewer.myRsvp === "yes" ? -1 : 0) + (response === "yes" ? 1 : 0);
+    ownMutationInFlight.current = true;
     mutate(
       mutateJson(`/api/events/${id}/rsvp`, "POST", { response }).then(() =>
         fetcher<EventResponse>(`/api/events/${id}`)
@@ -370,7 +397,10 @@ export default function EventDetailPage({
       .catch((err) =>
         setActionError(err instanceof Error ? err.message : "Something failed")
       )
-      .finally(() => setBusy(false));
+      .finally(() => {
+        setBusy(false);
+        ownMutationInFlight.current = false;
+      });
   };
 
   const addOption = (placeId: string) =>
