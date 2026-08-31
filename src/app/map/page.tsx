@@ -11,7 +11,7 @@ import PlaceCard from "@/components/PlaceCard";
 import { Button, ErrorNote, Skeleton } from "@/components/ui";
 import { fetcher } from "@/lib/fetcher";
 import { DEFAULT_OFFICE } from "@/lib/constants";
-import type { Office, Place, WalkingRoute } from "@/types";
+import type { Office, Place, UserPrefs, WalkingRoute } from "@/types";
 
 export default function MapPage() {
   const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
@@ -36,8 +36,22 @@ export default function MapPage() {
     "/api/offices",
     fetcher
   );
+  const { data: prefsData } = useSWR<{ prefs: UserPrefs | null }>(
+    "/api/user-prefs",
+    fetcher
+  );
 
-  const office = officeData?.offices?.[0] ?? DEFAULT_OFFICE;
+  // Same resolution /api/places' walk-time filtering now uses server-side
+  // (this just needs the actual Office object too, for the header text and
+  // the walking-route "from" point) — the caller's own default_office_id
+  // first, then whichever office happens to be first in the list, then the
+  // fixed constant. Previously always used offices[0], so a Profile-page
+  // office change never showed up here even though it's already saved.
+  const defaultOfficeId = prefsData?.prefs?.default_office_id;
+  const office =
+    officeData?.offices?.find((o) => o.id === defaultOfficeId) ??
+    officeData?.offices?.[0] ??
+    DEFAULT_OFFICE;
   const places = data?.places ?? [];
 
   const showRoute = async (place: Place) => {

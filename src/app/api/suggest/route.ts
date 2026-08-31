@@ -24,20 +24,28 @@ export async function GET(request: NextRequest) {
 
     const mode = params.get("mode") ?? "personal";
     const kakiId = params.get("kakiId");
-    const officeId = params.get("officeId") ?? DEFAULT_OFFICE.id;
     const limit = numberParam(params, "limit", 12);
     const cuisines = listParam(params, "cuisines");
     const maxWalk = params.has("maxWalk")
       ? numberParam(params, "maxWalk", 20)
       : undefined;
 
-    const [{ places }, visits, prefs, wishlist, offices] = await Promise.all([
-      repo.listPlaces({ status: "active", officeId }),
+    const [visits, prefs, wishlist, offices] = await Promise.all([
       repo.listVisits(undefined, user.id),
       repo.getUserPrefs(user.id),
       isEnabled("wishlist") ? repo.listWishlist(user.id) : Promise.resolve([]),
       repo.listOffices(),
     ]);
+
+    // Same resolution /api/places and /api/users already use — the
+    // caller's own default_office_id first (needs `prefs`, hence resolved
+    // after the fetch above, not alongside it), falling back to
+    // DEFAULT_OFFICE; an explicit ?officeId= still wins over both.
+    const officeId =
+      params.get("officeId") ??
+      (isEnabled("offices") ? prefs?.default_office_id : null) ??
+      DEFAULT_OFFICE.id;
+    const { places } = await repo.listPlaces({ status: "active", officeId });
 
     const office =
       offices.find((o) => o.id === officeId) ?? offices[0] ?? DEFAULT_OFFICE;
