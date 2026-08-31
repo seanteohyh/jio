@@ -232,37 +232,38 @@ input[type="range"]::-moz-range-thumb {
 
 /**
  * UX review log #25 — the decided-Jio celebration's pebbles-into-JioMark
- * animation. Three loose "pebble" dots converge from scattered positions
- * onto the exact spot the real JioMark's own three pebbles sit at (offsets
- * measured from JioMark.tsx's own path geometry, scaled to whatever size
- * the celebration renders the mark at), then the real crisp mark fades in
- * over them so the resting state is the authentic brand mark, not an
- * approximation. `--ease-jio` extended to this pass rather than a new
- * curve, per the same UX review item bundling that extension in here.
+ * animation. The three real Ember pebble shapes (JioResolvedCelebration's
+ * own `PEBBLE_PATHS`, not stand-in circles — a circle visibly swapped
+ * shape into a pebble the instant JioMark faded in on top of it) converge
+ * from scattered positions onto the exact spot the real JioMark draws the
+ * same paths, then its centre dot fades in over them so the resting state
+ * is the authentic brand mark rather than an approximation. `--ease-jio`
+ * extended to this pass rather than a new curve, per the same UX review
+ * item bundling that extension in here.
  */
 /* Pixel offsets, not percentages — a CSS `translate(%)` is relative to the
  * *transformed element's own* box, not its parent, so a percentage here
  * would move each small pebble by a fraction of its own tiny size rather
- * than the intended distance across the mark's stage. End points are each
- * pebble's measured centroid offset from JioMark.tsx's own centre, scaled
- * to the celebration's 112px (h-28/w-28) stage. */
+ * than the intended distance across the mark's stage. Each pebble SVG
+ * shares JioMark's own 0-64 viewBox and box size, so its true resting spot
+ * is simply the identity transform — no per-pebble end offset to compute
+ * or keep in sync, unlike the old stand-in-circle version. Held at 100%
+ * (not faded out) since it now lands exactly where JioMark draws the same
+ * path over it. */
 @keyframes jio-pebble-1 {
   0% { transform: translate(-42px, -36px) scale(0.55); opacity: 0; }
   35% { opacity: 1; }
-  85% { transform: translate(9px, -22px) scale(1); opacity: 1; }
-  100% { transform: translate(9px, -22px) scale(1); opacity: 0; }
+  100% { transform: translate(0, 0) scale(1); opacity: 1; }
 }
 @keyframes jio-pebble-2 {
   0% { transform: translate(40px, 32px) scale(0.55); opacity: 0; }
   35% { opacity: 1; }
-  85% { transform: translate(17px, 23px) scale(1); opacity: 1; }
-  100% { transform: translate(17px, 23px) scale(1); opacity: 0; }
+  100% { transform: translate(0, 0) scale(1); opacity: 1; }
 }
 @keyframes jio-pebble-3 {
   0% { transform: translate(-36px, 38px) scale(0.55); opacity: 0; }
   35% { opacity: 1; }
-  85% { transform: translate(-23px, 8px) scale(1); opacity: 1; }
-  100% { transform: translate(-23px, 8px) scale(1); opacity: 0; }
+  100% { transform: translate(0, 0) scale(1); opacity: 1; }
 }
 @keyframes jio-mark-settle {
   0%, 55% {
