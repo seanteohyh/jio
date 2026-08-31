@@ -13,6 +13,19 @@ const VERSION = "jio-v1";
 const STATIC_CACHE = `${VERSION}-static`;
 const PAGE_CACHE = `${VERSION}-pages`;
 
+/**
+ * How long a page navigation waits on the network before falling back to
+ * the last good cached copy of that exact page. Previously unbounded —
+ * `fetch(request)` with no race — so a slow connection at cold start (the
+ * common case reopening an installed iOS PWA: cellular handoff, weak wifi
+ * right as the app launches) left the native splash screen up for however
+ * long that one request took, with nothing to show even though a perfectly
+ * good cached copy of the same page already existed. 2.5s is generous for
+ * a healthy connection (this almost never actually triggers then) but short
+ * enough that a bad one no longer reads as "did this even open."
+ */
+const NAV_TIMEOUT_MS = 2500;
+
 const PRECACHE = ["/offline.html", "/manifest.json", "/icon-192.png"];
 
 self.addEventListener("install", (event) => {
@@ -55,22 +68,15 @@ self.addEventListener("fetch", (event) => {
   // Never cache auth routes.
   if (url.pathname.startsWith("/auth/")) return;
 
-  // Page navigations: try the network, fall back to the last good copy, then
-  // to the offline page.
+  // Page navigations: race the network against NAV_TIMEOUT_MS, using
+  // whichever last-good cached copy of this exact page exists as both the
+  // timeout fallback and the true-failure fallback — a slow or dead
+  // connection at cold start gets the app shell instantly instead of a
+  // blank screen. Falls through to /offline.html only when there's no
+  // cached copy of this page at all (a genuinely first-ever visit with no
+  // network) — see NAV_TIMEOUT_MS's own comment for the reasoning.
   if (request.mode === "navigate") {
-    event.respondWith(
-      fetch(request)
-        .then((response) => {
-          const copy = response.clone();
-          caches.open(PAGE_CACHE).then((cache) => cache.put(request, copy));
-          return response;
-        })
-        .catch(async () => {
-          const cached = await caches.match(request);
-          if (cached) return cached;
-          return caches.match("/offline.html");
-        })
-    );
+    event.respondWith(networkFirstWithTimeout(request));
     return;
   }
 
@@ -95,6 +101,40 @@ self.addEventListener("fetch", (event) => {
     );
   }
 });
+
+/**
+ * Network raced against NAV_TIMEOUT_MS, falling back to the last cached
+ * copy of this exact page either way — on timeout, or on an outright
+ * network failure that resolves faster than the timeout. The network
+ * fetch is never awaited past that point but keeps running in the
+ * background regardless, so a slow response that does eventually land
+ * still refreshes the cache for next time (stale-while-revalidate), it
+ * just doesn't hold up *this* navigation waiting for it.
+ */
+async function networkFirstWithTimeout(request) {
+  const cached = await caches.match(request);
+
+  const networkFetch = fetch(request)
+    .then((response) => {
+      if (response.ok) {
+        const copy = response.clone();
+        caches.open(PAGE_CACHE).then((cache) => cache.put(request, copy));
+      }
+      return response;
+    })
+    .catch(() => null);
+
+  if (!cached) {
+    const response = await networkFetch;
+    return response || caches.match("/offline.html");
+  }
+
+  const timedOut = new Promise((resolve) => {
+    setTimeout(() => resolve(null), NAV_TIMEOUT_MS);
+  });
+  const first = await Promise.race([networkFetch, timedOut]);
+  return first || cached;
+}
 
 // ------------------------------------------------------------------ push --
 // CHANGES_20260804.md §6. The payload is whatever sendPushToUsers() in
