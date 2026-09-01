@@ -34,7 +34,9 @@ export function notFound(message = "Not found"): NextResponse {
   return NextResponse.json({ error: message }, { status: 404 });
 }
 
-export function serverError(message = "Something went wrong"): NextResponse {
+export function serverError(
+  message = "That didn't work — mind trying again?"
+): NextResponse {
   return NextResponse.json({ error: message }, { status: 500 });
 }
 
@@ -50,7 +52,12 @@ export function errorResponse(error: unknown): NextResponse {
   ) {
     return forbidden(message);
   }
-  if (/not found|not valid|does not exist/i.test(message)) {
+  // UX review log #11 — the copy sweep rewrote "Event not found" into
+  // "Can't find that Jio — the link might be old.", which no longer
+  // contains the literal words "not found" this classifier used to key
+  // off of. "can't find" keeps those same throws mapped to a real 404
+  // instead of silently falling through to the generic 500 branch below.
+  if (/not found|can.t find|not valid|does not exist/i.test(message)) {
     return notFound(message);
   }
   if (

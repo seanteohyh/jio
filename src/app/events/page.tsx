@@ -10,10 +10,12 @@ import {
   SectionHeading,
   SkeletonRows,
 } from "@/components/ui";
+import { useToast } from "@/components/Toast";
 import { fetcher, mutateJson } from "@/lib/fetcher";
 import { cn } from "@/lib/utils";
 import { features } from "@/lib/config";
 import EventRow from "@/components/events/EventRow";
+import { NoJiosMotif } from "@/components/brand/motifs";
 import type { AuthUser, Kaki, LunchEvent, RecurringSeries } from "@/types";
 
 const WEEKDAY_NAMES = [
@@ -30,6 +32,16 @@ const DOT_COLOR: Record<LunchEvent["status"], string> = {
   open: "bg-ember",
   closed: "bg-sage",
   cancelled: "bg-stone",
+};
+
+// UX review log #8 — these dots were colour-only *and* aria-hidden, so a
+// screen-reader user got nothing from the calendar at all. `role="img"` +
+// `aria-label` exposes the plain state name; `title` gives a sighted mouse
+// user the same text as a hover tooltip, for free, from the same string.
+const DOT_STATUS_LABEL: Record<LunchEvent["status"], string> = {
+  open: "Open",
+  closed: "Closed",
+  cancelled: "Cancelled",
 };
 
 const WEEKDAY_LABELS = ["M", "T", "W", "T", "F", "S", "S"];
@@ -142,7 +154,9 @@ function MonthCalendar({
                 {dayEvents.slice(0, 3).map((e) => (
                   <span
                     key={e.id}
-                    aria-hidden="true"
+                    role="img"
+                    aria-label={DOT_STATUS_LABEL[e.status]}
+                    title={DOT_STATUS_LABEL[e.status]}
                     className={cn(
                       "h-1.5 w-1.5 rounded-full",
                       selected ? "bg-white" : DOT_COLOR[e.status]
@@ -186,13 +200,31 @@ export default function EventsPage() {
   const activeSeries = (seriesData?.series ?? []).filter(
     (s) => s.status === "active"
   );
+  const showToast = useToast();
+  // UX review log #10 — one-way action, not a true toggle, so it gets
+  // disable-on-tap + error catch/surface rather than the optimistic-flip
+  // part of the RSVP/vote pattern (nothing to "toggle back" to). Tracks
+  // which series id is in flight, not a single flag, since more than one
+  // could be listed at once.
+  const [cancellingSeriesId, setCancellingSeriesId] = useState<string | null>(
+    null
+  );
 
   const cancelSeries = async (id: string) => {
     if (!window.confirm("Stop this recurring Jio? It won't generate again.")) {
       return;
     }
-    await mutateJson(`/api/recurring-series/${id}/cancel`, "POST");
-    mutateSeries();
+    setCancellingSeriesId(id);
+    try {
+      await mutateJson(`/api/recurring-series/${id}/cancel`, "POST");
+      mutateSeries();
+    } catch (err) {
+      showToast(
+        err instanceof Error ? err.message : "Could not stop that recurring Jio"
+      );
+    } finally {
+      setCancellingSeriesId(null);
+    }
   };
 
   const [view, setView] = useState<View>("calendar");
@@ -347,7 +379,8 @@ export default function EventsPage() {
                     <button
                       type="button"
                       onClick={() => cancelSeries(series.id)}
-                      className="text-stone hover:text-ember text-xs underline"
+                      disabled={cancellingSeriesId === series.id}
+                      className="text-stone hover:text-ember text-xs underline disabled:opacity-50"
                     >
                       Stop
                     </button>
@@ -364,6 +397,7 @@ export default function EventsPage() {
 
       {!isLoading && events.length === 0 && (
         <EmptyState
+          icon={<NoJiosMotif />}
           title="No Jios yet"
           description="Start one and everyone invited can add places and rank them."
           action={<LinkButton href="/events/new">Start a Jio</LinkButton>}

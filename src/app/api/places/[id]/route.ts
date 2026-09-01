@@ -40,7 +40,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
     const repo = await getRepoAsync();
 
     const body = await readJson<Partial<Place>>(request);
-    if (!body) return badRequest("Expected a JSON body");
+    if (!body) return badRequest("That didn't save — mind trying again?");
 
     // Status moves through dedicated /block, /unblock and /review endpoints
     // now — each has its own authorization rule (creator-or-admin, admin

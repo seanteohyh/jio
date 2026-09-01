@@ -15,6 +15,8 @@ import type {
   FlagReason,
   FlagResolution,
   FoodIdentityCard,
+  GeneralReport,
+  GeneralReportCategory,
   Kaki,
   KakiDetail,
   KakiFoodIdentityCard,
@@ -776,6 +778,22 @@ export interface Repo {
     reason?: string | null
   ): Promise<void>;
 
+  // ---- General reports (UX review log #17, "Report a problem") ----
+  /** Any signed-in user — Profile's entry point, not tied to any place. */
+  createGeneralReport(
+    userId: string,
+    category: GeneralReportCategory,
+    comment?: string | null
+  ): Promise<GeneralReport>;
+  /** Every pending report, hydrated with the reporter's name. Admin only —
+   *  same "same moderation view, filterable by type" surface `listPendingFlags`
+   *  feeds, just its own list rather than merged into place flags' own
+   *  place-grouped shape. */
+  listPendingGeneralReports(): Promise<GeneralReport[]>;
+  /** Resolves one report at a time — admin only. No batching by place the
+   *  way `resolvePlaceFlags` does; there's no place to group by here. */
+  resolveGeneralReport(adminId: string, reportId: string): Promise<void>;
+
   // ---- Account merge (CHANGES_20260807.md §4/§5) ----
   /**
    * Groups every profile by case/whitespace-normalized display name,
@@ -1012,6 +1030,9 @@ export const REPO_METHODS = [
   "listMyFlags",
   "listPendingFlags",
   "resolvePlaceFlags",
+  "createGeneralReport",
+  "listPendingGeneralReports",
+  "resolveGeneralReport",
   "listDuplicateProfiles",
   "previewAccountMerge",
   "mergeUserAccounts",

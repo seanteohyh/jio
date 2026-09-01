@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, type CSSProperties } from "react";
+import { useEffect, useRef, type CSSProperties } from "react";
 import JioMark from "@/components/brand/JioMark";
 import { Button } from "@/components/ui";
+import { useDialogFocus } from "@/lib/useDialogFocus";
 
 /**
  * The three Ember pebble paths, copied verbatim from JioMark.tsx's own
@@ -72,8 +73,15 @@ export default function JioResolvedCelebration({
     };
   }, []);
 
+  // UX review log #9 — real dialog mechanics: focus moves to "Continue" on
+  // open, Tab is trapped inside, Escape closes, focus returns to whatever
+  // triggered this (the vote/RSVP action that surfaced it) on close.
+  const containerRef = useRef<HTMLDivElement>(null);
+  useDialogFocus(true, containerRef, onContinue);
+
   return (
     <div
+      ref={containerRef}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
       role="dialog"
       aria-modal="true"

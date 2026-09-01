@@ -12,7 +12,7 @@ export default function EventRow({ event }: { event: LunchEvent }) {
       className="border-line bg-cream/60 hover:border-ember/40 block rounded-xl border p-3 transition-colors"
     >
       <div className="flex items-baseline justify-between gap-2">
-        <span className="truncate font-medium">{event.title}</span>
+        <span className="text-base truncate font-medium">{event.title}</span>
         <span className="text-stone shrink-0 text-xs">
           {relativeDayLabel(event.scheduled_at)} ·{" "}
           {formatTime(event.scheduled_at)}

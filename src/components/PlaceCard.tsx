@@ -44,7 +44,7 @@ export default function PlaceCard({
           <div className="flex items-start justify-between gap-2">
             <Link
               href={`/places/${place.id}`}
-              className="text-ink hover:text-ember truncate font-medium"
+              className="text-ink hover:text-ember text-base truncate font-medium"
             >
               {place.name}
             </Link>

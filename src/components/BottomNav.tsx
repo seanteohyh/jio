@@ -48,7 +48,7 @@ export default function BottomNav() {
       icon: <JiosIcon />,
       enabled: features.events,
     },
-    { href: "/kakis", label: "Kaki", icon: <KakiIcon />, enabled: features.kakis },
+    { href: "/kakis", label: "Kakis", icon: <KakiIcon />, enabled: features.kakis },
     {
       href: "/places",
       label: "Places",

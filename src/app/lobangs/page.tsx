@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import Link from "next/link";
 import useSWR from "swr";
-import { Avatar, EmptyState, ErrorNote, SkeletonRows } from "@/components/ui";
+import { Avatar, EmptyState, ErrorNote, Skeleton } from "@/components/ui";
 import HintCard from "@/components/HintCard";
 import { fetcher, mutateJson } from "@/lib/fetcher";
 import { mergeLobangFeed, relativeDayLabel } from "@/lib/utils";
@@ -81,7 +81,22 @@ export default function LobangsPage() {
         from any place&apos;s page.
       </HintCard>
 
-      {isLoading && <SkeletonRows count={6} rowClassName="h-14 w-2/3" />}
+      {/* UX review log #14 — six identical left-aligned bars against a
+          real feed that's a chat layout (sent messages right-aligned)
+          read as the wrong shape entirely, not just the wrong size.
+          Alternating alignment here, not a straight SkeletonRows stack. */}
+      {isLoading && (
+        <ul className="space-y-2" role="status" aria-label="Loading">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <li
+              key={i}
+              className={i % 3 === 1 ? "flex justify-end" : "flex justify-start"}
+            >
+              <Skeleton className="h-14 w-2/3" />
+            </li>
+          ))}
+        </ul>
+      )}
       {error && <ErrorNote>{error.message}</ErrorNote>}
 
       {!isLoading && !error && feed.length === 0 && (

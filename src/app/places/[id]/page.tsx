@@ -14,7 +14,7 @@ import {
   Field,
   LinkButton,
   SectionHeading,
-  SkeletonDetail,
+  SkeletonPlaceDetail,
   Stars,
   inputClass,
 } from "@/components/ui";
@@ -30,6 +30,7 @@ import {
   socialsLabel,
 } from "@/lib/utils";
 import SocialsIcon from "@/components/SocialsIcon";
+import { InfoIcon } from "@/components/icons";
 import { DEFAULT_FILTERS, MAX_WALK_MINUTES } from "@/components/FilterBar";
 import { walkTimeVisibilityNotice } from "@/lib/walkTimeNotice";
 import type { AuthUser, FlagReason, Place, Visit } from "@/types";
@@ -90,6 +91,9 @@ export default function PlaceDetailPage({
   const [isPublic, setIsPublic] = useState(true);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  // UX review log #10 — guards the wishlist toggle against a fast
+  // double-tap, same disable+optimistic+rollback pattern as RSVP/vote.
+  const [wishlistBusy, setWishlistBusy] = useState(false);
   const [blocking, setBlocking] = useState(false);
   const [blockReason, setBlockReason] = useState("");
   const [reporting, setReporting] = useState(false);
@@ -121,7 +125,7 @@ export default function PlaceDetailPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editVisitParam, myVisitsData]);
 
-  if (isLoading) return <SkeletonDetail />;
+  if (isLoading) return <SkeletonPlaceDetail />;
   if (error) return <ErrorNote>{error.message}</ErrorNote>;
   if (!data) return null;
 
@@ -130,12 +134,33 @@ export default function PlaceDetailPage({
     wishlistData?.wishlist.some((w) => w.place_id === place.id) ?? false;
 
   const toggleWishlist = async () => {
+    // UX review log #10 — a fast double-tap fired two requests that raced
+    // and cancelled each other out, landing back where the user started.
+    // Disabled while in flight, same as RSVP/vote already are.
+    if (wishlistBusy) return;
+    setWishlistBusy(true);
     setActionError(null);
+
+    const current = wishlistData?.wishlist ?? [];
+    const optimisticList = onWishlist
+      ? current.filter((w) => w.place_id !== place.id)
+      : [...current, { place_id: place.id }];
+
     try {
-      await mutateJson("/api/wishlist", "POST", { place_id: place.id });
-      mutateWishlist();
+      await mutateWishlist(
+        mutateJson("/api/wishlist", "POST", { place_id: place.id }).then(() =>
+          fetcher<{ wishlist: { place_id: string }[] }>("/api/wishlist")
+        ),
+        {
+          optimisticData: { wishlist: optimisticList },
+          rollbackOnError: true,
+          revalidate: false,
+        }
+      );
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Could not save");
+    } finally {
+      setWishlistBusy(false);
     }
   };
 
@@ -330,7 +355,7 @@ export default function PlaceDetailPage({
   return (
     <div className="space-y-5">
       <header>
-        <h1 className="text-2xl font-semibold tracking-tight">{place.name}</h1>
+        <h1 className="text-3xl font-semibold tracking-tight">{place.name}</h1>
         {place.address && (
           <p className="text-stone mt-1 text-sm">{place.address}</p>
         )}
@@ -455,7 +480,11 @@ export default function PlaceDetailPage({
               {logging ? "Never mind" : "I ate here"}
             </Button>
             {features.wishlist && (
-              <Button variant="secondary" onClick={toggleWishlist}>
+              <Button
+                variant="secondary"
+                onClick={toggleWishlist}
+                disabled={wishlistBusy}
+              >
                 {onWishlist ? "On your list ✓" : "Want to try"}
               </Button>
             )}
@@ -706,6 +735,23 @@ export default function PlaceDetailPage({
                 />
               </Field>
 
+              {/* UX review log #19 — reviews are public by default now
+                  (a deliberate reversal of the earlier private-by-default
+                  behaviour), so this states that default in plain terms
+                  rather than leaving it to be discovered via the checkbox
+                  below, which is the one way back to private. */}
+              <p className="text-stone flex items-start gap-1.5 text-xs">
+                <InfoIcon
+                  className="mt-0.5 h-3.5 w-3.5 shrink-0"
+                  strokeWidth={1.75}
+                  aria-hidden="true"
+                />
+                <span>
+                  Public by default — visible to anyone viewing this place,
+                  unless you make it private.
+                </span>
+              </p>
+
               <label className="flex items-center gap-2 text-sm">
                 <input
                   type="checkbox"
@@ -755,13 +801,13 @@ export default function PlaceDetailPage({
                       </div>
                       <Stars rating={review.rating} />
                       {review.best_dishes.length > 0 && (
-                        <p className="text-stone mt-1 text-sm">
+                        <p className="text-stone mt-1 text-base">
                           <span className="font-medium">Recos:</span>{" "}
                           {review.best_dishes.join(", ")}
                         </p>
                       )}
                       {review.notes && (
-                        <p className="mt-1 text-sm whitespace-pre-wrap">{review.notes}</p>
+                        <p className="mt-1 text-base whitespace-pre-wrap">{review.notes}</p>
                       )}
                       <div className="mt-1.5 flex items-center gap-3">
                         <button

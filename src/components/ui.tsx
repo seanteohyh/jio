@@ -290,13 +290,21 @@ export function EmptyState({
   title,
   description,
   action,
+  icon,
 }: {
   title: string;
   description?: string;
   action?: React.ReactNode;
+  /** UX review log #18 — an optional small illustration above the title,
+   *  for the handful of highest-visibility empty states that got one
+   *  (see `@/components/brand/motifs`). Omitted everywhere else — this
+   *  stays a plain text empty state by default, not a redesign of every
+   *  one in the app. */
+  icon?: React.ReactNode;
 }) {
   return (
     <div className="border-line rounded-xl border border-dashed px-6 py-10 text-center">
+      {icon && <div className="mx-auto mb-3 h-14 w-14">{icon}</div>}
       <p className="text-ink font-medium">{title}</p>
       {description && (
         <p className="text-stone mx-auto mt-1 max-w-sm text-sm">
@@ -361,6 +369,68 @@ export function SkeletonDetail() {
       </div>
       <Skeleton className="h-24 w-full" />
       <Skeleton className="h-24 w-full" />
+    </div>
+  );
+}
+
+/**
+ * UX review log #14 — the generic ~220px `SkeletonDetail` above vanished
+ * into a real Jio/Place/Kaki page running 1,500–2,500px, a jarring jump on
+ * every load. One shimmer block per that specific page's real major
+ * section, roughly proportioned to it, instead. Real content length varies
+ * a lot per record (option count, review count, member count), so these
+ * are representative shapes for a typical case, not a pixel-exact match —
+ * the fix is "many proportioned blocks," not one uniform one.
+ */
+export function SkeletonJioDetail() {
+  return (
+    <div className="space-y-5" role="status" aria-label="Loading">
+      <div className="space-y-2">
+        <Skeleton className="h-8 w-2/3" />
+        <Skeleton className="h-4 w-1/2" />
+      </div>
+      <Skeleton className="h-24 w-full" />
+      <Skeleton className="h-14 w-full" />
+      <Skeleton className="h-28 w-full" />
+      <Skeleton className="h-48 w-full" />
+      <Skeleton className="h-40 w-full" />
+      <Skeleton className="h-20 w-full" />
+    </div>
+  );
+}
+
+export function SkeletonPlaceDetail() {
+  return (
+    <div className="space-y-5" role="status" aria-label="Loading">
+      <div className="space-y-2">
+        <Skeleton className="h-8 w-2/3" />
+        <Skeleton className="h-4 w-1/2" />
+      </div>
+      <Skeleton className="h-12 w-full" />
+      <Skeleton className="h-16 w-full" />
+      <Skeleton className="h-28 w-full" />
+      <div className="space-y-2">
+        <Skeleton className="h-20 w-full" />
+        <Skeleton className="h-20 w-full" />
+        <Skeleton className="h-20 w-full" />
+      </div>
+    </div>
+  );
+}
+
+export function SkeletonKakiDetail() {
+  return (
+    <div className="space-y-5" role="status" aria-label="Loading">
+      <div className="space-y-2">
+        <Skeleton className="h-8 w-1/2" />
+        <Skeleton className="h-4 w-1/3" />
+      </div>
+      <Skeleton className="h-28 w-full" />
+      <Skeleton className="h-36 w-full" />
+      <div className="space-y-2">
+        <Skeleton className="h-16 w-full" />
+        <Skeleton className="h-16 w-full" />
+      </div>
     </div>
   );
 }

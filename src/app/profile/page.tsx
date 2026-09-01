@@ -29,6 +29,7 @@ import PersonalInvitePanel, {
   usePersonalInviteLink,
 } from "@/components/profile/PersonalInvitePanel";
 import QrShortcutButton from "@/components/profile/QrShortcutButton";
+import ReportProblemPanel from "@/components/profile/ReportProblemPanel";
 import HintCard from "@/components/HintCard";
 import { fetcher, mutateJson } from "@/lib/fetcher";
 import { config, features } from "@/lib/config";
@@ -240,13 +241,27 @@ export default function ProfilePage() {
             </p>
 
             <div>
+              {/* UX review log #8 — colour alone (sage/grey/ember tint)
+                  couldn't tell a colour-blind user's own "like" from their
+                  own "dislike." Heart/dot/X, aria-hidden since the chip's
+                  own accessible name already states the value directly. */}
               <div className="text-stone mb-2 flex items-center gap-3 text-xs">
                 <span className="inline-flex items-center gap-1.5">
-                  <span className="bg-sage-tint h-2.5 w-2.5 rounded-full" />
+                  <span aria-hidden="true" className="text-sage-tint-text">
+                    &#9829;
+                  </span>
                   Like
                 </span>
                 <span className="inline-flex items-center gap-1.5">
-                  <span className="bg-ember-tint h-2.5 w-2.5 rounded-full" />
+                  <span aria-hidden="true" className="text-stone text-[9px]">
+                    &#9679;
+                  </span>
+                  Neutral
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <span aria-hidden="true" className="text-ember-tint-text">
+                    &#10005;
+                  </span>
                   Dislike
                 </span>
               </div>
@@ -276,6 +291,21 @@ export default function ProfilePage() {
                             : label
                       }
                     >
+                      <span aria-hidden="true">
+                        {tone === "like" ? (
+                          <span className="text-[15px] leading-none">
+                            &#9829;
+                          </span>
+                        ) : tone === "dislike" ? (
+                          <span className="text-[15px] leading-none">
+                            &#10005;
+                          </span>
+                        ) : (
+                          <span className="text-[9px] leading-none">
+                            &#9679;
+                          </span>
+                        )}
+                      </span>{" "}
                       {label}
                     </Chip>
                   );
@@ -497,6 +527,10 @@ export default function ProfilePage() {
                 />
               </div>
             ) : null)}
+
+          <div className="py-3 first:pt-0 last:pb-0">
+            <ReportProblemPanel />
+          </div>
         </Card>
 
         {me?.user?.is_admin && (

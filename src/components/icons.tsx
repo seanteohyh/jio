@@ -244,6 +244,19 @@ export function PlusCircleIcon(props: IconProps) {
   );
 }
 
+/** A plain informational note (e.g. a default the user should know about),
+ *  not a warning — the signature dot is the "i"'s own tittle, grounded on
+ *  its stem rather than floating separately. */
+export function InfoIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M12 11v5" />
+      <circle cx="12" cy="8.3" r="1" fill="currentColor" stroke="none" />
+    </Svg>
+  );
+}
+
 export function DownloadIcon(props: IconProps) {
   return (
     <Svg {...props}>

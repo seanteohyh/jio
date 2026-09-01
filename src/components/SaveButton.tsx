@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import useSWR, { mutate as globalMutate } from "swr";
 import { BookmarkIcon } from "@/components/icons";
 import { useToast } from "@/components/Toast";
@@ -33,6 +34,9 @@ export default function SaveButton({
     fetcher
   );
   const showToast = useToast();
+  // UX review log #10 — a fast double-tap fired two requests that raced
+  // and cancelled each other out, landing back where the user started.
+  const [busy, setBusy] = useState(false);
 
   if (!features.wishlist) return null;
 
@@ -42,6 +46,8 @@ export default function SaveButton({
     // Cards are wrapped in links to the place — saving should not navigate.
     event.preventDefault();
     event.stopPropagation();
+    if (busy) return;
+    setBusy(true);
 
     // Optimistic: the bookmark flips the instant you tap it, not once the
     // round trip finishes (CHANGES_20260804.md §5 — waiting for the full
@@ -62,25 +68,32 @@ export default function SaveButton({
 
     showToast(saved ? "Removed from Want to try" : "Saved to Want to try");
 
-    await globalMutate(
-      "/api/wishlist",
-      fetch("/api/wishlist", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ place_id: placeId }),
-      }).then(() => fetcher<{ wishlist: WishlistEntry[] }>("/api/wishlist")),
-      {
-        optimisticData: { wishlist: optimisticList },
-        rollbackOnError: true,
-        revalidate: false,
-      }
-    );
+    try {
+      await globalMutate(
+        "/api/wishlist",
+        fetch("/api/wishlist", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ place_id: placeId }),
+        }).then(() =>
+          fetcher<{ wishlist: WishlistEntry[] }>("/api/wishlist")
+        ),
+        {
+          optimisticData: { wishlist: optimisticList },
+          rollbackOnError: true,
+          revalidate: false,
+        }
+      );
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
     <button
       type="button"
       onClick={toggle}
+      disabled={busy}
       aria-pressed={saved}
       aria-label={saved ? "Saved — tap to remove" : "Save for later"}
       title={saved ? "Saved" : "Save for later"}

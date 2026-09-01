@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CloseIcon, ShieldIcon } from "@/components/icons";
 import { Button } from "./ui";
 import ShareLink from "./ShareLink";
 import { mutateJson } from "@/lib/fetcher";
 import { config } from "@/lib/config";
+import { useDialogFocus } from "@/lib/useDialogFocus";
 
 const VISIT_KEY = "jio-recovery-nudge-visits";
 const SNOOZE_KEY = "jio-recovery-nudge-snoozed-until";
@@ -77,14 +78,21 @@ export default function RecoveryNudgePrompt() {
     }
   };
 
+  // UX review log #9 — real dialog mechanics (see useDialogFocus's own doc
+  // comment). Hooks run every render — `visible` gates whether it engages.
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useDialogFocus(visible, dialogRef, remindLater);
+
   if (!visible) return null;
 
   return (
     <div className="fixed inset-x-0 bottom-16 z-40 px-4 pb-[env(safe-area-inset-bottom)] md:bottom-4 md:left-64 md:right-4">
       <div
+        ref={dialogRef}
         className="border-line bg-cream animate-fade-in mx-auto flex max-w-lg items-start gap-3 rounded-2xl border p-4"
         style={{ boxShadow: "var(--shadow-sm)" }}
         role="dialog"
+        aria-modal="true"
         aria-label="Get a recovery link"
       >
         <span className="bg-ember-tint text-ember flex h-9 w-9 shrink-0 items-center justify-center rounded-full">

@@ -6,12 +6,12 @@ import useSWR from "swr";
 import {
   BallotIcon,
   CantMakeItIcon,
-  CheckCircleIcon,
   GoingIcon,
   MaybeIcon,
   PlaceIcon,
   PlusCircleIcon,
 } from "@/components/icons";
+import { JioResolvedMotif } from "@/components/brand/motifs";
 import {
   Avatar,
   Button,
@@ -20,7 +20,7 @@ import {
   ErrorNote,
   LinkButton,
   SectionHeading,
-  SkeletonDetail,
+  SkeletonJioDetail,
   inputClass,
 } from "@/components/ui";
 import RouletteWheel from "@/components/RouletteWheel";
@@ -33,6 +33,7 @@ import ShareLink from "@/components/ShareLink";
 import ShareResultCard from "@/components/ShareResultCard";
 import InvitePicker, { type InviteSelection } from "@/components/InvitePicker";
 import SocialsIcon from "@/components/SocialsIcon";
+import { InfoIcon } from "@/components/icons";
 import {
   LEAD_TIME_OPTIONS,
   leadTimeLabel,
@@ -263,7 +264,7 @@ export default function EventDetailPage({
     fetcher
   );
 
-  if (isLoading) return <SkeletonDetail />;
+  if (isLoading) return <SkeletonJioDetail />;
   if (error) return <ErrorNote>{error.message}</ErrorNote>;
   if (!data) return null;
 
@@ -653,7 +654,7 @@ export default function EventDetailPage({
       <header>
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight">
+            <h1 className="text-3xl font-semibold tracking-tight">
               {event.title}
             </h1>
             <p className="text-stone mt-1 text-sm">
@@ -722,11 +723,7 @@ export default function EventDetailPage({
         >
           {event.winner_place_name || event.winner_label ? (
             <div className="flex items-center gap-3">
-              <CheckCircleIcon
-                className="text-sage h-8 w-8 shrink-0"
-                strokeWidth={2}
-                aria-hidden="true"
-              />
+              <JioResolvedMotif className="h-9 w-9 shrink-0" />
               <div>
                 <p className="text-sage text-xs font-semibold tracking-wide uppercase">
                   Decided
@@ -1101,6 +1098,17 @@ export default function EventDetailPage({
       {viewer.isHost && (
         <Card className="space-y-3">
           <SectionHeading>Invited</SectionHeading>
+
+          {/* UX review log #19 — surfaces a privacy-relevant default that
+              was never communicated anywhere in the app. */}
+          <p className="text-stone flex items-start gap-1.5 text-xs">
+            <InfoIcon
+              className="mt-0.5 h-3.5 w-3.5 shrink-0"
+              strokeWidth={1.75}
+              aria-hidden="true"
+            />
+            <span>Only the host can add people to this Jio.</span>
+          </p>
 
           {event.kaki_id && (
             <p className="text-stone text-xs">

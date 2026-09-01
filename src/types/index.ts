@@ -646,6 +646,36 @@ export interface PlaceFlag {
   flagged_by_name?: string;
 }
 
+// ---------------------------------------------------------------------------
+// General (non-place) reports — UX review log #17, "Report a problem"
+// ---------------------------------------------------------------------------
+
+export type GeneralReportCategory = "not_working" | "place_wrong" | "other";
+
+/**
+ * A general app-level report, reached from Profile rather than a specific
+ * place's page. A deliberately separate table from `PlaceFlag` rather than
+ * a widened one: `place_flags` is structurally place-shaped end to end —
+ * `place_id` is a required FK, and `resolvePlaceFlags` batch-resolves every
+ * pending flag *for a place* in one action, which has no equivalent
+ * grouping for a report that isn't about any specific place. Individually
+ * resolved (one row at a time), unlike `PlaceFlag`'s batch-per-place
+ * resolve — there's no natural "same place" grouping here to batch by.
+ */
+export interface GeneralReport {
+  id: string;
+  reported_by: string;
+  category: GeneralReportCategory;
+  comment?: string | null;
+  status: "pending" | "resolved";
+  resolved_by?: string | null;
+  resolved_at?: string | null;
+  created_at?: string;
+
+  /** Derived. */
+  reported_by_name?: string;
+}
+
 export interface Kaki {
   id: string;
   name: string;

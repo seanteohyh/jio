@@ -48,7 +48,7 @@ export async function POST(request: NextRequest) {
     const repo = await getRepoAsync();
     const body = await readJson<CreateSeriesBody>(request);
 
-    if (!body) return badRequest("Expected a JSON body");
+    if (!body) return badRequest("That didn't save — mind trying again?");
     const title = body.title?.trim() || "Lunch";
 
     if (

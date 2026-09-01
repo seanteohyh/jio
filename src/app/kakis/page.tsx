@@ -14,6 +14,7 @@ import {
 } from "@/components/ui";
 import { fetcher, mutateJson } from "@/lib/fetcher";
 import HintCard from "@/components/HintCard";
+import { FirstKakiMotif } from "@/components/brand/motifs";
 import type { Kaki } from "@/types";
 
 export default function KakisPage() {
@@ -91,6 +92,7 @@ export default function KakisPage() {
 
       {!isLoading && kakis.length === 0 && !creating && (
         <EmptyState
+          icon={<FirstKakiMotif />}
           title="You are not in any groups"
           description="Create one and share the invite link, or ask someone to send you theirs."
           action={<Button onClick={() => setCreating(true)}>Create a group</Button>}

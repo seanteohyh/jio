@@ -21,7 +21,7 @@ export async function PUT(request: NextRequest) {
     const repo = await getRepoAsync();
     const body = await readJson<Partial<UserPrefs>>(request);
 
-    if (!body) return badRequest("Expected a JSON body");
+    if (!body) return badRequest("That didn't save — mind trying again?");
 
     // A caller (Taste preferences, or the Notifications panel) only ever
     // sends the fields it owns, so a field missing from the body has to
