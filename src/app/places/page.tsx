@@ -21,6 +21,7 @@ import {
   SkeletonRows,
 } from "@/components/ui";
 import HintCard from "@/components/HintCard";
+import { NoPlacesMotif } from "@/components/brand/motifs";
 import { fetcher, mutateJson } from "@/lib/fetcher";
 import { features } from "@/lib/config";
 import type { Lobang, Place, WishlistEntry } from "@/types";
@@ -133,7 +134,7 @@ export default function PlacesPage() {
           onChanged={() => mutateLobangs()}
         />
       ) : (
-        <Suspense fallback={<SkeletonRows count={6} rowClassName="h-20 w-full" />}>
+        <Suspense fallback={<SkeletonRows count={6} rowClassName="h-28 w-full" />}>
           <BrowseList />
         </Suspense>
       )}
@@ -150,11 +151,12 @@ function SavedList({
   loading: boolean;
   onBrowse: () => void;
 }) {
-  if (loading) return <SkeletonRows count={3} />;
+  if (loading) return <SkeletonRows count={3} rowClassName="h-28 w-full" />;
 
   if (places.length === 0) {
     return (
       <EmptyState
+        icon={<NoPlacesMotif />}
         title="Nothing saved yet"
         description="Tap the bookmark on any place to keep it here. Saving also nudges a place up your suggestions."
         action={
@@ -228,7 +230,7 @@ function LobangsList({
     onChanged();
   };
 
-  if (loading) return <SkeletonRows count={3} />;
+  if (loading) return <SkeletonRows count={3} rowClassName="h-28 w-full" />;
 
   if (lobangs.length === 0) {
     return (
@@ -402,8 +404,10 @@ function BrowseList() {
       )}
 
       {error && <ErrorNote>{error.message}</ErrorNote>}
+      {/* UX review log #14 — an 80px skeleton row against the real
+          ~105-125px PlaceCard was a visible jump on every load. */}
       {isLoading && page === 1 && (
-        <SkeletonRows count={6} rowClassName="h-20 w-full" />
+        <SkeletonRows count={6} rowClassName="h-28 w-full" />
       )}
 
       {!isLoading && places.length === 0 && !error && (
@@ -438,7 +442,7 @@ function BrowseList() {
           {hasMore && (
             <div className="flex justify-center pt-1">
               {isLoading && page > 1 ? (
-                <SkeletonRows count={2} rowClassName="h-20 w-full" className="w-full" />
+                <SkeletonRows count={2} rowClassName="h-28 w-full" className="w-full" />
               ) : (
                 <Button
                   variant="secondary"

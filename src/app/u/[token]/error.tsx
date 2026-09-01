@@ -23,7 +23,7 @@ export default function PersonalInviteError({
     <div className="space-y-4 py-10 text-center">
       <h1 className="text-xl font-semibold">This link isn&apos;t available</h1>
       <p className="text-stone text-sm">
-        Something went wrong loading this page. Try again in a moment.
+        This hit a snag loading — try again in a moment.
       </p>
       <LinkButton href="/">Back to the start</LinkButton>
     </div>

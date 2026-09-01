@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
     const repo = await getRepoAsync();
     const body = await readJson<CreateVisitBody>(request);
 
-    if (!body) return badRequest("Expected a JSON body");
+    if (!body) return badRequest("That didn't save — mind trying again?");
     if (!body.place_id) return badRequest("Which place did you go to?");
 
     const rating = body.rating ?? 0;
@@ -51,7 +51,10 @@ export async function POST(request: NextRequest) {
       best_dishes: body.best_dishes ?? [],
       notes: body.notes?.trim() || null,
       visited_at: body.visited_at ?? new Date().toISOString().slice(0, 10),
-      is_public: body.is_public ?? false,
+      // UX review log #19 — reviews are public by default now (a
+      // deliberate reversal of the original private-by-default stance),
+      // so an omitted field falls back to visible, not hidden.
+      is_public: body.is_public ?? true,
     });
 
     return json({ visit }, 201);

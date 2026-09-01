@@ -110,7 +110,7 @@ describe("adding an option", () => {
   it("rejects an unknown event", async () => {
     await expect(
       demoRepo.addOptionToEvent("no-such-event", "demo-place-01", DEMO_USER_ID)
-    ).rejects.toThrow(/not found/i);
+    ).rejects.toThrow(/can't find that jio/i);
   });
 
   it("records who added each option", async () => {

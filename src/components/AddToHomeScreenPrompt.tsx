@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AddSquareIcon, CloseIcon, PhoneIcon, ShareIcon } from "@/components/icons";
 import { Button } from "./ui";
 import { useInstallPrompt } from "./InstallPromptProvider";
 import AttachEmailPanel from "./profile/AttachEmailPanel";
 import { config } from "@/lib/config";
+import { useDialogFocus } from "@/lib/useDialogFocus";
 
 const VISIT_KEY = "jio-a2hs-visits";
 const SNOOZE_KEY = "jio-a2hs-snoozed-until";
@@ -93,15 +94,28 @@ export default function AddToHomeScreenPrompt() {
     }
   };
 
+  // UX review log #9 — real dialog mechanics for both this banner's states
+  // (see useDialogFocus's own doc comment). Hooks run every render — the
+  // `active` flags, not an early return, gate whether each one engages.
+  const mainDialogRef = useRef<HTMLDivElement>(null);
+  const emailDialogRef = useRef<HTMLDivElement>(null);
+  const showing = visible && Boolean(platform);
+  useDialogFocus(showing && !showEmailNudge, mainDialogRef, remindLater);
+  useDialogFocus(showing && showEmailNudge, emailDialogRef, () =>
+    setVisible(false)
+  );
+
   if (!visible || !platform) return null;
 
   if (showEmailNudge) {
     return (
       <div className="fixed inset-x-0 bottom-16 z-40 px-4 pb-[env(safe-area-inset-bottom)] md:bottom-4 md:left-64 md:right-4">
         <div
+          ref={emailDialogRef}
           className="border-line bg-cream animate-fade-in mx-auto flex max-w-lg items-start gap-3 rounded-2xl border p-4"
           style={{ boxShadow: "var(--shadow-sm)" }}
           role="dialog"
+          aria-modal="true"
           aria-label="Attach an email"
         >
           <span className="bg-ember-tint text-ember flex h-9 w-9 shrink-0 items-center justify-center rounded-full">
@@ -131,9 +145,11 @@ export default function AddToHomeScreenPrompt() {
   return (
     <div className="fixed inset-x-0 bottom-16 z-40 px-4 pb-[env(safe-area-inset-bottom)] md:bottom-4 md:left-64 md:right-4">
       <div
+        ref={mainDialogRef}
         className="border-line bg-cream animate-fade-in mx-auto flex max-w-lg items-start gap-3 rounded-2xl border p-4"
         style={{ boxShadow: "var(--shadow-sm)" }}
         role="dialog"
+        aria-modal="true"
         aria-label="Add Jio to your home screen"
       >
         <span className="bg-ember-tint text-ember flex h-9 w-9 shrink-0 items-center justify-center rounded-full">

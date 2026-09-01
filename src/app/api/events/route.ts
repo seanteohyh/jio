@@ -104,7 +104,7 @@ export async function POST(request: NextRequest) {
     const repo = await getRepoAsync();
     const body = await readJson<CreateEventBody>(request);
 
-    if (!body) return badRequest("Expected a JSON body");
+    if (!body) return badRequest("That didn't save — mind trying again?");
     const title = body.title?.trim() || "Lunch";
 
     const kakiIds = body.kaki_ids ?? (body.kaki_id ? [body.kaki_id] : []);

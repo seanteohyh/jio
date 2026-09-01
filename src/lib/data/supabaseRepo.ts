@@ -34,6 +34,7 @@ import type {
   EventVote,
   Filters,
   FoodIdentityCard,
+  GeneralReport,
   Kaki,
   KakiDetail,
   KakiFoodIdentityCard,
@@ -1584,7 +1585,7 @@ export const supabaseRepo: Repo = {
       .eq("id", eventId)
       .maybeSingle();
 
-    if (!eventRow) throw new Error("Event not found");
+    if (!eventRow) throw new Error("Can't find that Jio — the link might be old.");
     if ((eventRow as { host_id: string }).host_id !== hostId) {
       throw new Error("Only the host can invite people");
     }
@@ -1641,7 +1642,7 @@ export const supabaseRepo: Repo = {
       .eq("id", eventId)
       .maybeSingle();
 
-    if (!eventRow) throw new Error("Event not found");
+    if (!eventRow) throw new Error("Can't find that Jio — the link might be old.");
     const event = eventRow as Pick<
       LunchEvent,
       "id" | "host_id" | "status" | "kaki_id"
@@ -1707,7 +1708,7 @@ export const supabaseRepo: Repo = {
       .eq("id", eventId)
       .maybeSingle();
 
-    if (!eventRow) throw new Error("Event not found");
+    if (!eventRow) throw new Error("Can't find that Jio — the link might be old.");
     const event = eventRow as Pick<
       LunchEvent,
       "id" | "host_id" | "status" | "kaki_id"
@@ -1790,7 +1791,7 @@ export const supabaseRepo: Repo = {
       .select("host_id, status")
       .eq("id", eventId)
       .maybeSingle();
-    if (!eventRow) throw new Error("Event not found");
+    if (!eventRow) throw new Error("Can't find that Jio — the link might be old.");
 
     const event = eventRow as { host_id: string; status: string };
     if (event.status !== "open") throw new Error("This Jio is already closed");
@@ -1832,7 +1833,7 @@ export const supabaseRepo: Repo = {
       .select("id, host_id, status, kaki_id, office_id")
       .eq("id", eventId)
       .maybeSingle();
-    if (!eventRow) throw new Error("Event not found");
+    if (!eventRow) throw new Error("Can't find that Jio — the link might be old.");
 
     const event = eventRow as Pick<
       LunchEvent,
@@ -1958,7 +1959,7 @@ export const supabaseRepo: Repo = {
       .select("status")
       .eq("id", eventId)
       .maybeSingle();
-    if (!eventRow) throw new Error("Event not found");
+    if (!eventRow) throw new Error("Can't find that Jio — the link might be old.");
     if ((eventRow as { status: string }).status !== "open") {
       throw new Error("This Jio is already closed");
     }
@@ -2003,7 +2004,7 @@ export const supabaseRepo: Repo = {
       .select("id, host_id, status, kaki_id, date_phase")
       .eq("id", eventId)
       .maybeSingle();
-    if (!eventRow) throw new Error("Event not found");
+    if (!eventRow) throw new Error("Can't find that Jio — the link might be old.");
 
     const event = eventRow as Pick<
       LunchEvent,
@@ -2041,7 +2042,7 @@ export const supabaseRepo: Repo = {
       .select("date_phase")
       .eq("id", eventId)
       .maybeSingle();
-    if (!eventRow) throw new Error("Event not found");
+    if (!eventRow) throw new Error("Can't find that Jio — the link might be old.");
     if ((eventRow as { date_phase: string | null }).date_phase !== "polling") {
       throw new Error("This Jio's date is already confirmed");
     }
@@ -2079,7 +2080,7 @@ export const supabaseRepo: Repo = {
       .select("host_id, date_phase, scheduled_at")
       .eq("id", eventId)
       .maybeSingle();
-    if (!eventRow) throw new Error("Event not found");
+    if (!eventRow) throw new Error("Can't find that Jio — the link might be old.");
 
     const event = eventRow as {
       host_id: string;
@@ -2139,7 +2140,7 @@ export const supabaseRepo: Repo = {
       .select("host_id, status")
       .eq("id", eventId)
       .maybeSingle();
-    if (!eventRow) throw new Error("Event not found");
+    if (!eventRow) throw new Error("Can't find that Jio — the link might be old.");
     if ((eventRow as { host_id: string }).host_id !== hostId) {
       throw new Error("Only the host can close this Jio");
     }
@@ -2173,7 +2174,7 @@ export const supabaseRepo: Repo = {
     if (error) fail("Could not close that Jio", error);
 
     const detail = await supabaseRepo.getEvent(eventId);
-    if (!detail) throw new Error("Event vanished while closing");
+    if (!detail) throw new Error("That Jio vanished while closing");
     return detail;
   },
 
@@ -2405,7 +2406,7 @@ export const supabaseRepo: Repo = {
     if (error) fail("Could not cancel that Jio", error);
 
     const detail = await supabaseRepo.getEvent(eventId);
-    if (!detail) throw new Error("Event vanished while cancelling");
+    if (!detail) throw new Error("That Jio vanished while cancelling");
     return detail;
   },
 
@@ -2417,7 +2418,7 @@ export const supabaseRepo: Repo = {
       .select("status, date_phase")
       .eq("id", eventId)
       .maybeSingle();
-    if (!eventRow) throw new Error("Event not found");
+    if (!eventRow) throw new Error("Can't find that Jio — the link might be old.");
     const event = eventRow as { status: string; date_phase: string | null };
     if (event.status === "cancelled") {
       throw new Error("A cancelled Jio has nothing to reschedule");
@@ -2440,7 +2441,7 @@ export const supabaseRepo: Repo = {
     if (count === 0) throw new Error("Only the host can change the date");
 
     const detail = await supabaseRepo.getEvent(eventId);
-    if (!detail) throw new Error("Event vanished while rescheduling");
+    if (!detail) throw new Error("That Jio vanished while rescheduling");
     return detail;
   },
 
@@ -2452,7 +2453,7 @@ export const supabaseRepo: Repo = {
       .select("status")
       .eq("id", eventId)
       .maybeSingle();
-    if (!eventRow) throw new Error("Event not found");
+    if (!eventRow) throw new Error("Can't find that Jio — the link might be old.");
     if ((eventRow as { status: string }).status !== "closed") {
       throw new Error("Only a closed Jio's result can be corrected");
     }
@@ -2475,7 +2476,7 @@ export const supabaseRepo: Repo = {
     }
 
     const detail = await supabaseRepo.getEvent(eventId);
-    if (!detail) throw new Error("Event vanished while correcting it");
+    if (!detail) throw new Error("That Jio vanished while correcting it");
     return detail;
   },
 
@@ -2487,7 +2488,7 @@ export const supabaseRepo: Repo = {
       .select("status")
       .eq("id", eventId)
       .maybeSingle();
-    if (!eventRow) throw new Error("Event not found");
+    if (!eventRow) throw new Error("Can't find that Jio — the link might be old.");
     if ((eventRow as { status: string }).status !== "open") {
       throw new Error("There's nothing to hide or reveal once this Jio isn't open");
     }
@@ -2503,7 +2504,7 @@ export const supabaseRepo: Repo = {
     }
 
     const detail = await supabaseRepo.getEvent(eventId);
-    if (!detail) throw new Error("Event vanished while changing hide_votes");
+    if (!detail) throw new Error("That Jio vanished while changing hide_votes");
     return detail;
   },
 
@@ -2515,7 +2516,7 @@ export const supabaseRepo: Repo = {
     if (error) fail("Could not reopen that Jio for voting", error);
 
     const detail = await supabaseRepo.getEvent(eventId);
-    if (!detail) throw new Error("Event vanished while reopening it");
+    if (!detail) throw new Error("That Jio vanished while reopening it");
     return detail;
   },
 
@@ -3566,6 +3567,54 @@ export const supabaseRepo: Repo = {
       p_reason: reason ?? null,
     });
     if (error) fail("Could not resolve that flag", error);
+  },
+
+  async createGeneralReport(userId, category, comment) {
+    const client = await db();
+    const { data, error } = await client
+      .from("general_reports")
+      .insert({
+        reported_by: userId,
+        category,
+        comment: comment ?? null,
+      })
+      .select()
+      .single();
+
+    if (error) fail("Could not send that report", error);
+    const report = data as GeneralReport;
+    const names = await displayNameMap(client, [userId]);
+    return { ...report, reported_by_name: names.get(userId) };
+  },
+
+  async listPendingGeneralReports() {
+    const client = await db();
+    const { data, error } = await client
+      .from("general_reports")
+      .select("*")
+      .eq("status", "pending")
+      .order("created_at", { ascending: true });
+
+    if (error) fail("Could not load pending reports", error);
+    const reports = (data ?? []) as GeneralReport[];
+    if (reports.length === 0) return [];
+
+    const names = await displayNameMap(
+      client,
+      reports.map((r) => r.reported_by)
+    );
+    return reports.map((r) => ({
+      ...r,
+      reported_by_name: names.get(r.reported_by),
+    }));
+  },
+
+  async resolveGeneralReport(adminId, reportId) {
+    const client = await db();
+    const { error } = await client.rpc("resolve_general_report", {
+      p_report_id: reportId,
+    });
+    if (error) fail("Could not resolve that report", error);
   },
 
   async listDuplicateProfiles() {

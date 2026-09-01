@@ -18,11 +18,19 @@ import { formatDateTime } from "@/lib/utils";
 import type {
   AuthUser,
   FlagReason,
+  GeneralReport,
+  GeneralReportCategory,
   ModerationLogEntry,
   Place,
   PlaceFlag,
   TeamUser,
 } from "@/types";
+
+const GENERAL_REPORT_LABELS: Record<GeneralReportCategory, string> = {
+  not_working: "Something's not working",
+  place_wrong: "A place's info is wrong",
+  other: "Something else",
+};
 
 const FLAG_REASON_LABELS: Record<FlagReason, string> = {
   closed: "Permanently closed",
@@ -69,6 +77,13 @@ export default function ModerationPage() {
   const { data: flagsData, mutate: mutateFlags } = useSWR<{
     flags: PlaceFlag[];
   }>(isAdmin ? "/api/admin/flags" : null, fetcher);
+  // UX review log #17 — "Report a problem"'s admin queue: same screen as
+  // place flags (filterable by type, in the spec's own words) rather than
+  // a separate inbox, just its own section since a general report has no
+  // place to group it under.
+  const { data: reportsData, mutate: mutateReports } = useSWR<{
+    reports: GeneralReport[];
+  }>(isAdmin ? "/api/admin/reports" : null, fetcher);
 
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("blocked");
   const [creatorFilter, setCreatorFilter] = useState("");
@@ -156,6 +171,21 @@ export default function ModerationPage() {
     }
   };
 
+  const resolveReport = async (reportId: string) => {
+    setBusyId(reportId);
+    setError(null);
+    try {
+      await mutateJson(`/api/admin/reports/${reportId}/resolve`, "POST");
+      await mutateReports();
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Could not resolve that report"
+      );
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   const places = placesData?.places ?? [];
   const filtered = places.filter((p) => {
     if (statusFilter !== "all" && p.status !== statusFilter) return false;
@@ -173,6 +203,42 @@ export default function ModerationPage() {
       </header>
 
       {error && <ErrorNote>{error}</ErrorNote>}
+
+      {(reportsData?.reports?.length ?? 0) > 0 && (
+        <section className="space-y-2">
+          <SectionHeading>
+            {reportsData!.reports.length} general report
+            {reportsData!.reports.length === 1 ? "" : "s"}
+          </SectionHeading>
+          <ul className="space-y-2">
+            {reportsData!.reports.map((r) => (
+              <li key={r.id}>
+                <Card className="space-y-2 border-amber/40 bg-amber-tint/60">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-medium">
+                        {GENERAL_REPORT_LABELS[r.category]}
+                      </p>
+                      <p className="text-stone mt-1 text-xs whitespace-pre-wrap">
+                        {r.reported_by_name ?? "Someone"}
+                        {r.comment ? `: "${r.comment}"` : ""}
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      disabled={busyId === r.id}
+                      onClick={() => resolveReport(r.id)}
+                    >
+                      Resolve
+                    </Button>
+                  </div>
+                </Card>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {flagsByPlace.size > 0 && (
         <section className="space-y-2">

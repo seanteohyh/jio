@@ -165,7 +165,7 @@ export async function POST(request: NextRequest) {
     const repo = await getRepoAsync();
     const body = await readJson<CreatePlaceBody>(request);
 
-    if (!body) return badRequest("Expected a JSON body");
+    if (!body) return badRequest("That didn't save — mind trying again?");
     if (!body.name?.trim()) return badRequest("A name is required");
     if (typeof body.lat !== "number" || typeof body.lng !== "number") {
       return badRequest("Latitude and longitude are required");

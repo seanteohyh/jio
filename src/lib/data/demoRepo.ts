@@ -69,6 +69,8 @@ import type {
   FlagReason,
   FlagResolution,
   FoodIdentityCard,
+  GeneralReport,
+  GeneralReportCategory,
   Kaki,
   KakiDetail,
   KakiFoodIdentityCard,
@@ -132,6 +134,7 @@ interface DemoStore {
   walkCache: WalkCacheEntry[];
   moderationLog: ModerationLogEntry[];
   placeFlags: PlaceFlag[];
+  generalReports: GeneralReport[];
   recurringSeries: RecurringSeries[];
   pushSubscriptions: {
     user_id: string;
@@ -188,6 +191,7 @@ function seed(): DemoStore {
     walkCache: [],
     moderationLog: [],
     placeFlags: [],
+    generalReports: [],
     recurringSeries: [],
     pushSubscriptions: [],
     recoveryTokens: [],
@@ -1312,7 +1316,7 @@ export const demoRepo: Repo = {
   async addInviteesToEvent(eventId, userIds, hostId) {
     const s = store();
     const event = s.events.find((e) => e.id === eventId);
-    if (!event) throw new Error("Event not found");
+    if (!event) throw new Error("Can't find that Jio — the link might be old.");
     if (event.host_id !== hostId) {
       throw new Error("Only the host can invite people");
     }
@@ -1328,7 +1332,7 @@ export const demoRepo: Repo = {
   async removeInviteeFromEvent(eventId, userId, hostId) {
     const s = store();
     const event = s.events.find((e) => e.id === eventId);
-    if (!event) throw new Error("Event not found");
+    if (!event) throw new Error("Can't find that Jio — the link might be old.");
     if (event.host_id !== hostId) {
       throw new Error("Only the host can remove people");
     }
@@ -1357,7 +1361,7 @@ export const demoRepo: Repo = {
   async joinEventViaInvite(eventId, userId) {
     const s = store();
     const event = s.events.find((e) => e.id === eventId);
-    if (!event) throw new Error("Event not found");
+    if (!event) throw new Error("Can't find that Jio — the link might be old.");
     if (event.host_id === userId) return;
 
     const exists = s.invitees.some(
@@ -1369,7 +1373,7 @@ export const demoRepo: Repo = {
   async addOptionToEvent(eventId, placeId, userId) {
     const s = store();
     const event = s.events.find((e) => e.id === eventId);
-    if (!event) throw new Error("Event not found");
+    if (!event) throw new Error("Can't find that Jio — the link might be old.");
     if (event.status !== "open") throw new Error("This Jio is already closed");
 
     if (!canAddOption(event, userId)) {
@@ -1395,7 +1399,7 @@ export const demoRepo: Repo = {
   async addFreeTextOptionToEvent(eventId, label, userId) {
     const s = store();
     const event = s.events.find((e) => e.id === eventId);
-    if (!event) throw new Error("Event not found");
+    if (!event) throw new Error("Can't find that Jio — the link might be old.");
     if (event.status !== "open") throw new Error("This Jio is already closed");
 
     if (!canAddOption(event, userId)) {
@@ -1426,7 +1430,7 @@ export const demoRepo: Repo = {
   async attachPlaceToOption(eventId, oldPlaceId, newPlaceId, userId) {
     const s = store();
     const event = s.events.find((e) => e.id === eventId);
-    if (!event) throw new Error("Event not found");
+    if (!event) throw new Error("Can't find that Jio — the link might be old.");
 
     const option = s.options.find(
       (o) => o.event_id === eventId && o.place_id === oldPlaceId
@@ -1479,7 +1483,7 @@ export const demoRepo: Repo = {
   async removeOptionFromEvent(eventId, placeId, userId) {
     const s = store();
     const event = s.events.find((e) => e.id === eventId);
-    if (!event) throw new Error("Event not found");
+    if (!event) throw new Error("Can't find that Jio — the link might be old.");
     if (event.status !== "open") throw new Error("This Jio is already closed");
 
     const option = s.options.find(
@@ -1503,7 +1507,7 @@ export const demoRepo: Repo = {
   async suggestOptionsForEvent(eventId, userId, excludePlaceIds = []) {
     const s = store();
     const event = s.events.find((e) => e.id === eventId);
-    if (!event) throw new Error("Event not found");
+    if (!event) throw new Error("Can't find that Jio — the link might be old.");
     if (event.status !== "open") throw new Error("This Jio is already closed");
     if (!canAddOption(event, userId)) {
       throw new Error("Only the host, kaki members or invitees can add places");
@@ -1581,7 +1585,7 @@ export const demoRepo: Repo = {
   async castBallot(eventId, userId, rankedPlaceIds) {
     const s = store();
     const event = s.events.find((e) => e.id === eventId);
-    if (!event) throw new Error("Event not found");
+    if (!event) throw new Error("Can't find that Jio — the link might be old.");
     if (event.status !== "open") throw new Error("This Jio is already closed");
 
     const optionIds = new Set(
@@ -1608,7 +1612,7 @@ export const demoRepo: Repo = {
   async addCandidateDate(eventId, date, userId) {
     const s = store();
     const event = s.events.find((e) => e.id === eventId);
-    if (!event) throw new Error("Event not found");
+    if (!event) throw new Error("Can't find that Jio — the link might be old.");
     if (event.status !== "open") throw new Error("This Jio is already closed");
     if (event.date_phase !== "polling") {
       throw new Error("This Jio's date is already confirmed");
@@ -1633,7 +1637,7 @@ export const demoRepo: Repo = {
   async markDateAvailability(eventId, userId, dates) {
     const s = store();
     const event = s.events.find((e) => e.id === eventId);
-    if (!event) throw new Error("Event not found");
+    if (!event) throw new Error("Can't find that Jio — the link might be old.");
     if (event.date_phase !== "polling") {
       throw new Error("This Jio's date is already confirmed");
     }
@@ -1663,7 +1667,7 @@ export const demoRepo: Repo = {
   async confirmEventDate(eventId, hostId, date) {
     const s = store();
     const index = s.events.findIndex((e) => e.id === eventId);
-    if (index === -1) throw new Error("Event not found");
+    if (index === -1) throw new Error("Can't find that Jio — the link might be old.");
     const event = s.events[index];
 
     if (event.host_id !== hostId) {
@@ -1695,7 +1699,7 @@ export const demoRepo: Repo = {
   async rsvp(eventId, userId, response) {
     const s = store();
     const event = s.events.find((e) => e.id === eventId);
-    if (!event) throw new Error("Event not found");
+    if (!event) throw new Error("Can't find that Jio — the link might be old.");
 
     const index = s.rsvps.findIndex(
       (r) => r.event_id === eventId && r.user_id === userId
@@ -1710,7 +1714,7 @@ export const demoRepo: Repo = {
   async closeEvent(eventId, hostId, winnerPlaceId) {
     const s = store();
     const event = s.events.find((e) => e.id === eventId);
-    if (!event) throw new Error("Event not found");
+    if (!event) throw new Error("Can't find that Jio — the link might be old.");
     if (event.host_id !== hostId) {
       throw new Error("Only the host can close this Jio");
     }
@@ -1736,7 +1740,7 @@ export const demoRepo: Repo = {
     };
 
     const detail = await demoRepo.getEvent(eventId);
-    if (!detail) throw new Error("Event vanished while closing");
+    if (!detail) throw new Error("That Jio vanished while closing");
     return detail;
   },
 
@@ -1885,7 +1889,7 @@ export const demoRepo: Repo = {
   async cancelEvent(eventId, hostId) {
     const s = store();
     const index = s.events.findIndex((e) => e.id === eventId);
-    if (index === -1) throw new Error("Event not found");
+    if (index === -1) throw new Error("Can't find that Jio — the link might be old.");
     const event = s.events[index];
 
     if (event.host_id !== hostId) {
@@ -1901,14 +1905,14 @@ export const demoRepo: Repo = {
     s.events[index] = { ...event, status: "cancelled" };
 
     const detail = await demoRepo.getEvent(eventId);
-    if (!detail) throw new Error("Event vanished while cancelling");
+    if (!detail) throw new Error("That Jio vanished while cancelling");
     return detail;
   },
 
   async rescheduleEvent(eventId, hostId, newScheduledAt) {
     const s = store();
     const index = s.events.findIndex((e) => e.id === eventId);
-    if (index === -1) throw new Error("Event not found");
+    if (index === -1) throw new Error("Can't find that Jio — the link might be old.");
     const event = s.events[index];
 
     if (event.host_id !== hostId) {
@@ -1929,14 +1933,14 @@ export const demoRepo: Repo = {
     };
 
     const detail = await demoRepo.getEvent(eventId);
-    if (!detail) throw new Error("Event vanished while rescheduling");
+    if (!detail) throw new Error("That Jio vanished while rescheduling");
     return detail;
   },
 
   async editEventWinner(eventId, hostId, newPlaceId) {
     const s = store();
     const index = s.events.findIndex((e) => e.id === eventId);
-    if (index === -1) throw new Error("Event not found");
+    if (index === -1) throw new Error("Can't find that Jio — the link might be old.");
     const event = s.events[index];
 
     if (event.host_id !== hostId) {
@@ -1952,14 +1956,14 @@ export const demoRepo: Repo = {
     s.events[index] = { ...event, winner_place_id: newPlaceId };
 
     const detail = await demoRepo.getEvent(eventId);
-    if (!detail) throw new Error("Event vanished while correcting it");
+    if (!detail) throw new Error("That Jio vanished while correcting it");
     return detail;
   },
 
   async setHideVotes(eventId, hostId, hideVotes) {
     const s = store();
     const index = s.events.findIndex((e) => e.id === eventId);
-    if (index === -1) throw new Error("Event not found");
+    if (index === -1) throw new Error("Can't find that Jio — the link might be old.");
     const event = s.events[index];
 
     if (event.host_id !== hostId) {
@@ -1972,14 +1976,14 @@ export const demoRepo: Repo = {
     s.events[index] = { ...event, hide_votes: hideVotes };
 
     const detail = await demoRepo.getEvent(eventId);
-    if (!detail) throw new Error("Event vanished while changing hide_votes");
+    if (!detail) throw new Error("That Jio vanished while changing hide_votes");
     return detail;
   },
 
   async reopenEvent(eventId, hostId) {
     const s = store();
     const index = s.events.findIndex((e) => e.id === eventId);
-    if (index === -1) throw new Error("Event not found");
+    if (index === -1) throw new Error("Can't find that Jio — the link might be old.");
     const event = s.events[index];
 
     if (event.host_id !== hostId) {
@@ -2000,7 +2004,7 @@ export const demoRepo: Repo = {
     };
 
     const detail = await demoRepo.getEvent(eventId);
-    if (!detail) throw new Error("Event vanished while reopening it");
+    if (!detail) throw new Error("That Jio vanished while reopening it");
     return detail;
   },
 
@@ -3408,6 +3412,44 @@ export const demoRepo: Repo = {
         });
       }
     }
+  },
+
+  async createGeneralReport(userId, category, comment) {
+    const report: GeneralReport = {
+      id: `demo-report-${uuid().slice(0, 8)}`,
+      reported_by: userId,
+      category,
+      comment: comment ?? null,
+      status: "pending",
+      resolved_by: null,
+      resolved_at: null,
+      created_at: new Date().toISOString(),
+    };
+    store().generalReports.push(report);
+    return { ...report, reported_by_name: displayNameFor(userId) };
+  },
+
+  async listPendingGeneralReports() {
+    const s = store();
+    return s.generalReports
+      .filter((r) => r.status === "pending")
+      .sort((a, b) => (a.created_at ?? "").localeCompare(b.created_at ?? ""))
+      .map((r) => ({ ...r, reported_by_name: displayNameFor(r.reported_by) }));
+  },
+
+  async resolveGeneralReport(adminId, reportId) {
+    if (adminId !== DEMO_USER_ID) {
+      throw new Error("Only an admin can resolve a report");
+    }
+
+    const s = store();
+    const report = s.generalReports.find((r) => r.id === reportId);
+    if (!report) throw new Error("Can't find that report — the link might be old.");
+    if (report.status !== "pending") return;
+
+    report.status = "resolved";
+    report.resolved_by = adminId;
+    report.resolved_at = new Date().toISOString();
   },
 
   async listDuplicateProfiles() {

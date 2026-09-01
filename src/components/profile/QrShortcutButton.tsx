@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { CloseIcon, QrIcon } from "@/components/icons";
 import ShareLink from "@/components/ShareLink";
 import QrCode from "@/components/QrCode";
 import type { usePersonalInviteLink } from "./PersonalInvitePanel";
+import { useDialogFocus } from "@/lib/useDialogFocus";
 
 /**
  * CHANGES_20260819.md §2 — a fast path into the personal invite QR right
@@ -29,6 +30,10 @@ export default function QrShortcutButton({
   generate,
 }: ReturnType<typeof usePersonalInviteLink>) {
   const [open, setOpen] = useState(false);
+  // UX review log #9 — real dialog mechanics (see useDialogFocus's own doc
+  // comment).
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useDialogFocus(open, dialogRef, () => setOpen(false));
 
   const handleOpen = () => {
     setOpen(true);
@@ -49,9 +54,11 @@ export default function QrShortcutButton({
       {open && (
         <div className="fixed inset-x-0 bottom-16 z-40 px-4 pb-[env(safe-area-inset-bottom)] md:bottom-4 md:left-64 md:right-4">
           <div
+            ref={dialogRef}
             className="border-line bg-cream animate-fade-in mx-auto flex max-w-lg items-start gap-3 rounded-2xl border p-4"
             style={{ boxShadow: "var(--shadow-sm)" }}
             role="dialog"
+            aria-modal="true"
             aria-label="Your QR code"
           >
             <div className="min-w-0 flex-1">
