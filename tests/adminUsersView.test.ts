@@ -135,6 +135,9 @@ describe("getAdminUserDetail", () => {
     expect(empty?.lastActiveAt).toBeNull();
     expect(empty?.rsvpResponsivenessPct).toBeNull();
 
+    const recipientBefore = await demoRepo.getAdminUserDetail(DEMO_TEAMMATE_A);
+    const receivedBefore = recipientBefore?.lobangsReceived ?? 0;
+
     await makeEvent(strangerId);
     await demoRepo.sendLobang(
       strangerId,
@@ -148,6 +151,13 @@ describe("getAdminUserDetail", () => {
     expect(after?.hostedCount).toBe(1);
     expect(after?.lobangsSent).toBe(1);
     expect(after?.lastActiveAt).not.toBeNull();
+
+    // Regression: lobangsReceived used to filter the raw stored Lobang row
+    // on `to_user_id`, a field only ever populated at hydration time (see
+    // migration 077) — it silently always read 0 regardless of how many
+    // lobangs came in. Recipients live in lobangRecipients instead.
+    const recipientAfter = await demoRepo.getAdminUserDetail(DEMO_TEAMMATE_A);
+    expect(recipientAfter?.lobangsReceived).toBe(receivedBefore + 1);
   });
 
   it("computes RSVP responsiveness across every Jio the person was ever invited to", async () => {

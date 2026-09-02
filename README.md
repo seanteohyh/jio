@@ -868,6 +868,23 @@ only door" shape as `recovery_tokens`: every access has to go through
 `get_engagement_weights`/`set_engagement_weights`, both of which check
 `admins` themselves.
 
+**`get_admin_user_detail`'s `lobangsReceived` counted a column that hadn't
+existed since migration 019 (fixed in 077).** Migration 019 moved a
+lobang's recipients out of a single `lobangs.to_user_id` column into a
+many-to-many `lobang_recipients` table (a group send, or one sent to
+several teammates at once, has no single "to" to hold) and dropped the
+old column — but 064's `get_admin_user_detail`, written later, still
+queried `lobangs where to_user_id = p_user_id` for that count, and 076
+carried the same line forward verbatim (a `create or replace` reproduces
+the whole body, bug included). It went unnoticed until an admin actually
+opened a person's drill-down against a real Supabase project — the demo
+store has no schema to enforce this, so it silently returned 0 there
+instead of erroring, which is exactly why the existing test for this
+field only ever asserted `lobangsSent`. Fixed to count `lobang_recipients`
+in both places: the SQL function (077) and demoRepo's parallel computation
+(same file, same bug shape — `s.lobangs.filter(l => l.to_user_id ===
+userId)` filtered on a field the raw stored row never carries).
+
 **`admin_segment_member_ids` (065) is never granted to `authenticated` at
 all — only `get_admin_analytics` calls it, internally.** It recomputes one
 segment's membership (the same six rules `get_admin_users` already defines
