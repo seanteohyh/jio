@@ -24,6 +24,9 @@ export default function MapView(props: {
   selectedId?: string | null;
   onSelect?: (place: Place) => void;
   route?: [number, number][] | null;
+  pinDropMode?: boolean;
+  droppedPin?: { lat: number; lng: number } | null;
+  onPinDrop?: (lat: number, lng: number) => void;
 }) {
   return <LeafletMap {...props} />;
 }

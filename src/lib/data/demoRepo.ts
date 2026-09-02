@@ -247,21 +247,35 @@ function recomputeReviewLikeCount(visitId: string): number {
  * Attach the numbers that are computed rather than stored: distance and walk
  * time from the active office, and the rating aggregates.
  */
-function enrich(place: Place, officeId: string = DEFAULT_OFFICE.id): Place {
+function enrich(
+  place: Place,
+  officeId: string | { lat: number; lng: number } = DEFAULT_OFFICE.id
+): Place {
   const s = store();
   const visits = s.visits.filter((v) => v.place_id === place.id);
   const rated = visits.filter((v) => typeof v.rating === "number");
 
-  const cached = s.walkCache.find(
-    (w) => w.place_id === place.id && w.office_id === officeId
-  );
+  let walkMinutes: number | undefined;
+  let distanceM: number | undefined;
 
-  let walkMinutes = cached?.walk_minutes;
-  let distanceM = cached?.distance_m;
+  if (typeof officeId === "string") {
+    const cached = s.walkCache.find(
+      (w) => w.place_id === place.id && w.office_id === officeId
+    );
+    walkMinutes = cached?.walk_minutes;
+    distanceM = cached?.distance_m;
 
-  if (walkMinutes === undefined) {
-    const office = s.offices.find((o) => o.id === officeId) ?? DEFAULT_OFFICE;
-    const distance = haversine(office.lat, office.lng, place.lat, place.lng);
+    if (walkMinutes === undefined) {
+      const office = s.offices.find((o) => o.id === officeId) ?? DEFAULT_OFFICE;
+      const distance = haversine(office.lat, office.lng, place.lat, place.lng);
+      distanceM = Math.round(distance);
+      walkMinutes = estimateWalkMinutes(distance);
+    }
+  } else {
+    // An ad-hoc {lat, lng} reference point (Suggest Area Filter spec §4) —
+    // never cached, always haversine. Nothing stable to key a cache row on,
+    // and it isn't reused across requests.
+    const distance = haversine(officeId.lat, officeId.lng, place.lat, place.lng);
     distanceM = Math.round(distance);
     walkMinutes = estimateWalkMinutes(distance);
   }

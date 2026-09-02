@@ -752,7 +752,16 @@ export interface Filters {
   maxWalkMinutes: number;
   status: PlaceStatus | "all";
   search: string;
-  officeId: string;
+  /**
+   * Almost always an office id. Suggest Area Filter spec §4/§6 widens this
+   * to accept an ad-hoc `{lat, lng}` reference point too — a station or a
+   * dropped pin, resolved client-side before the request. `enrich()`/
+   * `walkTimes()` (demoRepo/supabaseRepo) key their behaviour off which
+   * shape they're handed: a plain object always computes haversine
+   * directly and never touches `walk_cache`, since an ad-hoc point has no
+   * stable key to cache against and isn't reused across requests.
+   */
+  officeId: string | { lat: number; lng: number };
   /**
    * Defaults to "walk" (nearest first) when omitted. "kaki_rating" is
    * handled entirely at the API route layer (see §12f in

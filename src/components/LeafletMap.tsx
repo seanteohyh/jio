@@ -8,6 +8,7 @@ import {
   Popup,
   TileLayer,
   useMap,
+  useMapEvents,
 } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -52,6 +53,25 @@ function markerIcon(color: string, label?: string, ring?: string) {
 /** Matches --color-amber, the same tone PlaceCard's "your Kakis" badge uses. */
 const KAKI_FAVOURITE_RING = "#d98a2b";
 
+/**
+ * Suggest Area Filter spec §4 — captures a tap anywhere on the map while
+ * pin-drop mode is active and reports its coordinates to the parent. Not
+ * simultaneous with place-marker clicks (`onSelect`) — the area picker's
+ * "Drop a pin" tab is the only place this mounts.
+ */
+function PinDropCatcher({
+  onPinDrop,
+}: {
+  onPinDrop: (lat: number, lng: number) => void;
+}) {
+  useMapEvents({
+    click(e) {
+      onPinDrop(e.latlng.lat, e.latlng.lng);
+    },
+  });
+  return null;
+}
+
 /** Refits the viewport when the set of visible places changes. */
 function FitBounds({ points }: { points: [number, number][] }) {
   const map = useMap();
@@ -74,12 +94,19 @@ export default function LeafletMap({
   selectedId,
   onSelect,
   route,
+  pinDropMode,
+  droppedPin,
+  onPinDrop,
 }: {
   office: Office;
   places: Place[];
   selectedId?: string | null;
   onSelect?: (place: Place) => void;
   route?: [number, number][] | null;
+  /** Suggest Area Filter spec §4 — "Drop a pin" tab only; unset elsewhere. */
+  pinDropMode?: boolean;
+  droppedPin?: { lat: number; lng: number } | null;
+  onPinDrop?: (lat: number, lng: number) => void;
 }) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
@@ -109,20 +136,34 @@ export default function LeafletMap({
 
       <FitBounds points={points} />
 
-      <Marker
-        position={[office.lat, office.lng]}
-        icon={markerIcon("#2b2b2b", "🏢")}
-      >
-        <Popup>
-          <strong>{office.name}</strong>
-          {office.address && (
-            <>
-              <br />
-              <span style={{ color: "#6b665c" }}>{office.address}</span>
-            </>
-          )}
-        </Popup>
-      </Marker>
+      {pinDropMode && onPinDrop && <PinDropCatcher onPinDrop={onPinDrop} />}
+
+      {pinDropMode && droppedPin && (
+        <Marker
+          position={[droppedPin.lat, droppedPin.lng]}
+          icon={markerIcon("#c0392b", "📍")}
+        />
+      )}
+
+      {/* Suggest Area Filter spec §3 — the pin-drop map is a blank base map
+          to tap anywhere on, not a pin to click around; the office marker
+          would also swallow the map's own click under it. */}
+      {!pinDropMode && (
+        <Marker
+          position={[office.lat, office.lng]}
+          icon={markerIcon("#2b2b2b", "🏢")}
+        >
+          <Popup>
+            <strong>{office.name}</strong>
+            {office.address && (
+              <>
+                <br />
+                <span style={{ color: "#6b665c" }}>{office.address}</span>
+              </>
+            )}
+          </Popup>
+        </Marker>
+      )}
 
       {places.map((place) => (
         <Marker
