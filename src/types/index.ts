@@ -732,6 +732,17 @@ export interface RankOptions {
   cuisines?: string[];
   /** Cap on walking minutes. */
   maxWalkMinutes?: number;
+  /**
+   * Hard cutoff, not just the existing soft `budgetFitScore` nudge from the
+   * caller's own `user_prefs` — a place tiered above this is excluded from
+   * the results entirely, same "actually narrows the list" contract as the
+   * Places page's own budget filter.
+   */
+  budgetMax?: BudgetTier;
+  /** Excludes any place the caller has already logged a visit to, rated or
+   *  not — same "never personally logged a visit to" semantics as the
+   *  Places page's "New to try" rail. */
+  excludeVisited?: boolean;
 }
 
 export interface MemberData {
