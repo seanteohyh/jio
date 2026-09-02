@@ -6,6 +6,7 @@ import { featureGate } from "@/lib/config";
 import { DEFAULT_OFFICE } from "@/lib/constants";
 import { sendPushToUsers } from "@/lib/push";
 import { expandInvitees } from "@/lib/events";
+import { logAction } from "@/lib/actions";
 import type { Repo } from "@/lib/data";
 
 /** Best-effort — a push failure must never fail the Jio it's announcing. */
@@ -136,6 +137,7 @@ export async function POST(request: NextRequest) {
         body.time_of_day
       );
       await notifyInvitees(repo, invitees, event.id, title);
+      await logAction(repo, user.id, "jio.hosted", { eventId: event.id });
       return json({ event }, 201);
     }
 
@@ -158,6 +160,7 @@ export async function POST(request: NextRequest) {
       body.hide_votes ?? false
     );
     await notifyInvitees(repo, invitees, event.id, title);
+    await logAction(repo, user.id, "jio.hosted", { eventId: event.id });
 
     return json({ event }, 201);
   } catch (error) {

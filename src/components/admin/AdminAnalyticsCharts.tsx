@@ -29,7 +29,7 @@ import type { AdminAnalytics, DateCount, NamedCount } from "@/types";
 /** "2026-05-27" -> "May 27" — deliberately month-first and yearless, for a
  *  chart caption rather than a full date; Singapore's calendar day is
  *  already baked into the key string, so no timezone math happens here. */
-function shortDate(key: string): string {
+export function shortDate(key: string): string {
   const [y, m, d] = key.split("-").map(Number);
   return new Date(y, m - 1, d).toLocaleDateString("en-US", {
     month: "short",
@@ -576,6 +576,44 @@ export function GrowthSection({
           windowDays={windowDays}
         />
       </div>
+    </Card>
+  );
+}
+
+/**
+ * Daily Activity Log — who visited the app on each of the last 7 days,
+ * regardless of whether they did anything else. Always the trailing
+ * week, unaffected by the window/segment picker — same "today, not the
+ * window" reasoning `FunnelSection` uses. Same `<details>` disclosure
+ * pattern as `GrowthSection`'s "Who joined."
+ */
+export function RecentEntrantsSection({
+  recentEntrants,
+}: {
+  recentEntrants: AdminAnalytics["recentEntrants"];
+}) {
+  const totalVisits = recentEntrants.reduce((sum, day) => sum + day.users.length, 0);
+
+  return (
+    <Card className="space-y-2">
+      <SectionHeading>Recent entrants</SectionHeading>
+      <p className="text-stone text-sm">
+        {totalVisits} visit{totalVisits === 1 ? "" : "s"} across the last 7 days
+      </p>
+      {recentEntrants.length === 0 ? (
+        <p className="text-stone text-sm">Nobody's visited in the last 7 days.</p>
+      ) : (
+        <ul className="space-y-1">
+          {recentEntrants.map((day) => (
+            <li key={day.date} className="text-stone text-[11px]">
+              <span className="text-ink font-medium">{shortDate(day.date)}:</span>{" "}
+              {day.users
+                .map((u) => (u.pageViews > 1 ? `${u.name} (${u.pageViews})` : u.name))
+                .join(", ")}
+            </li>
+          ))}
+        </ul>
+      )}
     </Card>
   );
 }

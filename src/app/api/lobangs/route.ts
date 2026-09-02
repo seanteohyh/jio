@@ -5,6 +5,7 @@ import { badRequest, errorResponse, json, numberParam, readJson } from "@/lib/ap
 import { featureGate } from "@/lib/config";
 import { lobangShareUrl } from "@/lib/shareUrl";
 import { sendPushToUsers } from "@/lib/push";
+import { logAction } from "@/lib/actions";
 import type { Repo } from "@/lib/data";
 import type { Lobang } from "@/types";
 
@@ -115,6 +116,10 @@ export async function POST(request: NextRequest) {
     );
 
     await notifyOfLobang(repo, lobang);
+    await logAction(repo, user.id, "lobang.sent", {
+      placeId: body.place_id,
+      target: target.type,
+    });
 
     const url = lobang.public_token
       ? lobangShareUrl(lobang.public_token)

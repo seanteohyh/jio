@@ -948,6 +948,19 @@ export interface AdminAnalytics {
     kakiGroupsCumulative: number;
   };
 
+  /**
+   * Daily Activity Log — who visited the app on each of the last 7
+   * Asia/Singapore calendar days, from `app_daily_visits`. Always the
+   * trailing week regardless of `windowDays`/`appliedSegment` — same
+   * "today, not the window" reasoning as `funnel` above. Sparse like
+   * `growth.newUsersDetail`: a day nobody visited has no entry. Newest
+   * day first.
+   */
+  recentEntrants: {
+    date: string;
+    users: { id: string; name: string; pageViews: number }[];
+  }[];
+
   jioOutcomes: {
     decided: number;
     closedNoWinner: number;
@@ -1161,6 +1174,22 @@ export interface AdminUserDetail {
    *  explicit invitee) that they RSVP'd to at all, lifetime. `null` if
    *  they've never been invited to one. */
   rsvpResponsivenessPct: number | null;
+  /**
+   * Daily Activity Log — this person's last 30 Asia/Singapore calendar
+   * days, one entry per day they visited the app at all (`app_daily_
+   * visits`). A day with a visit but no logged action still appears, with
+   * an empty `actions` array — a day with no visit at all is simply
+   * absent, not a zero-row. Newest day first.
+   */
+  dailyActivity: {
+    date: string;
+    pageViews: number;
+    actions: {
+      action: string;
+      metadata: Record<string, unknown> | null;
+      createdAt: string;
+    }[];
+  }[];
 }
 
 // ---------------------------------------------------------------------------

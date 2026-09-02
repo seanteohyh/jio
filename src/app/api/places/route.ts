@@ -14,6 +14,7 @@ import { isEnabled } from "@/lib/config";
 import { computeKakiRatingByPlace, countKakiVisitsByPlace } from "@/lib/metrics";
 import { resolveAndStoreGooglePlaceId } from "@/lib/googlePlaces";
 import { isHttpUrl } from "@/lib/utils";
+import { logAction } from "@/lib/actions";
 import type { BudgetTier, Filters, Place, PlaceStatus } from "@/types";
 
 /** A lone review shouldn't read as group consensus — CHANGES_20260807c.md §2. */
@@ -201,6 +202,7 @@ export async function POST(request: NextRequest) {
     // Best-effort — never lets a Places lookup failure block adding a
     // place. No-ops entirely without GOOGLE_PLACES_API_KEY configured.
     await resolveAndStoreGooglePlaceId(repo, place);
+    await logAction(repo, user.id, "place.created", { placeId: place.id });
 
     return json({ place }, 201);
   } catch (error) {

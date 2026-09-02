@@ -161,6 +161,24 @@ interface DemoStore {
    *  a bit more than what's returned to callers. */
   userFoodIdentitySnapshots: (UserFoodIdentitySnapshot & { user_id: string })[];
   kakiFoodIdentitySnapshots: (KakiFoodIdentitySnapshot & { kaki_id: string })[];
+  /** Daily Activity Log — one row per (user, Asia/Singapore calendar day),
+   *  incremented on every page view. Mirrors `app_daily_visits`. */
+  dailyVisits: {
+    user_id: string;
+    visit_date: string;
+    page_view_count: number;
+    first_seen_at: string;
+    last_seen_at: string;
+  }[];
+  /** Mirrors `action_events` — the generic action log instrumented across
+   *  every write path §5 lists. */
+  actionEvents: {
+    id: string;
+    user_id: string;
+    action: string;
+    metadata: Record<string, unknown> | null;
+    created_at: string;
+  }[];
 }
 
 const globalStore = globalThis as typeof globalThis & {
@@ -209,6 +227,8 @@ function seed(): DemoStore {
     },
     userFoodIdentitySnapshots: [],
     kakiFoodIdentitySnapshots: [],
+    dailyVisits: [],
+    actionEvents: [],
   };
 }
 
@@ -2834,6 +2854,32 @@ export const demoRepo: Repo = {
     const jiosCreatedPerDay = bucketByDay(
       s.events.filter((e) => inWindow(e.created_at)).map((e) => e.created_at!)
     );
+    // Daily Activity Log — always the trailing 7 days, independent of
+    // `days`/`segment` (same "today, not the window" reasoning as the
+    // funnel above), newest day first.
+    const recentEntrants = (() => {
+      const cutoffKey = sgtDateKey(new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000));
+      const byDay = new Map<
+        string,
+        { id: string; name: string; pageViews: number }[]
+      >();
+      for (const v of s.dailyVisits) {
+        if (v.visit_date < cutoffKey) continue;
+        const list = byDay.get(v.visit_date) ?? [];
+        list.push({
+          id: v.user_id,
+          name: displayNameFor(v.user_id),
+          pageViews: v.page_view_count,
+        });
+        byDay.set(v.visit_date, list);
+      }
+      return Array.from(byDay.entries())
+        .map(([date, users]) => ({
+          date,
+          users: users.sort((a, b) => a.name.localeCompare(b.name)),
+        }))
+        .sort((a, b) => b.date.localeCompare(a.date));
+    })();
     const placesAddedPerDay = bucketByDay(
       s.places.filter((p) => inWindow(p.created_at)).map((p) => p.created_at!)
     );
@@ -3015,6 +3061,7 @@ export const demoRepo: Repo = {
         kakiGroupsCreatedPerDay,
         kakiGroupsCumulative: s.kakis.length,
       },
+      recentEntrants,
       jioOutcomes: {
         decided,
         closedNoWinner,
@@ -3325,6 +3372,31 @@ export const demoRepo: Repo = {
 
     const metrics = computeUserMetrics(visits, s.places);
 
+    // Daily Activity Log — last 30 days, one entry per day this person
+    // visited the app at all. A visit day with zero logged actions still
+    // appears (empty `actions`); a day with no visit is simply absent.
+    const dailyActivity = (() => {
+      const cutoffKey = sgtDateKey(new Date(Date.now() - 29 * 24 * 60 * 60 * 1000));
+      return s.dailyVisits
+        .filter((v) => v.user_id === userId && v.visit_date >= cutoffKey)
+        .sort((a, b) => b.visit_date.localeCompare(a.visit_date))
+        .map((v) => ({
+          date: v.visit_date,
+          pageViews: v.page_view_count,
+          actions: s.actionEvents
+            .filter(
+              (a) =>
+                a.user_id === userId && sgtDateKey(a.created_at) === v.visit_date
+            )
+            .sort((a, b) => a.created_at.localeCompare(b.created_at))
+            .map((a) => ({
+              action: a.action,
+              metadata: a.metadata,
+              createdAt: a.created_at,
+            })),
+        }));
+    })();
+
     return {
       userId,
       name: profile.display_name,
@@ -3335,6 +3407,7 @@ export const demoRepo: Repo = {
       lobangsReceived,
       lastActiveAt,
       rsvpResponsivenessPct,
+      dailyActivity,
     };
   },
 
@@ -3818,6 +3891,36 @@ export const demoRepo: Repo = {
     return store()
       .kakiFoodIdentitySnapshots.filter((row) => row.kaki_id === kakiId)
       .sort((a, b) => b.month.localeCompare(a.month));
+  },
+
+  async trackDailyVisit(userId, visitDate) {
+    const s = store();
+    const now = new Date().toISOString();
+    const existing = s.dailyVisits.find(
+      (v) => v.user_id === userId && v.visit_date === visitDate
+    );
+    if (existing) {
+      existing.page_view_count += 1;
+      existing.last_seen_at = now;
+    } else {
+      s.dailyVisits.push({
+        user_id: userId,
+        visit_date: visitDate,
+        page_view_count: 1,
+        first_seen_at: now,
+        last_seen_at: now,
+      });
+    }
+  },
+
+  async logAction(userId, action, metadata = null) {
+    store().actionEvents.push({
+      id: uuid(),
+      user_id: userId,
+      action,
+      metadata,
+      created_at: new Date().toISOString(),
+    });
   },
 };
 

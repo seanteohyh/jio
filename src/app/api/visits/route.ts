@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { requireUser } from "@/lib/auth";
 import { getRepoAsync } from "@/lib/data/repo";
 import { badRequest, errorResponse, json, readJson } from "@/lib/api";
+import { logAction } from "@/lib/actions";
 
 export async function GET(request: NextRequest) {
   try {
@@ -55,6 +56,14 @@ export async function POST(request: NextRequest) {
       // deliberate reversal of the original private-by-default stance),
       // so an omitted field falls back to visible, not hidden.
       is_public: body.is_public ?? true,
+    });
+
+    // A public visit is a review; a private one is just a log entry —
+    // the same distinction `is_public` already draws everywhere else in
+    // this schema, not a second flag.
+    await logAction(repo, user.id, visit.is_public ? "place.reviewed" : "place.visited", {
+      placeId: visit.place_id,
+      visitId: visit.id,
     });
 
     return json({ visit }, 201);

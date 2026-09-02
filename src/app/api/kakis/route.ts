@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/auth";
 import { getRepoAsync } from "@/lib/data/repo";
 import { badRequest, errorResponse, json, readJson } from "@/lib/api";
 import { featureGate } from "@/lib/config";
+import { logAction } from "@/lib/actions";
 
 export async function GET() {
   const blocked = featureGate("kakis");
@@ -39,6 +40,7 @@ export async function POST(request: NextRequest) {
     if (name.length > 60) return badRequest("That name is a bit long");
 
     const kaki = await repo.createKaki(user.id, name);
+    await logAction(repo, user.id, "kaki.created", { kakiId: kaki.id });
     return json({ kaki }, 201);
   } catch (error) {
     return errorResponse(error);
