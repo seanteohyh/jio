@@ -52,4 +52,16 @@ describe("general reports", () => {
       demoRepo.resolveGeneralReport(DEMO_TEAMMATE_A, report.id)
     ).rejects.toThrow(/admin/i);
   });
+
+  it("accepts the 'suggestion' category — Home's FeedbackCard, same pipeline", async () => {
+    const report = await demoRepo.createGeneralReport(
+      DEMO_TEAMMATE_A,
+      "suggestion",
+      "Dark mode please"
+    );
+    expect(report.category).toBe("suggestion");
+
+    const pending = await demoRepo.listPendingGeneralReports();
+    expect(pending.map((r) => r.id)).toContain(report.id);
+  });
 });

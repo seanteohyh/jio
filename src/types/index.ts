@@ -650,7 +650,11 @@ export interface PlaceFlag {
 // General (non-place) reports — UX review log #17, "Report a problem"
 // ---------------------------------------------------------------------------
 
-export type GeneralReportCategory = "not_working" | "place_wrong" | "other";
+export type GeneralReportCategory =
+  | "not_working"
+  | "place_wrong"
+  | "suggestion"
+  | "other";
 
 /**
  * A general app-level report, reached from Profile rather than a specific
