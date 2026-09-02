@@ -3332,7 +3332,13 @@ export const demoRepo: Repo = {
       .sort((a, b) => a.name.localeCompare(b.name));
 
     const lobangsSent = s.lobangs.filter((l) => l.from_user_id === userId).length;
-    const lobangsReceived = s.lobangs.filter((l) => l.to_user_id === userId).length;
+    // Recipients live in lobangRecipients (snapshotted at send time), not a
+    // `to_user_id` column on the raw stored row — that field only ever gets
+    // populated at hydration time (see the `Lobang` type's own doc comment),
+    // so filtering the raw store on it here always silently returned 0.
+    const lobangsReceived = s.lobangRecipients.filter(
+      (r) => r.user_id === userId
+    ).length;
 
     const activityTimestamps = [
       ...s.events.filter((e) => e.host_id === userId).map((e) => e.created_at),
