@@ -12,6 +12,7 @@ import {
   uuid,
 } from "@/lib/utils";
 import { computeWinner } from "@/lib/voting";
+import { computeUserMetrics } from "@/lib/metrics";
 import { rankPlaces } from "@/lib/recommend";
 import { pickCommitteeSuggestions } from "@/lib/suggestCommittee";
 import { DISCOVERY_CONFIG } from "@/lib/discoveryConfig";
@@ -3515,7 +3516,21 @@ export const supabaseRepo: Repo = {
       p_user_id: userId,
     });
     if (error) fail("Could not load user detail", error);
-    return (data ?? null) as AdminUserDetail | null;
+    if (!data) return null;
+
+    // The RPC's own 'visits' key is raw material, not part of AdminUserDetail
+    // itself — demoRepo computes `metrics` from its equivalent in-memory
+    // visit list the same way; this was the one step missing here, which is
+    // why `detail.metrics` came back undefined and crashed the drill-down
+    // page the moment a real project's data made it past the RPC call.
+    const { visits, ...rest } = data as AdminUserDetail & { visits: Visit[] };
+    const { data: placesData, error: placesError } = await client
+      .from("places")
+      .select("*");
+    if (placesError) fail("Could not load places", placesError);
+
+    const metrics = computeUserMetrics(visits ?? [], (placesData ?? []) as Place[]);
+    return { ...rest, metrics } as AdminUserDetail;
   },
 
   async reviewPlace(userId, placeId, approve) {

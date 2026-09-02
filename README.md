@@ -885,6 +885,25 @@ in both places: the SQL function (077) and demoRepo's parallel computation
 (same file, same bug shape — `s.lobangs.filter(l => l.to_user_id ===
 userId)` filtered on a field the raw stored row never carries).
 
+**Fixing the `lobangsReceived` bug above uncovered a second, bigger one
+underneath it: `getAdminUserDetail`'s Supabase implementation never
+computed `metrics` at all.** The person drill-down page reads `detail.
+metrics.totalVisits` first thing — `get_admin_user_detail`'s SQL returns
+raw `visits` rows precisely so a caller can compute that from them (the
+same "raw material in, aggregate out" shape `computeUserMetrics` already
+has, and exactly what `demoRepo`'s own `getAdminUserDetail` does with its
+in-memory equivalent). But `supabaseRepo.getAdminUserDetail` just cast the
+raw RPC JSON straight to `AdminUserDetail` and returned it — `metrics` was
+never in that JSON to begin with, so `detail.metrics` was `undefined` in
+live mode, and `undefined.totalVisits` crashed the whole page into the
+app's generic error boundary. This had silently never worked, on any
+account, since the page was built: the `lobangsReceived` bug above always
+failed the RPC call first (with a scoped, graceful inline error), so
+nothing ever got far enough to hit this one. Fixed by fetching `places`
+alongside the RPC result and calling `computeUserMetrics` in `supabaseRepo`
+itself, the same as `demoRepo` already does — no new migration needed,
+since the SQL was already returning everything required.
+
 **`admin_segment_member_ids` (065) is never granted to `authenticated` at
 all — only `get_admin_analytics` calls it, internally.** It recomputes one
 segment's membership (the same six rules `get_admin_users` already defines
