@@ -15,6 +15,7 @@ import {
 import InvitePicker, {
   type InviteSelection,
 } from "@/components/InvitePicker";
+import AreaPicker, { type AreaSelection } from "@/components/events/AreaPicker";
 import HintCard from "@/components/HintCard";
 import { useToast } from "@/components/Toast";
 import { fetcher, mutateJson } from "@/lib/fetcher";
@@ -81,6 +82,10 @@ export default function JioForm({
     initialInvite ?? { userIds: [], kakiIds: [] }
   );
   const [placeQuery, setPlaceQuery] = useState("");
+  // Suggest Area Filter spec §2 — per-Jio × per-request, never persisted:
+  // just another input feeding the same suggestQuery/useSWR fetch below,
+  // exactly like the group/personal switch already does.
+  const [area, setArea] = useState<AreaSelection | null>(null);
   const [hideVotes, setHideVotes] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -91,9 +96,10 @@ export default function JioForm({
   // mixed or ad-hoc-only falls back to today's personal-taste suggestions.
   const groupScoped =
     features.kakis && invite.kakiIds.length === 1 && invite.userIds.length === 0;
+  const areaParams = area ? `&areaLat=${area.lat}&areaLng=${area.lng}` : "";
   const suggestQuery = groupScoped
-    ? `/api/suggest?mode=group&kakiId=${invite.kakiIds[0]}&limit=15`
-    : "/api/suggest?limit=15";
+    ? `/api/suggest?mode=group&kakiId=${invite.kakiIds[0]}&limit=15${areaParams}`
+    : `/api/suggest?limit=15${areaParams}`;
   const { data: suggestData } = useSWR<{ suggestions: ScoredPlace[] }>(
     suggestQuery,
     fetcher
@@ -344,6 +350,11 @@ export default function JioForm({
                 autoComplete="off"
               />
             </Field>
+
+            <div className="flex items-center gap-2">
+              <span className="text-stone text-xs">Suggestions near</span>
+              <AreaPicker value={area} onChange={setArea} />
+            </div>
 
             {trimmedQuery.length >= 2 && searching && (
               <p className="text-stone text-xs">Searching…</p>

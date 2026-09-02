@@ -26,9 +26,29 @@ export async function GET(request: NextRequest) {
     const kakiId = params.get("kakiId");
     const limit = numberParam(params, "limit", 12);
     const cuisines = listParam(params, "cuisines");
+
+    // Suggest Area Filter spec §4 — an ad-hoc reference point for one
+    // request, resolved client-side (from a chosen station or a dropped
+    // pin) before this fetch ever fires, so both input methods have
+    // already collapsed to the same {lat, lng} shape by the time they
+    // reach here. Both must be present and parse as finite numbers, or
+    // this falls through to today's office-relative resolution unchanged.
+    const areaLatRaw = params.get("areaLat");
+    const areaLngRaw = params.get("areaLng");
+    const areaLat = areaLatRaw !== null ? Number(areaLatRaw) : NaN;
+    const areaLng = areaLngRaw !== null ? Number(areaLngRaw) : NaN;
+    const hasArea = Number.isFinite(areaLat) && Number.isFinite(areaLng);
+
+    // No existing convention for a "typical distance" around an arbitrary
+    // point the way there is for a fixed office — 15 minutes is a
+    // placeholder default that only applies when an area is active and the
+    // caller hasn't also passed an explicit ?maxWalk=; office-relative
+    // requests keep their existing unfiltered-by-default behaviour.
     const maxWalk = params.has("maxWalk")
       ? numberParam(params, "maxWalk", 20)
-      : undefined;
+      : hasArea
+        ? 15
+        : undefined;
 
     const [visits, prefs, wishlist, offices] = await Promise.all([
       repo.listVisits(undefined, user.id),
@@ -37,18 +57,22 @@ export async function GET(request: NextRequest) {
       repo.listOffices(),
     ]);
 
-    // Same resolution /api/places and /api/users already use — the
-    // caller's own default_office_id first (needs `prefs`, hence resolved
-    // after the fetch above, not alongside it), falling back to
-    // DEFAULT_OFFICE; an explicit ?officeId= still wins over both.
-    const officeId =
-      params.get("officeId") ??
-      (isEnabled("offices") ? prefs?.default_office_id : null) ??
-      DEFAULT_OFFICE.id;
+    // When an area is active, this request never resolves or references an
+    // officeId at all — it's a pure {lat, lng} point passed straight
+    // through to listPlaces/walkTimes. Otherwise, same resolution
+    // /api/places and /api/users already use: the caller's own
+    // default_office_id first, falling back to DEFAULT_OFFICE; an explicit
+    // ?officeId= still wins over both.
+    const officeId: string | { lat: number; lng: number } = hasArea
+      ? { lat: areaLat, lng: areaLng }
+      : (params.get("officeId") ??
+        (isEnabled("offices") ? prefs?.default_office_id : null) ??
+        DEFAULT_OFFICE.id);
     const { places } = await repo.listPlaces({ status: "active", officeId });
 
-    const office =
-      offices.find((o) => o.id === officeId) ?? offices[0] ?? DEFAULT_OFFICE;
+    const office: { lat: number; lng: number } = hasArea
+      ? { lat: areaLat, lng: areaLng }
+      : (offices.find((o) => o.id === officeId) ?? offices[0] ?? DEFAULT_OFFICE);
 
     // Rain doubles the walk penalty, which quietly pulls closer places up the
     // list. Never blocks: a failed forecast is just no forecast.

@@ -94,10 +94,24 @@ function fail(message: string, error: { message?: string } | null): never {
 /** Walk times from the cache, falling back to straight-line estimates. */
 async function walkTimes(
   client: SupabaseClient,
-  officeId: string,
+  officeId: string | { lat: number; lng: number },
   places: Place[]
 ): Promise<Map<string, { walk_minutes: number; distance_m: number }>> {
   const map = new Map<string, { walk_minutes: number; distance_m: number }>();
+
+  if (typeof officeId !== "string") {
+    // An ad-hoc {lat, lng} reference point (Suggest Area Filter spec §4) —
+    // always haversine, never touches walk_cache: an ad-hoc point has no
+    // stable key to cache against and isn't reused across requests.
+    for (const place of places) {
+      const distance = haversine(officeId.lat, officeId.lng, place.lat, place.lng);
+      map.set(place.id, {
+        walk_minutes: estimateWalkMinutes(distance),
+        distance_m: Math.round(distance),
+      });
+    }
+    return map;
+  }
 
   const { data } = await client
     .from("walk_cache")
