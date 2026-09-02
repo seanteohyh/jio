@@ -6,6 +6,7 @@ import { config, features } from "@/lib/config";
 import HomeHero from "@/components/home/HomeHero";
 import NeedsAvailability from "@/components/home/NeedsAvailability";
 import UnseenLobangCard from "@/components/home/UnseenLobangCard";
+import FeedbackCard from "@/components/home/FeedbackCard";
 import StreakBanner from "@/components/home/StreakBanner";
 import AddToHomeScreenCard from "@/components/profile/AddToHomeScreenCard";
 import HintCard from "@/components/HintCard";
@@ -278,6 +279,8 @@ export default async function HomePage() {
       {features.events && <NeedsAvailability />}
 
       {features.lobangs && <UnseenLobangCard />}
+
+      <FeedbackCard />
     </div>
   );
 }

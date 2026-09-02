@@ -7,6 +7,7 @@ import type { GeneralReportCategory } from "@/types";
 const VALID_CATEGORIES: GeneralReportCategory[] = [
   "not_working",
   "place_wrong",
+  "suggestion",
   "other",
 ];
 

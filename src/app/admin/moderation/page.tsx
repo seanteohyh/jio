@@ -29,6 +29,7 @@ import type {
 const GENERAL_REPORT_LABELS: Record<GeneralReportCategory, string> = {
   not_working: "Something's not working",
   place_wrong: "A place's info is wrong",
+  suggestion: "Suggestion",
   other: "Something else",
 };
 

@@ -6,7 +6,12 @@ import { useToast } from "@/components/Toast";
 import { mutateJson } from "@/lib/fetcher";
 import type { GeneralReportCategory } from "@/types";
 
-const CATEGORY_LABELS: Record<GeneralReportCategory, string> = {
+/** This panel's own category is "something's wrong," so it deliberately
+ *  never offers `suggestion` as a choice — that's Home's `FeedbackCard`'s
+ *  job, sharing the same `/api/reports` pipeline under its own category. */
+type ProblemCategory = Exclude<GeneralReportCategory, "suggestion">;
+
+const CATEGORY_LABELS: Record<ProblemCategory, string> = {
   not_working: "Something's not working",
   place_wrong: "A place's info is wrong",
   other: "Something else",
@@ -23,9 +28,7 @@ const CATEGORY_LABELS: Record<GeneralReportCategory, string> = {
  */
 export default function ReportProblemPanel() {
   const [open, setOpen] = useState(false);
-  const [category, setCategory] = useState<GeneralReportCategory>(
-    "not_working"
-  );
+  const [category, setCategory] = useState<ProblemCategory>("not_working");
   const [comment, setComment] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -85,7 +88,7 @@ export default function ReportProblemPanel() {
             <legend className="text-stone mb-1 text-xs font-medium">
               What&apos;s this about?
             </legend>
-            {(Object.keys(CATEGORY_LABELS) as GeneralReportCategory[]).map(
+            {(Object.keys(CATEGORY_LABELS) as ProblemCategory[]).map(
               (key) => (
                 <label key={key} className="flex items-center gap-2 text-sm">
                   <input
