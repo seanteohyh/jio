@@ -318,6 +318,44 @@ describe("rankPlaces", () => {
 
     expect(ranked.map((s) => s.place.id)).toEqual(["th"]);
   });
+
+  it("excludes anything tiered above budgetMax", () => {
+    const mixed = [
+      place({ id: "cheap", budget_tier: 1 }),
+      place({ id: "pricey", budget_tier: 5 }),
+    ];
+    const ranked = rankPlaces(mixed, [], null, [], { budgetMax: 2 });
+
+    expect(ranked.map((s) => s.place.id)).toEqual(["cheap"]);
+  });
+
+  it("keeps everything when budgetMax is the top tier (a no-op)", () => {
+    const mixed = [
+      place({ id: "cheap", budget_tier: 1 }),
+      place({ id: "pricey", budget_tier: 6 }),
+    ];
+    const ranked = rankPlaces(mixed, [], null, [], { budgetMax: 6 });
+
+    expect(ranked.map((s) => s.place.id).sort()).toEqual(["cheap", "pricey"]);
+  });
+
+  it("excludes anywhere already visited when excludeVisited is set", () => {
+    const mixed = [place({ id: "been" }), place({ id: "never" })];
+    const visits = [visit("been", 4)];
+    const ranked = rankPlaces(mixed, visits, null, [], {
+      excludeVisited: true,
+    });
+
+    expect(ranked.map((s) => s.place.id)).toEqual(["never"]);
+  });
+
+  it("leaves visited places in when excludeVisited is not set", () => {
+    const mixed = [place({ id: "been" }), place({ id: "never" })];
+    const visits = [visit("been", 4)];
+    const ranked = rankPlaces(mixed, visits, null, []);
+
+    expect(ranked.map((s) => s.place.id).sort()).toEqual(["been", "never"]);
+  });
 });
 
 describe("groupRecommend", () => {
@@ -341,6 +379,33 @@ describe("groupRecommend", () => {
     );
 
     expect(ranked.map((s) => s.place.id)).toEqual(["local"]);
+  });
+
+  it("passes excludeVisited/budgetMax through to every member's own ranking", () => {
+    const places = [
+      place({ id: "beenByA", budget_tier: 1 }),
+      place({ id: "pricey", budget_tier: 5 }),
+      place({ id: "both-ok" }),
+    ];
+
+    const ranked = groupRecommend(
+      [
+        {
+          userId: "a",
+          visits: [visit("beenByA", 4)],
+          prefs: null,
+          wishlistPlaceIds: [],
+        },
+        { userId: "b", visits: [], prefs: null, wishlistPlaceIds: [] },
+      ],
+      places,
+      { excludeVisited: true, budgetMax: 4 }
+    );
+
+    // "beenByA" — a's own visit excludes it for the whole group, same
+    // "one person's hard no outranks everyone else's" rule as any other
+    // exclusion here. "pricey" is over budgetMax for both members.
+    expect(ranked.map((s) => s.place.id)).toEqual(["both-ok"]);
   });
 
   it("averages the members' scores rather than summing them", () => {

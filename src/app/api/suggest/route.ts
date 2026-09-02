@@ -7,7 +7,7 @@ import { groupRecommend, rankPlaces, surprisePick, whyHint } from "@/lib/recomme
 import { RECOMMEND_CONFIG } from "@/lib/recommendConfig";
 import { DEFAULT_OFFICE } from "@/lib/constants";
 import { isEnabled } from "@/lib/config";
-import type { MemberData, ScoredPlace } from "@/types";
+import type { BudgetTier, MemberData, ScoredPlace } from "@/types";
 
 /**
  * The suggestion endpoint.
@@ -26,6 +26,12 @@ export async function GET(request: NextRequest) {
     const kakiId = params.get("kakiId");
     const limit = numberParam(params, "limit", 12);
     const cuisines = listParam(params, "cuisines");
+    // A hard cutoff on top of the existing soft budgetFitScore nudge — 6 (the
+    // top tier) is a true no-op when omitted, since no place is tiered above
+    // it, so this needs no `params.has()` guard the way maxWalk's ambiguous
+    // "0 means something" default would.
+    const budgetMax = numberParam(params, "budgetMax", 6) as BudgetTier;
+    const excludeVisited = params.get("excludeVisited") === "true";
 
     // Suggest Area Filter spec §4 — an ad-hoc reference point for one
     // request, resolved client-side (from a chosen station or a dropped
@@ -89,6 +95,8 @@ export async function GET(request: NextRequest) {
       limit,
       cuisines: cuisines.length > 0 ? cuisines : undefined,
       maxWalkMinutes: maxWalk,
+      budgetMax,
+      excludeVisited,
     };
 
     let ranked: ScoredPlace[];

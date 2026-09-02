@@ -20,7 +20,8 @@ import HintCard from "@/components/HintCard";
 import { useToast } from "@/components/Toast";
 import { fetcher, mutateJson } from "@/lib/fetcher";
 import { features } from "@/lib/config";
-import type { Place, ScoredPlace } from "@/types";
+import { BUDGET_TIERS } from "@/lib/constants";
+import type { BudgetTier, Place, ScoredPlace } from "@/types";
 
 function defaultDateTime(): string {
   // Noon today, or noon tomorrow if that has already gone past.
@@ -86,6 +87,10 @@ export default function JioForm({
   // just another input feeding the same suggestQuery/useSWR fetch below,
   // exactly like the group/personal switch already does.
   const [area, setArea] = useState<AreaSelection | null>(null);
+  // 6 (the top tier) is a true no-op default — nothing is tiered above it —
+  // same "Up to" convention as the Places page's own budget filter.
+  const [budgetMax, setBudgetMax] = useState<BudgetTier>(6);
+  const [newOnly, setNewOnly] = useState(false);
   const [hideVotes, setHideVotes] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -97,9 +102,12 @@ export default function JioForm({
   const groupScoped =
     features.kakis && invite.kakiIds.length === 1 && invite.userIds.length === 0;
   const areaParams = area ? `&areaLat=${area.lat}&areaLng=${area.lng}` : "";
+  const filterParams =
+    (budgetMax !== 6 ? `&budgetMax=${budgetMax}` : "") +
+    (newOnly ? `&excludeVisited=true` : "");
   const suggestQuery = groupScoped
-    ? `/api/suggest?mode=group&kakiId=${invite.kakiIds[0]}&limit=15${areaParams}`
-    : `/api/suggest?limit=15${areaParams}`;
+    ? `/api/suggest?mode=group&kakiId=${invite.kakiIds[0]}&limit=15${areaParams}${filterParams}`
+    : `/api/suggest?limit=15${areaParams}${filterParams}`;
   const { data: suggestData } = useSWR<{ suggestions: ScoredPlace[] }>(
     suggestQuery,
     fetcher
@@ -354,6 +362,39 @@ export default function JioForm({
             <div className="flex items-center gap-2">
               <span className="text-stone text-xs">Suggestions near</span>
               <AreaPicker value={area} onChange={setArea} />
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+              <label className="flex items-center gap-1.5 text-xs">
+                <span className="text-stone">Up to</span>
+                <select
+                  value={budgetMax}
+                  onChange={(e) =>
+                    setBudgetMax(Number(e.target.value) as BudgetTier)
+                  }
+                  className="border-line bg-paper rounded-lg border px-2 py-1 text-xs"
+                  aria-label="Maximum budget for suggestions"
+                >
+                  {BUDGET_TIERS.map((tier) => (
+                    <option key={tier.tier} value={tier.tier}>
+                      {tier.label} ({tier.description})
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <button
+                type="button"
+                onClick={() => setNewOnly((v) => !v)}
+                aria-pressed={newOnly}
+                className={
+                  newOnly
+                    ? "bg-ember rounded-full px-2.5 py-1 text-xs font-medium text-white"
+                    : "border-line text-stone hover:border-ember hover:text-ember rounded-full border px-2.5 py-1 text-xs"
+                }
+              >
+                New to you only
+              </button>
             </div>
 
             {trimmedQuery.length >= 2 && searching && (

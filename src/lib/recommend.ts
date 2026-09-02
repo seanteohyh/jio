@@ -244,10 +244,15 @@ export function rankPlaces(
     limit,
     cuisines,
     maxWalkMinutes,
+    budgetMax,
+    excludeVisited,
   } = options;
 
   const learned = learnCuisineAffinity(visits, places);
   const wishlist = new Set(wishlistPlaceIds);
+  const visitedPlaceIds = excludeVisited
+    ? new Set(visits.map((v) => v.place_id))
+    : null;
 
   const scored: ScoredPlace[] = [];
 
@@ -266,6 +271,12 @@ export function rankPlaces(
     ) {
       continue;
     }
+
+    if (typeof budgetMax === "number" && place.budget_tier > budgetMax) {
+      continue;
+    }
+
+    if (visitedPlaceIds?.has(place.id)) continue;
 
     const breakdown: ScoreBreakdown = {
       cuisineAffinity: cuisineAffinityScore(place, learned, prefs),
