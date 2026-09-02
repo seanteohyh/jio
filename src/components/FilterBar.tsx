@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import useSWR from "swr";
 import { Chip, inputClass } from "./ui";
 import { BUDGET_TIERS } from "@/lib/constants";
@@ -65,11 +66,29 @@ export default function FilterBar({
   );
   const cuisines = cuisinesData?.cuisines ?? [];
 
+  // Whether anything has been touched this session, not whether every field
+  // currently equals DEFAULT_FILTERS — a value-equality check made "Clear"
+  // flicker away mid-drag the instant the walk slider crossed back over its
+  // own default (30), even though the slider visually sits mid-track and
+  // gives no cue that 30 is special. Once touched, only the Clear button
+  // itself (or a genuinely fresh mount) hides it again.
+  const [touched, setTouched] = useState(false);
+
+  const update = (next: FilterState) => {
+    setTouched(true);
+    onChange(next);
+  };
+
+  const clear = () => {
+    setTouched(false);
+    onChange(DEFAULT_FILTERS);
+  };
+
   const toggleCuisine = (cuisine: string) => {
     const next = value.cuisines.includes(cuisine)
       ? value.cuisines.filter((c) => c !== cuisine)
       : [...value.cuisines, cuisine];
-    onChange({ ...value, cuisines: next });
+    update({ ...value, cuisines: next });
   };
 
   return (
@@ -83,7 +102,7 @@ export default function FilterBar({
           <input
             type="search"
             value={value.search}
-            onChange={(e) => onChange({ ...value, search: e.target.value })}
+            onChange={(e) => update({ ...value, search: e.target.value })}
             placeholder="Search places, dishes, cuisines"
             className={`${inputClass} pl-9`}
             aria-label="Search places"
@@ -111,7 +130,7 @@ export default function FilterBar({
             <select
               value={value.sortBy}
               onChange={(e) =>
-                onChange({
+                update({
                   ...value,
                   sortBy: e.target.value as FilterState["sortBy"],
                 })
@@ -132,7 +151,7 @@ export default function FilterBar({
           <Chip
             active={value.kakiFavouritesOnly}
             onClick={() =>
-              onChange({
+              update({
                 ...value,
                 kakiFavouritesOnly: !value.kakiFavouritesOnly,
               })
@@ -148,7 +167,7 @@ export default function FilterBar({
           <select
             value={value.budgetMax}
             onChange={(e) =>
-              onChange({
+              update({
                 ...value,
                 budgetMax: Number(e.target.value) as BudgetTier,
               })
@@ -175,22 +194,17 @@ export default function FilterBar({
             step={5}
             value={value.maxWalk}
             onChange={(e) =>
-              onChange({ ...value, maxWalk: Number(e.target.value) })
+              update({ ...value, maxWalk: Number(e.target.value) })
             }
             className="accent-ember min-w-24 flex-1"
             aria-label="Maximum walking minutes"
           />
         </label>
 
-        {(value.cuisines.length > 0 ||
-          value.budgetMax !== 6 ||
-          value.maxWalk !== 30 ||
-          value.sortBy !== "walk" ||
-          value.kakiFavouritesOnly ||
-          value.search) && (
+        {touched && (
           <button
             type="button"
-            onClick={() => onChange(DEFAULT_FILTERS)}
+            onClick={clear}
             className="text-ember text-xs underline"
           >
             Clear
