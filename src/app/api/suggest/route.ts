@@ -40,14 +40,17 @@ export async function GET(request: NextRequest) {
     const hasArea = Number.isFinite(areaLat) && Number.isFinite(areaLng);
 
     // No existing convention for a "typical distance" around an arbitrary
-    // point the way there is for a fixed office — 15 minutes is a
-    // placeholder default that only applies when an area is active and the
+    // point the way there is for a fixed office. An area search is a much
+    // tighter "what's actually around here" ask than the office-relative
+    // default (real usage after shipping the 15-minute placeholder showed
+    // results as far as 14 minutes out, which doesn't read as "near" a
+    // chosen spot) — 6 minutes only applies when an area is active and the
     // caller hasn't also passed an explicit ?maxWalk=; office-relative
     // requests keep their existing unfiltered-by-default behaviour.
     const maxWalk = params.has("maxWalk")
       ? numberParam(params, "maxWalk", 20)
       : hasArea
-        ? 15
+        ? 6
         : undefined;
 
     const [visits, prefs, wishlist, offices] = await Promise.all([
