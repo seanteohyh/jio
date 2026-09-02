@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/auth";
 import { getRepoAsync } from "@/lib/data/repo";
 import { badRequest, errorResponse, json, readJson } from "@/lib/api";
 import { sendPushToUsers } from "@/lib/push";
+import { logAction } from "@/lib/actions";
 import type { Repo } from "@/lib/data";
 import type { GeneralReport, GeneralReportCategory } from "@/types";
 
@@ -79,6 +80,7 @@ export async function POST(request: NextRequest) {
       body?.comment?.trim() || null
     );
     await notifyAdminsOfReport(repo, report);
+    await logAction(repo, user.id, "report.filed", { category });
     return json({ report }, 201);
   } catch (error) {
     return errorResponse(error);

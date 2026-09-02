@@ -5,6 +5,7 @@ import { badRequest, errorResponse, json, readJson } from "@/lib/api";
 import { featureGate } from "@/lib/config";
 import { redactHiddenVotes } from "@/lib/voting";
 import { notifyEventDecided } from "@/lib/eventNotifications";
+import { logAction } from "@/lib/actions";
 import type { RsvpResponse } from "@/types";
 
 type Params = { params: Promise<{ id: string }> };
@@ -28,6 +29,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     }
 
     await repo.rsvp(id, user.id, response);
+    await logAction(repo, user.id, "jio.rsvp", { eventId: id, response });
 
     // CHANGES_20260821_combined.md Part 2 — an RSVP is one of the only two
     // writes that can newly satisfy the auto-close condition, so it's

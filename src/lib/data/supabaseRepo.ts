@@ -4007,6 +4007,23 @@ export const supabaseRepo: Repo = {
           : null,
     })) as KakiFoodIdentitySnapshot[];
   },
+
+  async trackDailyVisit(_userId, visitDate) {
+    const client = await db();
+    const { error } = await client.rpc("track_daily_visit", {
+      p_visit_date: visitDate,
+    });
+    if (error) fail("Could not record that visit", error);
+  },
+
+  async logAction(_userId, action, metadata = null) {
+    const client = await db();
+    const { error } = await client.rpc("log_action", {
+      p_action: action,
+      p_metadata: metadata,
+    });
+    if (error) fail("Could not log that action", error);
+  },
 };
 
 export default supabaseRepo;

@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { requireUser } from "@/lib/auth";
 import { getRepoAsync } from "@/lib/data/repo";
 import { badRequest, errorResponse, json, readJson } from "@/lib/api";
+import { logAction } from "@/lib/actions";
 import type { FlagReason } from "@/types";
 
 type Params = { params: Promise<{ id: string }> };
@@ -38,6 +39,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       reason,
       body?.comment?.trim() || null
     );
+    await logAction(repo, user.id, "place.flagged", { placeId: id, reason });
     return json({ flag }, 201);
   } catch (error) {
     return errorResponse(error);

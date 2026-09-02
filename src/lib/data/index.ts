@@ -935,6 +935,31 @@ export interface Repo {
   listKakiFoodIdentitySnapshots(
     kakiId: string
   ): Promise<KakiFoodIdentitySnapshot[]>;
+
+  // ---- Daily Activity Log (Daily_Activity_Log_Spec.html) ----
+  /**
+   * Called once per real page view (`AppVisitTracker`, on mount and on
+   * every route change) — never on a prefetch, since those never run
+   * client code. Upserts on (userId, visitDate): increments `page_view_
+   * count` on an existing row for the same Asia/Singapore calendar day,
+   * starts a fresh row on the next. `visitDate` is caller-computed
+   * (`sgtDateKey`) rather than derived here, so demo mode and live mode
+   * agree on what "today" means without either needing the other's
+   * timezone logic.
+   */
+  trackDailyVisit(userId: string, visitDate: string): Promise<void>;
+  /**
+   * Fire-and-forget action-log write behind `lib/actions.ts`'s `logAction`
+   * helper, which is what actually swallows failures — this method itself
+   * is a plain write, same division of labor as `sendPushToUsers` vs.
+   * whatever calls it. `action` is a taxonomy string (e.g. `"jio.hosted"`),
+   * `metadata` whatever small, JSON-safe context that action carries.
+   */
+  logAction(
+    userId: string,
+    action: string,
+    metadata?: Record<string, unknown> | null
+  ): Promise<void>;
 }
 
 /** Method names the conformance test walks. Keep in sync with the interface. */
@@ -1060,6 +1085,8 @@ export const REPO_METHODS = [
   "listUserFoodIdentitySnapshots",
   "saveKakiFoodIdentitySnapshot",
   "listKakiFoodIdentitySnapshots",
+  "trackDailyVisit",
+  "logAction",
 ] as const;
 
 export type RepoMethod = (typeof REPO_METHODS)[number];

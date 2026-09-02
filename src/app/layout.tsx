@@ -10,7 +10,9 @@ import RecoveryNudgePrompt from "@/components/RecoveryNudgePrompt";
 import { InstallPromptProvider } from "@/components/InstallPromptProvider";
 import { LiveAnnouncerProvider } from "@/components/LiveAnnouncer";
 import { ToastProvider } from "@/components/Toast";
+import AppVisitTracker from "@/components/AppVisitTracker";
 import { config } from "@/lib/config";
+import { getValidatedUser } from "@/lib/supabase/serverAuth";
 
 /**
  * Display face. Bold, warm and geometric — it echoes the pebble mark, which
@@ -58,9 +60,14 @@ export const viewport: Viewport = {
   viewportFit: "cover",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
+  // Daily Activity Log's page-view beacon (§3) — only mounted for a
+  // signed-in user, per the spec: a visitor who never signs in has
+  // nothing to attribute a visit to.
+  const user = await getValidatedUser();
+
   return (
     <html lang="en">
       <body
@@ -83,6 +90,7 @@ export default function RootLayout({
             </InstallPromptProvider>
           </ToastProvider>
         </LiveAnnouncerProvider>
+        {user && <AppVisitTracker />}
         <Analytics />
         <SpeedInsights />
       </body>

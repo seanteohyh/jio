@@ -6,6 +6,7 @@ import { featureGate } from "@/lib/config";
 import { redactHiddenVotes } from "@/lib/voting";
 import { sendPushToUsers } from "@/lib/push";
 import { notifyEventDecided } from "@/lib/eventNotifications";
+import { logAction } from "@/lib/actions";
 import type { EventDetail } from "@/types";
 import type { Repo } from "@/lib/data";
 
@@ -62,6 +63,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     }
 
     await repo.castBallot(id, user.id, ranked);
+    await logAction(repo, user.id, "jio.voted", { eventId: id });
 
     const event = await repo.getEvent(id);
     if (event) await notifyHostOfVote(repo, event, user.id);
