@@ -48,7 +48,7 @@ export default function AdminAnalyticsOverviewPage() {
   return (
     <>
       <FunnelSection funnel={data.analytics.funnel} />
-      <RecentEntrantsSection recentEntrants={data.analytics.recentEntrants} />
+      <RecentEntrantsSection recentEntrants={data.analytics.recentEntrants ?? []} />
 
       <div className="flex items-center gap-2 text-sm">
         <label htmlFor="segment-filter" className="text-stone">

@@ -175,7 +175,7 @@ export default function AdminUserDetailPage({
         </>
       )}
 
-      {detail.dailyActivity.length > 0 && (
+      {(detail.dailyActivity ?? []).length > 0 && (
         <Card>
           <SectionHeading>Daily activity</SectionHeading>
           <p className="text-stone mb-2 text-xs">
@@ -183,7 +183,7 @@ export default function AdminUserDetailPage({
             all doesn&rsquo;t appear here.
           </p>
           <ul className="space-y-2">
-            {detail.dailyActivity.map((day) => (
+            {(detail.dailyActivity ?? []).map((day) => (
               <li
                 key={day.date}
                 className="border-line border-b pb-2 last:border-b-0 last:pb-0"
