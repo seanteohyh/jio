@@ -30,6 +30,7 @@ import PersonalInvitePanel, {
 } from "@/components/profile/PersonalInvitePanel";
 import QrShortcutButton from "@/components/profile/QrShortcutButton";
 import ReportProblemPanel from "@/components/profile/ReportProblemPanel";
+import AdminReportNotificationsToggle from "@/components/profile/AdminReportNotificationsToggle";
 import HintCard from "@/components/HintCard";
 import { fetcher, mutateJson } from "@/lib/fetcher";
 import { config, features } from "@/lib/config";
@@ -534,10 +535,11 @@ export default function ProfilePage() {
         </Card>
 
         {me?.user?.is_admin && (
-          <div className="border-line space-y-2 rounded-2xl border border-dashed p-4">
+          <div className="border-line space-y-3 rounded-2xl border border-dashed p-4">
             <p className="text-stone text-xs font-semibold tracking-wide uppercase">
               Admin tools
             </p>
+            <AdminReportNotificationsToggle />
             <div className="space-y-1.5">
               <Link
                 href="/admin/moderation"
