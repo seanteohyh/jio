@@ -199,6 +199,10 @@ export interface Repo {
   deletePushSubscription(endpoint: string): Promise<void>;
   /** The one on/off preference covering every Jio-lifecycle push. */
   setNotifyEvents(userId: string, enabled: boolean): Promise<void>;
+  /** Admin-only per-type mute for the push sent to every admin when a
+   *  general report is filed — stacks on top of `notify_events`, same as
+   *  reminders' own toggle does. */
+  setNotifyAdminReports(userId: string, enabled: boolean): Promise<void>;
   /**
    * Every push-capable subscription for the given users, already filtered
    * to those with `notify_events` on. The one place this feature reads
@@ -702,6 +706,10 @@ export interface Repo {
    *  person. CHANGES_20260807c.md §3 item 5's duplicate-name push reads
    *  this rather than hardcoding who happens to be an admin today. */
   listAdminIds(): Promise<string[]>;
+  /** The subset of `listAdminIds()` who haven't muted the general-report
+   *  push — ready to hand straight to `sendPushToUsers`, which applies
+   *  `notify_events`/live-subscription filtering on top of this. */
+  listAdminReportRecipients(): Promise<string[]>;
   /**
    * Sets a place's status to `blocked`. Only the place's own creator or an
    * admin may do this — enforced here (RLS/a SECURITY DEFINER function in
@@ -960,6 +968,7 @@ export const REPO_METHODS = [
   "savePushSubscription",
   "deletePushSubscription",
   "setNotifyEvents",
+  "setNotifyAdminReports",
   "getPushTargets",
   "listAllUsers",
   "completeOnboarding",
@@ -1017,6 +1026,7 @@ export const REPO_METHODS = [
   "suggestPlacesForFriend",
   "isAdmin",
   "listAdminIds",
+  "listAdminReportRecipients",
   "getAdminAnalytics",
   "getAdminPlaceDetail",
   "getAdminUsersData",

@@ -24,6 +24,7 @@ export async function GET() {
 
   let displayName = user.display_name ?? null;
   let isAdmin = false;
+  let notifyAdminReports = true;
 
   try {
     const repo = await getRepoAsync();
@@ -33,6 +34,7 @@ export async function GET() {
     ]);
     if (profile) displayName = profile.display_name;
     isAdmin = admin;
+    notifyAdminReports = profile?.notify_admin_reports ?? true;
   } catch {
     // A missing profile (or a transient admin-check failure) is not fatal;
     // the fallback label and non-admin default are fine either way.
@@ -45,6 +47,10 @@ export async function GET() {
       display_name:
         displayName ?? user.email?.split("@")[0] ?? `Teammate ${user.id.slice(0, 6)}`,
       is_admin: isAdmin,
+      // Only meaningful for an admin, but harmless to include either way —
+      // AdminReportNotificationsToggle reads it straight off this response
+      // rather than needing its own fetch.
+      notify_admin_reports: notifyAdminReports,
     },
     demo: config.isDemo,
     features,

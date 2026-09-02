@@ -206,6 +206,12 @@ export interface Profile {
    *  and anything added later. `notify_lobangs` exists in the schema
    *  (migration 025) but has no UI or trigger yet; out of scope for §6. */
   notify_events?: boolean;
+  /** Admin-only in practice — whether this admin gets a push when a general
+   *  report (a place's "Report an issue," Profile's "Report a problem," or
+   *  Home's "Give feedback" suggestion) is filed. Stacks on top of
+   *  `notify_events`, same as `reminders_enabled` does for reminders —
+   *  muting this never touches Jio-lifecycle pushes. */
+  notify_admin_reports?: boolean;
 }
 
 /** What a browser hands back from `PushManager.subscribe()`, trimmed to

@@ -1006,6 +1006,15 @@ export const supabaseRepo: Repo = {
     if (error) fail("Could not update that preference", error);
   },
 
+  async setNotifyAdminReports(userId, enabled) {
+    const client = await db();
+    const { error } = await client
+      .from("profiles")
+      .update({ notify_admin_reports: enabled })
+      .eq("user_id", userId);
+    if (error) fail("Could not update that preference", error);
+  },
+
   async getPushTargets(userIds) {
     if (userIds.length === 0) return [];
     const client = await db();
@@ -3361,6 +3370,13 @@ export const supabaseRepo: Repo = {
     const client = await db();
     const { data, error } = await client.rpc("list_admin_ids");
     if (error) fail("Could not list admins", error);
+    return (data as string[] | null) ?? [];
+  },
+
+  async listAdminReportRecipients() {
+    const client = await db();
+    const { data, error } = await client.rpc("list_admin_report_recipients");
+    if (error) fail("Could not list admins to notify", error);
     return (data as string[] | null) ?? [];
   },
 

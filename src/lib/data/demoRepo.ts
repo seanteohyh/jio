@@ -972,6 +972,12 @@ export const demoRepo: Repo = {
     if (profile) profile.notify_events = enabled;
   },
 
+  async setNotifyAdminReports(userId, enabled) {
+    const s = store();
+    const profile = s.profiles.find((p) => p.user_id === userId);
+    if (profile) profile.notify_admin_reports = enabled;
+  },
+
   async getPushTargets(userIds): Promise<PushTarget[]> {
     const s = store();
     const ids = new Set(userIds);
@@ -2557,6 +2563,15 @@ export const demoRepo: Repo = {
 
   async listAdminIds() {
     return [DEMO_USER_ID];
+  },
+
+  async listAdminReportRecipients() {
+    const s = store();
+    const profile = s.profiles.find((p) => p.user_id === DEMO_USER_ID);
+    // Undefined means the demo profile predates this preference — default
+    // on, matching the column's own DB default (same convention as
+    // getPushTargets's notify_events check just above).
+    return profile?.notify_admin_reports === false ? [] : [DEMO_USER_ID];
   },
 
   async blockPlace(userId, placeId, reason) {
