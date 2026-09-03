@@ -269,6 +269,25 @@ export function computeKakiMetrics(
 }
 
 /**
+ * A Kaki's "Fresh reviews" feed — the most recent public reviews from any
+ * member, anywhere, not limited to a place the group has been to together.
+ * `liked_by_me` isn't resolved here — that needs a per-place repo call
+ * (`listPublicReviews`), left to the caller (see `/api/kakis/[id]`).
+ * `created_at` (when the review was actually posted), not `visited_at`
+ * (freely backdated), is what "fresh" means here.
+ */
+export function selectFreshReviews(
+  memberVisits: Map<string, Visit[]>,
+  limit = 3
+): Visit[] {
+  return Array.from(memberVisits.values())
+    .flat()
+    .filter((v) => v.is_public)
+    .sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? ""))
+    .slice(0, limit);
+}
+
+/**
  * Longest run of consecutive eating-days sharing a cuisine.
  *
  * Days with no visit do not break the streak — three Japanese lunches on

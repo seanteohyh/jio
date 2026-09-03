@@ -2,6 +2,7 @@
 
 import { use, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import useSWR from "swr";
 import {
   Button,
@@ -9,6 +10,7 @@ import {
   ErrorNote,
   SectionHeading,
   SkeletonKakiDetail,
+  Stars,
 } from "@/components/ui";
 import { KakiMetricsCharts } from "@/components/MetricsCharts";
 import { useToast } from "@/components/Toast";
@@ -18,12 +20,18 @@ import PebbleAvatar from "@/components/kakis/PebbleAvatar";
 import { InviteIcon } from "@/components/icons";
 import { fetcher, mutateJson } from "@/lib/fetcher";
 import { formatDate } from "@/lib/utils";
-import type { KakiDetail, KakiFoodIdentitySnapshot, KakiMetrics } from "@/types";
+import type {
+  KakiDetail,
+  KakiFoodIdentitySnapshot,
+  KakiMetrics,
+  Visit,
+} from "@/types";
 
 interface KakiResponse {
   kaki: KakiDetail;
   metrics: KakiMetrics;
   foodIdentity: KakiFoodIdentitySnapshot | null;
+  freshReviews: Visit[];
   viewer: { id: string; isMember: boolean; isCreator: boolean };
 }
 
@@ -44,12 +52,39 @@ export default function KakiDetailPage({
   const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [likingId, setLikingId] = useState<string | null>(null);
 
   if (isLoading) return <SkeletonKakiDetail />;
   if (error) return <ErrorNote>{error.message}</ErrorNote>;
   if (!data) return null;
 
-  const { kaki, metrics, foodIdentity, viewer } = data;
+  const { kaki, metrics, foodIdentity, freshReviews, viewer } = data;
+
+  const toggleLike = async (visitId: string) => {
+    setLikingId(visitId);
+    setActionError(null);
+    try {
+      const result = await mutateJson<{ liked: boolean; like_count: number }>(
+        `/api/visits/${visitId}/like`,
+        "POST"
+      );
+      mutate(
+        {
+          ...data,
+          freshReviews: freshReviews.map((r) =>
+            r.id === visitId
+              ? { ...r, liked_by_me: result.liked, like_count: result.like_count }
+              : r
+          ),
+        },
+        false
+      );
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Could not update your like");
+    } finally {
+      setLikingId(null);
+    }
+  };
 
   const inviteUrl =
     typeof window !== "undefined"
@@ -114,6 +149,66 @@ export default function KakiDetailPage({
           nameFor={nameFor}
           metrics={metrics}
         />
+      )}
+
+      {freshReviews.length > 0 && (
+        <Card>
+          <SectionHeading>Fresh reviews</SectionHeading>
+          <p className="text-stone mb-3 text-xs">
+            The last few public reviews from this group, anywhere — not just
+            places you've been to together.
+          </p>
+          <ul className="space-y-3">
+            {freshReviews.map((review) => (
+              <li key={review.id} className="flex items-start gap-2.5">
+                <PebbleAvatar
+                  name={review.display_name ?? "Teammate"}
+                  id={review.user_id}
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <span className="text-sm font-medium">
+                      {review.display_name ?? "A teammate"}
+                      <Link
+                        href={`/places/${review.place_id}`}
+                        className="text-stone font-normal underline"
+                      >
+                        {" "}
+                        · {review.place_name ?? "a place"}
+                      </Link>
+                    </span>
+                    <span className="text-stone shrink-0 text-xs">
+                      {formatDate(review.visited_at)}
+                    </span>
+                  </div>
+                  <Stars rating={review.rating} />
+                  {review.notes && (
+                    <p className="mt-1 text-sm whitespace-pre-wrap">
+                      {review.notes}
+                    </p>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => toggleLike(review.id)}
+                    disabled={likingId === review.id}
+                    aria-label={review.liked_by_me ? "Unlike" : "Like"}
+                    aria-pressed={review.liked_by_me}
+                    className={`tap-target-text mt-1.5 inline-flex items-center gap-1 text-xs font-medium ${
+                      review.liked_by_me
+                        ? "text-ember"
+                        : "text-stone hover:text-ink"
+                    }`}
+                  >
+                    <span aria-hidden="true">
+                      {review.liked_by_me ? "♥" : "♡"}{" "}
+                      {review.like_count > 0 ? review.like_count : "Like"}
+                    </span>
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </Card>
       )}
 
       <Card>

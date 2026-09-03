@@ -3,6 +3,7 @@ import {
   computeCuisineStreak,
   computeKakiMetrics,
   computeUserMetrics,
+  selectFreshReviews,
 } from "@/lib/metrics";
 import type { BudgetTier, KakiMember, Place, Visit } from "@/types";
 
@@ -311,5 +312,65 @@ describe("computeCuisineStreak", () => {
         places
       )
     ).toBeNull();
+  });
+});
+
+describe("selectFreshReviews", () => {
+  function publicVisit(
+    id: string,
+    userId: string,
+    createdAt: string,
+    isPublic = true
+  ): Visit {
+    return {
+      ...visit("jp1", 4, "2026-07-01", userId),
+      id,
+      created_at: createdAt,
+      is_public: isPublic,
+    };
+  }
+
+  it("excludes private visits", () => {
+    const memberVisits = new Map<string, Visit[]>([
+      [
+        "a",
+        [
+          publicVisit("public-one", "a", "2026-07-01T00:00:00Z"),
+          publicVisit("private-one", "a", "2026-07-02T00:00:00Z", false),
+        ],
+      ],
+    ]);
+
+    const result = selectFreshReviews(memberVisits);
+    expect(result.map((v) => v.id)).toEqual(["public-one"]);
+  });
+
+  it("orders by created_at, newest first, across every member", () => {
+    const memberVisits = new Map<string, Visit[]>([
+      ["a", [publicVisit("old", "a", "2026-07-01T00:00:00Z")]],
+      ["b", [publicVisit("new", "b", "2026-07-05T00:00:00Z")]],
+    ]);
+
+    expect(selectFreshReviews(memberVisits).map((v) => v.id)).toEqual([
+      "new",
+      "old",
+    ]);
+  });
+
+  it("caps the result at the given limit (default 3)", () => {
+    const memberVisits = new Map<string, Visit[]>([
+      [
+        "a",
+        [
+          publicVisit("r1", "a", "2026-07-01T00:00:00Z"),
+          publicVisit("r2", "a", "2026-07-02T00:00:00Z"),
+          publicVisit("r3", "a", "2026-07-03T00:00:00Z"),
+          publicVisit("r4", "a", "2026-07-04T00:00:00Z"),
+        ],
+      ],
+    ]);
+
+    expect(selectFreshReviews(memberVisits)).toHaveLength(3);
+    expect(selectFreshReviews(memberVisits, 2)).toHaveLength(2);
   });
 });

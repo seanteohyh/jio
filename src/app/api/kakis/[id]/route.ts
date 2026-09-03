@@ -3,7 +3,7 @@ import { requireUser } from "@/lib/auth";
 import { getRepoAsync } from "@/lib/data/repo";
 import { errorResponse, json, notFound } from "@/lib/api";
 import { featureGate } from "@/lib/config";
-import { computeKakiMetrics } from "@/lib/metrics";
+import { computeKakiMetrics, selectFreshReviews } from "@/lib/metrics";
 import type { Visit } from "@/types";
 
 type Params = { params: Promise<{ id: string }> };
@@ -40,11 +40,40 @@ export async function GET(_request: NextRequest, { params }: Params) {
     const foodIdentityHistory = await repo.listKakiFoodIdentitySnapshots(id);
     const foodIdentity = foodIdentityHistory[0] ?? null;
 
+    // The group's "fresh reviews" feed. `memberVisits` already excludes
+    // what RLS wouldn't let this caller see for anyone but themself, same
+    // as `metrics` above; `selectFreshReviews` filters that down to
+    // `is_public` explicitly rather than trusting RLS alone, since a
+    // single review's content is a bigger leak than an aggregate number
+    // if that ever drifts.
+    const freshReviews = selectFreshReviews(memberVisits);
+
+    // `liked_by_me` isn't part of `listVisits`'s own hydration (only
+    // `listPublicReviews` populates it, per-place) — fetched here for just
+    // the handful of places these 3 reviews span.
+    const freshReviewPlaceIds = Array.from(
+      new Set(freshReviews.map((v) => v.place_id))
+    );
+    const likedVisitIds = new Set<string>();
+    await Promise.all(
+      freshReviewPlaceIds.map(async (placeId) => {
+        const reviews = await repo.listPublicReviews(placeId, user.id);
+        for (const r of reviews) {
+          if (r.liked_by_me) likedVisitIds.add(r.id);
+        }
+      })
+    );
+    const freshReviewsWithLikes = freshReviews.map((v) => ({
+      ...v,
+      liked_by_me: likedVisitIds.has(v.id),
+    }));
+
     return json({
       kaki,
       metrics,
       foodIdentity,
       foodIdentityHistory,
+      freshReviews: freshReviewsWithLikes,
       viewer: {
         id: user.id,
         isMember: kaki.members.some((m) => m.user_id === user.id),
