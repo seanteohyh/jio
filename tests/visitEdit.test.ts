@@ -121,3 +121,41 @@ describe("deleteVisit", () => {
     expect(mine.some((v) => v.id === visit.id)).toBe(true);
   });
 });
+
+/**
+ * `rating_updated_at` mirrors 021_place_ratings_trigger.sql's own
+ * `visits_rating_trigger`, which — unlike avg_rating/visit_count above —
+ * demoRepo actually stamps at write time rather than recomputing fresh on
+ * read, so it's testable here.
+ */
+describe("rating_updated_at", () => {
+  it("is stamped on the place when a visit is logged", async () => {
+    const before = (await demoRepo.listPlaces()).places[0];
+    expect(before.rating_updated_at).toBeUndefined();
+
+    const visit = await seedVisit();
+    const after = await demoRepo.getPlace(visit.place_id);
+    expect(after?.rating_updated_at).toBeTruthy();
+  });
+
+  it("is re-stamped when a visit is edited", async () => {
+    const visit = await seedVisit();
+    const firstStamp = (await demoRepo.getPlace(visit.place_id))!
+      .rating_updated_at!;
+
+    await new Promise((r) => setTimeout(r, 5));
+    await demoRepo.updateVisit(visit.id, DEMO_USER_ID, { rating: 5 });
+
+    const secondStamp = (await demoRepo.getPlace(visit.place_id))!
+      .rating_updated_at!;
+    expect(secondStamp >= firstStamp).toBe(true);
+  });
+
+  it("is re-stamped when the only visit is deleted", async () => {
+    const visit = await seedVisit();
+    await demoRepo.deleteVisit(visit.id, DEMO_USER_ID);
+
+    const after = await demoRepo.getPlace(visit.place_id);
+    expect(after?.rating_updated_at).toBeTruthy();
+  });
+});

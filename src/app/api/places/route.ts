@@ -135,7 +135,8 @@ export async function GET(request: NextRequest) {
     const { places, total } = await repo.listPlaces(
       {
         ...baseFilters,
-        sortBy: sortBy === "rating" ? "rating" : "walk",
+        sortBy:
+          sortBy === "rating" || sortBy === "newly_rated" ? sortBy : "walk",
       },
       page ? { limit, offset: (page - 1) * limit } : undefined
     );

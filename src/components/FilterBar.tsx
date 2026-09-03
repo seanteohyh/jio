@@ -16,8 +16,10 @@ export interface FilterState {
   budgetMax: BudgetTier;
   maxWalk: number;
   /** "kaki_rating" — §12f — is computed at the API layer, not by the repo;
-   *  see the sort branch in src/app/api/places/route.ts. */
-  sortBy: "walk" | "rating" | "kaki_rating";
+   *  see the sort branch in src/app/api/places/route.ts. "newly_rated"
+   *  orders by `rating_updated_at`, a real, sortable column the repo
+   *  already exposes. */
+  sortBy: "walk" | "rating" | "kaki_rating" | "newly_rated";
   /** Narrows the list instead of just reordering it — CHANGES_20260807c.md
    *  §2's "real filter" gap on top of the existing sort. Also computed at
    *  the API layer, same place as the sort. */
@@ -140,6 +142,7 @@ export default function FilterBar({
             >
               <option value="walk">Nearest</option>
               <option value="rating">Highest rated</option>
+              <option value="newly_rated">Newly rated</option>
               {features.kakis && (
                 <option value="kaki_rating">Rated by your Kaki group</option>
               )}

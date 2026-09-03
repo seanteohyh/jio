@@ -263,6 +263,14 @@ function recomputeReviewLikeCount(visitId: string): number {
   return count;
 }
 
+/** Mirrors 021_place_ratings_trigger.sql's visits_rating_trigger — stamped
+ *  on every visit insert/update/delete for a place, regardless of
+ *  `is_public`, powering the "Newly rated" sort. */
+function stampRatingUpdated(placeId: string): void {
+  const place = store().places.find((p) => p.id === placeId);
+  if (place) place.rating_updated_at = new Date().toISOString();
+}
+
 /**
  * Attach the numbers that are computed rather than stored: distance and walk
  * time from the active office, and the rating aggregates.
@@ -717,6 +725,7 @@ export const demoRepo: Repo = {
       like_count: 0,
     };
     store().visits.push(visit);
+    stampRatingUpdated(visit.place_id);
     return visit;
   },
 
@@ -744,6 +753,7 @@ export const demoRepo: Repo = {
     };
 
     visits[index] = next;
+    stampRatingUpdated(next.place_id);
     return next;
   },
 
@@ -753,7 +763,9 @@ export const demoRepo: Repo = {
     if (index === -1 || visits[index].user_id !== userId) {
       throw new Error("That visit is not yours to delete");
     }
+    const placeId = visits[index].place_id;
     visits.splice(index, 1);
+    stampRatingUpdated(placeId);
   },
 
   async listPublicReviews(placeId, viewerId) {
