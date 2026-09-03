@@ -26,7 +26,13 @@ export async function POST(request: NextRequest) {
   try {
     const user = await requireUser();
     const repo = await getRepoAsync();
-    const body = await readJson<{ name?: string; join_token?: string }>(request);
+    const body = await readJson<{
+      name?: string;
+      join_token?: string;
+      /** "Turn this into a Kaki?" bridge suggestion's pre-filled form —
+       *  omitted entirely by the plain "New" button on /kakis. */
+      member_ids?: string[];
+    }>(request);
 
     // The same endpoint handles joining, so an invite link can post here
     // without the client needing to know which case it is.
@@ -39,7 +45,11 @@ export async function POST(request: NextRequest) {
     if (!name) return badRequest("Give the group a name");
     if (name.length > 60) return badRequest("That name is a bit long");
 
-    const kaki = await repo.createKaki(user.id, name);
+    const kaki = await repo.createKaki(
+      user.id,
+      name,
+      body?.member_ids?.filter((id) => id !== user.id)
+    );
     await logAction(repo, user.id, "kaki.created", { kakiId: kaki.id });
     return json({ kaki }, 201);
   } catch (error) {

@@ -628,7 +628,18 @@ export interface Repo {
   ): Promise<{ added: boolean }>;
 
   // ---- Kakis (lunch groups) ----
-  createKaki(userId: string, name: string): Promise<Kaki>;
+  /**
+   * `initialMemberIds` — added as members alongside the creator in the
+   * same call, same trust level `addKakiMember` already has (any of these
+   * ids just needs to be a real account, no further check). Powers the
+   * "turn this into a Kaki?" bridge suggestion's pre-filled form; the
+   * plain `/kakis` "New" button still omits it entirely.
+   */
+  createKaki(
+    userId: string,
+    name: string,
+    initialMemberIds?: string[]
+  ): Promise<Kaki>;
   getKaki(idOrToken: string): Promise<KakiDetail | null>;
   listKakis(userId: string): Promise<Kaki[]>;
   joinKaki(token: string, userId: string): Promise<Kaki>;
@@ -936,6 +947,25 @@ export interface Repo {
     kakiId: string
   ): Promise<KakiFoodIdentitySnapshot[]>;
 
+  // ---- Kaki bridge suggestion ("Turn this into a Kaki?") ----
+  /** Whether `hostId` already belongs to a Kaki whose member set exactly
+   *  matches `participantIds` — the "already have a Kaki for this exact
+   *  group" check behind the bridge suggestion. Order-independent; an
+   *  extra or missing member on either side means no match. */
+  hasMatchingKakiForParticipants(
+    hostId: string,
+    participantIds: string[]
+  ): Promise<boolean>;
+  /** Whether this person has already dismissed the bridge suggestion for
+   *  this specific Jio — one row per (user, event), same shape as
+   *  `hasSeenDecidedCelebration`. Creating the Kaki instead never writes
+   *  here: it naturally stops qualifying on its own. */
+  hasDismissedKakiBridgeSuggestion(
+    userId: string,
+    eventId: string
+  ): Promise<boolean>;
+  dismissKakiBridgeSuggestion(userId: string, eventId: string): Promise<void>;
+
   // ---- Daily Activity Log (Daily_Activity_Log_Spec.html) ----
   /**
    * Called once per real page view (`AppVisitTracker`, on mount and on
@@ -1087,6 +1117,9 @@ export const REPO_METHODS = [
   "listKakiFoodIdentitySnapshots",
   "trackDailyVisit",
   "logAction",
+  "hasMatchingKakiForParticipants",
+  "hasDismissedKakiBridgeSuggestion",
+  "dismissKakiBridgeSuggestion",
 ] as const;
 
 export type RepoMethod = (typeof REPO_METHODS)[number];

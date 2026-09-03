@@ -37,11 +37,16 @@ export default function InvitePicker({
   value,
   onChange,
   selfId,
+  allowKakiGroups = true,
 }: {
   value: InviteSelection;
   onChange: (next: InviteSelection) => void;
   /** Excluded from results — you are always in your own Jio. */
   selfId?: string;
+  /** Off for a context where picking a whole other Kaki makes no sense —
+   *  e.g. choosing who's in a brand-new Kaki itself. On (default) for
+   *  every existing caller, which invites both people and groups. */
+  allowKakiGroups?: boolean;
 }) {
   const [query, setQuery] = useState("");
   const needle = query.trim();
@@ -60,7 +65,7 @@ export default function InvitePicker({
     mutate: mutateUsers,
   } = useSWR<{ users: TeamUser[] }>(`/api/users?${params.toString()}`, fetcher);
   const { data: kakiData } = useSWR<{ kakis: Kaki[] }>(
-    features.kakis ? "/api/kakis" : null,
+    features.kakis && allowKakiGroups ? "/api/kakis" : null,
     fetcher
   );
 

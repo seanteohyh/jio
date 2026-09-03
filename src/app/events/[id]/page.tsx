@@ -73,6 +73,9 @@ interface EventResponse {
     /** UX review log #25 — true at most once per (account, event); see the
      *  route for the exact condition. */
     decidedCelebration: boolean;
+    /** "Turn this into a Kaki?" — host-only, `null` once dismissed, once a
+     *  matching Kaki exists, or this isn't a decided ad-hoc Jio at all. */
+    kakiBridgeSuggestion: { participantIds: string[] } | null;
   };
 }
 
@@ -790,6 +793,34 @@ export default function EventDetailPage({
             inviteUrl={eventInviteUrl(event.invite_token)}
           />
         )}
+
+      {viewer.kakiBridgeSuggestion && (
+        <Card className="border-line bg-cream/60">
+          <p className="text-sm font-medium">Turn this into a Kaki?</p>
+          <p className="text-stone mt-1 text-xs">
+            Same crew as this Jio — a Kaki shares stats and makes it faster
+            to jio each other next time.
+          </p>
+          <div className="mt-2 flex gap-2">
+            <LinkButton
+              href={`/kakis?prefillUserIds=${viewer.kakiBridgeSuggestion.participantIds.join(",")}`}
+            >
+              Turn into a Kaki
+            </LinkButton>
+            <Button
+              variant="secondary"
+              disabled={busy}
+              onClick={() =>
+                run(() =>
+                  mutateJson(`/api/events/${id}/kaki-bridge-dismiss`, "POST")
+                )
+              }
+            >
+              Not now
+            </Button>
+          </div>
+        </Card>
+      )}
 
       {/*
         Available as soon as the date is fixed, not once the whole Jio is

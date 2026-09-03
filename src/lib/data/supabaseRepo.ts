@@ -967,6 +967,71 @@ export const supabaseRepo: Repo = {
     if (error) fail("Could not save that", error);
   },
 
+  async hasMatchingKakiForParticipants(hostId, participantIds) {
+    const client = await db();
+
+    const { data: memberRows, error: memberError } = await client
+      .from("kaki_members")
+      .select("kaki_id")
+      .eq("user_id", hostId);
+    if (memberError) fail("Could not check existing Kakis", memberError);
+
+    const kakiIds = ((memberRows ?? []) as { kaki_id: string }[]).map(
+      (r) => r.kaki_id
+    );
+    if (kakiIds.length === 0) return false;
+
+    const { data: allMembers, error: allMembersError } = await client
+      .from("kaki_members")
+      .select("kaki_id, user_id")
+      .in("kaki_id", kakiIds);
+    if (allMembersError) fail("Could not check existing Kakis", allMembersError);
+
+    const membersByKaki = new Map<string, Set<string>>();
+    for (const row of (allMembers ?? []) as {
+      kaki_id: string;
+      user_id: string;
+    }[]) {
+      const set = membersByKaki.get(row.kaki_id) ?? new Set<string>();
+      set.add(row.user_id);
+      membersByKaki.set(row.kaki_id, set);
+    }
+
+    const targetSet = new Set(participantIds);
+    for (const memberSet of membersByKaki.values()) {
+      if (
+        memberSet.size === targetSet.size &&
+        Array.from(memberSet).every((id) => targetSet.has(id))
+      ) {
+        return true;
+      }
+    }
+    return false;
+  },
+
+  async hasDismissedKakiBridgeSuggestion(userId, eventId) {
+    const client = await db();
+    const { data, error } = await client
+      .from("kaki_bridge_dismissals")
+      .select("user_id")
+      .eq("user_id", userId)
+      .eq("event_id", eventId)
+      .maybeSingle();
+
+    if (error) fail("Could not check that", error);
+    return Boolean(data);
+  },
+
+  async dismissKakiBridgeSuggestion(userId, eventId) {
+    const client = await db();
+    const { error } = await client.from("kaki_bridge_dismissals").upsert(
+      { user_id: userId, event_id: eventId },
+      { onConflict: "user_id,event_id", ignoreDuplicates: true }
+    );
+
+    if (error) fail("Could not save that", error);
+  },
+
   async getDisplayNames(userIds) {
     const client = await db();
     return displayNameMap(client, userIds);
@@ -2988,7 +3053,7 @@ export const supabaseRepo: Repo = {
 
   // ---- Kakis ----
 
-  async createKaki(userId, name) {
+  async createKaki(userId, name, initialMemberIds = []) {
     const client = await db();
 
     const { data, error } = await client
@@ -3009,7 +3074,23 @@ export const supabaseRepo: Repo = {
       .insert({ kaki_id: kaki.id, user_id: userId });
     if (memberError) fail("Could not join the group you just made", memberError);
 
-    return { ...kaki, member_count: 1 };
+    // `kaki_members_insert` is self-only (010_kakis.sql) — adding anyone
+    // else needs the same `add_kaki_member` SECURITY DEFINER path
+    // `addKakiMember` already uses. The creator is already a member as of
+    // the insert just above, so each of these passes that function's own
+    // membership check.
+    const otherMemberIds = Array.from(new Set(initialMemberIds)).filter(
+      (id) => id !== userId
+    );
+    for (const memberId of otherMemberIds) {
+      const { error: addError } = await client.rpc("add_kaki_member", {
+        p_kaki_id: kaki.id,
+        p_user_id: memberId,
+      });
+      if (addError) fail("Could not add everyone to the group", addError);
+    }
+
+    return { ...kaki, member_count: otherMemberIds.length + 1 };
   },
 
   async getKaki(idOrToken) {
