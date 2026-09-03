@@ -3227,6 +3227,28 @@ export const supabaseRepo: Repo = {
     if (error) fail("Could not add that person to the group", error);
   },
 
+  // `userId` isn't referenced directly — `kakis_update`'s own RLS
+  // (079_kaki_member_rename.sql) checks auth.uid() is a current member,
+  // same shape as `add_kaki_member`'s own check.
+  async renameKaki(kakiId, _userId, name) {
+    const client = await db();
+    const { data, error } = await client
+      .from("kakis")
+      .update({ name })
+      .eq("id", kakiId)
+      .select()
+      .single();
+    if (error) fail("Could not rename that group — you may not be a member", error);
+    const kaki = data as Kaki;
+
+    const { data: members } = await client
+      .from("kaki_members")
+      .select("user_id")
+      .eq("kaki_id", kakiId);
+
+    return { ...kaki, member_count: (members ?? []).length };
+  },
+
   // ---- Lobangs ----
 
   async sendLobang(fromUserId, target, placeId, note, eventId) {

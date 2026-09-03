@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
 import { getRepoAsync } from "@/lib/data/repo";
-import { errorResponse, json, notFound } from "@/lib/api";
+import { badRequest, errorResponse, json, notFound, readJson } from "@/lib/api";
 import { featureGate } from "@/lib/config";
 import { computeKakiMetrics, selectFreshReviews } from "@/lib/metrics";
 import type { Visit } from "@/types";
@@ -80,6 +80,27 @@ export async function GET(_request: NextRequest, { params }: Params) {
         isCreator: kaki.created_by === user.id,
       },
     });
+  } catch (error) {
+    return errorResponse(error);
+  }
+}
+
+export async function PATCH(request: NextRequest, { params }: Params) {
+  const blocked = featureGate("kakis");
+  if (blocked) return blocked as NextResponse;
+
+  try {
+    const user = await requireUser();
+    const { id } = await params;
+    const repo = await getRepoAsync();
+    const body = await readJson<{ name?: string }>(request);
+
+    const name = body?.name?.trim();
+    if (!name) return badRequest("Give the group a name");
+    if (name.length > 60) return badRequest("That name is a bit long");
+
+    const kaki = await repo.renameKaki(id, user.id, name);
+    return json({ kaki });
   } catch (error) {
     return errorResponse(error);
   }
