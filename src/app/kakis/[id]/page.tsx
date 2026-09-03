@@ -151,66 +151,6 @@ export default function KakiDetailPage({
         />
       )}
 
-      {freshReviews.length > 0 && (
-        <Card>
-          <SectionHeading>Fresh reviews</SectionHeading>
-          <p className="text-stone mb-3 text-xs">
-            The last few public reviews from this group, anywhere — not just
-            places you've been to together.
-          </p>
-          <ul className="space-y-3">
-            {freshReviews.map((review) => (
-              <li key={review.id} className="flex items-start gap-2.5">
-                <PebbleAvatar
-                  name={review.display_name ?? "Teammate"}
-                  id={review.user_id}
-                />
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-baseline justify-between gap-2">
-                    <span className="text-sm font-medium">
-                      {review.display_name ?? "A teammate"}
-                      <Link
-                        href={`/places/${review.place_id}`}
-                        className="text-stone font-normal underline"
-                      >
-                        {" "}
-                        · {review.place_name ?? "a place"}
-                      </Link>
-                    </span>
-                    <span className="text-stone shrink-0 text-xs">
-                      {formatDate(review.visited_at)}
-                    </span>
-                  </div>
-                  <Stars rating={review.rating} />
-                  {review.notes && (
-                    <p className="mt-1 text-sm whitespace-pre-wrap">
-                      {review.notes}
-                    </p>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => toggleLike(review.id)}
-                    disabled={likingId === review.id}
-                    aria-label={review.liked_by_me ? "Unlike" : "Like"}
-                    aria-pressed={review.liked_by_me}
-                    className={`tap-target-text mt-1.5 inline-flex items-center gap-1 text-xs font-medium ${
-                      review.liked_by_me
-                        ? "text-ember"
-                        : "text-stone hover:text-ink"
-                    }`}
-                  >
-                    <span aria-hidden="true">
-                      {review.liked_by_me ? "♥" : "♡"}{" "}
-                      {review.like_count > 0 ? review.like_count : "Like"}
-                    </span>
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </Card>
-      )}
-
       <Card>
         <SectionHeading>Members</SectionHeading>
         <ul className="space-y-2">
@@ -280,6 +220,66 @@ export default function KakiDetailPage({
         </p>
         <KakiMetricsCharts metrics={metrics} />
       </section>
+
+      {freshReviews.length > 0 && (
+        <Card>
+          <SectionHeading>Fresh reviews</SectionHeading>
+          <p className="text-stone mb-3 text-xs">
+            The last few public reviews from this group, anywhere — not just
+            places you've been to together.
+          </p>
+          <ul className="space-y-3">
+            {freshReviews.map((review) => (
+              <li key={review.id} className="flex items-start gap-2.5">
+                <PebbleAvatar
+                  name={review.display_name ?? "Teammate"}
+                  id={review.user_id}
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <span className="text-sm font-medium">
+                      {review.display_name ?? "A teammate"}
+                      <Link
+                        href={`/places/${review.place_id}`}
+                        className="text-stone font-normal underline"
+                      >
+                        {" "}
+                        · {review.place_name ?? "a place"}
+                      </Link>
+                    </span>
+                    <span className="text-stone shrink-0 text-xs">
+                      {formatDate(review.visited_at)}
+                    </span>
+                  </div>
+                  <Stars rating={review.rating} />
+                  {review.notes && (
+                    <p className="mt-1 text-sm whitespace-pre-wrap">
+                      {review.notes}
+                    </p>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => toggleLike(review.id)}
+                    disabled={likingId === review.id}
+                    aria-label={review.liked_by_me ? "Unlike" : "Like"}
+                    aria-pressed={review.liked_by_me}
+                    className={`tap-target-text mt-1.5 inline-flex items-center gap-1 text-xs font-medium ${
+                      review.liked_by_me
+                        ? "text-ember"
+                        : "text-stone hover:text-ink"
+                    }`}
+                  >
+                    <span aria-hidden="true">
+                      {review.liked_by_me ? "♥" : "♡"}{" "}
+                      {review.like_count > 0 ? review.like_count : "Like"}
+                    </span>
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
 
       {viewer.isMember && (
         <Button variant="danger" onClick={leave} disabled={busy}>
