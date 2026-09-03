@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import useSWR from "swr";
 import {
   Button,
@@ -12,19 +13,50 @@ import {
   SkeletonRows,
   inputClass,
 } from "@/components/ui";
+import InvitePicker, { type InviteSelection } from "@/components/InvitePicker";
 import { fetcher, mutateJson } from "@/lib/fetcher";
 import HintCard from "@/components/HintCard";
 import { FirstKakiMotif } from "@/components/brand/motifs";
 import type { Kaki } from "@/types";
 
+interface MeResponse {
+  user: { id: string } | null;
+}
+
+// `useSearchParams` (below, for the "turn this into a Kaki?" pre-fill)
+// needs a Suspense boundary around whatever calls it — same shape
+// /places' own BrowseList already uses.
 export default function KakisPage() {
+  return (
+    <Suspense fallback={<SkeletonRows />}>
+      <KakisContent />
+    </Suspense>
+  );
+}
+
+function KakisContent() {
   const { data, error, isLoading, mutate } = useSWR<{ kakis: Kaki[] }>(
     "/api/kakis",
     fetcher
   );
+  const { data: me } = useSWR<MeResponse>("/api/me", fetcher);
+
+  // "Turn this into a Kaki?" (a Jio's own bridge suggestion) lands here
+  // with `?prefillUserIds=a,b,c` — the same participants pre-checked in
+  // the same picker anyone creating a group from scratch already sees,
+  // so the host can still remove someone before confirming.
+  const searchParams = useSearchParams();
+  const prefillUserIds = useMemo(() => {
+    const raw = searchParams.get("prefillUserIds");
+    return raw ? raw.split(",").filter(Boolean) : [];
+  }, [searchParams]);
 
   const [name, setName] = useState("");
-  const [creating, setCreating] = useState(false);
+  const [invite, setInvite] = useState<InviteSelection>({
+    userIds: prefillUserIds,
+    kakiIds: [],
+  });
+  const [creating, setCreating] = useState(prefillUserIds.length > 0);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -33,8 +65,12 @@ export default function KakisPage() {
     setBusy(true);
     setActionError(null);
     try {
-      await mutateJson("/api/kakis", "POST", { name: name.trim() });
+      await mutateJson("/api/kakis", "POST", {
+        name: name.trim(),
+        member_ids: invite.userIds,
+      });
       setName("");
+      setInvite({ userIds: [], kakiIds: [] });
       setCreating(false);
       mutate();
     } catch (err) {
@@ -76,9 +112,15 @@ export default function KakisPage() {
                 onChange={(e) => setName(e.target.value)}
                 className={inputClass}
                 placeholder="The 12:15 Crew"
-                autoFocus
+                autoFocus={prefillUserIds.length === 0}
               />
             </Field>
+            <InvitePicker
+              value={invite}
+              onChange={setInvite}
+              selfId={me?.user?.id}
+              allowKakiGroups={false}
+            />
             {actionError && <ErrorNote>{actionError}</ErrorNote>}
             <Button type="submit" disabled={busy || !name.trim()}>
               {busy ? "Creating…" : "Create group"}

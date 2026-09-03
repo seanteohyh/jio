@@ -84,6 +84,13 @@ export interface Place {
   avg_rating?: number | null;
   /** Derived, not stored: how many visits have been logged. */
   visit_count?: number;
+  /**
+   * Trigger-maintained (021_place_ratings_trigger.sql, same column as
+   * `avg_rating`/`visit_count`) — stamped whenever a visit is logged,
+   * edited, or removed for this place, regardless of `is_public`. Powers
+   * the "Newly rated" sort; `null` for a place with no visits yet.
+   */
+  rating_updated_at?: string | null;
   /** Trigger-maintained: true while at least one flag on this place is
    *  unresolved (022_place_flags.sql). Shows a "Reported" badge — the place
    *  stays fully active until an admin resolves it. */
@@ -789,7 +796,7 @@ export interface Filters {
    * src/app/api/places/route.ts) — the repo has no concept of "the
    * requesting user's Kaki groups," so it's never passed down here.
    */
-  sortBy?: "walk" | "rating";
+  sortBy?: "walk" | "rating" | "newly_rated";
 }
 
 export interface PlacesPagination {

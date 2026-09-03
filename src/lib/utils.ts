@@ -42,13 +42,21 @@ export function estimateWalkMinutes(distanceM: number): number {
  */
 export function sortPlacesForList(
   places: Place[],
-  sortBy: "walk" | "rating" = "walk"
+  sortBy: "walk" | "rating" | "newly_rated" = "walk"
 ): Place[] {
   return [...places].sort((a, b) => {
     if (sortBy === "rating") {
       const aRating = typeof a.avg_rating === "number" ? a.avg_rating : -Infinity;
       const bRating = typeof b.avg_rating === "number" ? b.avg_rating : -Infinity;
       if (aRating !== bRating) return bRating - aRating;
+    }
+
+    if (sortBy === "newly_rated") {
+      // Nulls (no visits logged yet) sort last, same "unrated falls to the
+      // bottom" convention "rating" already uses above.
+      const aRated = a.rating_updated_at ? Date.parse(a.rating_updated_at) : -Infinity;
+      const bRated = b.rating_updated_at ? Date.parse(b.rating_updated_at) : -Infinity;
+      if (aRated !== bRated) return bRated - aRated;
     }
 
     const aWalk = typeof a.walk_minutes === "number" ? a.walk_minutes : Infinity;

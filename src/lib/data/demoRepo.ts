@@ -125,6 +125,9 @@ interface DemoStore {
   /** UX review log #25 / migration 070 — one row per (user, event) that has
    *  already seen its decided-Jio celebration. */
   decidedCelebrationViews: { user_id: string; event_id: string; shown_at: string }[];
+  /** Migration 078 — one row per (user, event) that has dismissed the
+   *  "turn this into a Kaki?" bridge suggestion for that Jio. */
+  kakiBridgeDismissals: { user_id: string; event_id: string; dismissed_at: string }[];
   reviewLikes: { visit_id: string; user_id: string; created_at: string }[];
   lobangs: Lobang[];
   /** Recipients, snapshotted at send time. */
@@ -201,6 +204,7 @@ function seed(): DemoStore {
     dateVotes: [],
     wishlist: demoWishlist.map((w) => ({ ...w })),
     decidedCelebrationViews: [],
+    kakiBridgeDismissals: [],
     reviewLikes: [],
     lobangs: demoLobangs.map((l) => ({ ...l })),
     lobangRecipients: demoLobangRecipients.map((r) => ({ ...r })),
@@ -261,6 +265,14 @@ function recomputeReviewLikeCount(visitId: string): number {
   const visit = s.visits.find((v) => v.id === visitId);
   if (visit) visit.like_count = count;
   return count;
+}
+
+/** Mirrors 021_place_ratings_trigger.sql's visits_rating_trigger — stamped
+ *  on every visit insert/update/delete for a place, regardless of
+ *  `is_public`, powering the "Newly rated" sort. */
+function stampRatingUpdated(placeId: string): void {
+  const place = store().places.find((p) => p.id === placeId);
+  if (place) place.rating_updated_at = new Date().toISOString();
 }
 
 /**
@@ -717,6 +729,7 @@ export const demoRepo: Repo = {
       like_count: 0,
     };
     store().visits.push(visit);
+    stampRatingUpdated(visit.place_id);
     return visit;
   },
 
@@ -744,6 +757,7 @@ export const demoRepo: Repo = {
     };
 
     visits[index] = next;
+    stampRatingUpdated(next.place_id);
     return next;
   },
 
@@ -753,7 +767,9 @@ export const demoRepo: Repo = {
     if (index === -1 || visits[index].user_id !== userId) {
       throw new Error("That visit is not yours to delete");
     }
+    const placeId = visits[index].place_id;
     visits.splice(index, 1);
+    stampRatingUpdated(placeId);
   },
 
   async listPublicReviews(placeId, viewerId) {
@@ -955,6 +971,49 @@ export const demoRepo: Repo = {
       user_id: userId,
       event_id: eventId,
       shown_at: new Date().toISOString(),
+    });
+  },
+
+  async hasMatchingKakiForParticipants(hostId, participantIds) {
+    const s = store();
+    const targetSet = new Set(participantIds);
+    const hostKakiIds = new Set(
+      s.kakiMembers.filter((m) => m.user_id === hostId).map((m) => m.kaki_id)
+    );
+    for (const kakiId of hostKakiIds) {
+      const memberSet = new Set(
+        s.kakiMembers.filter((m) => m.kaki_id === kakiId).map((m) => m.user_id)
+      );
+      if (
+        memberSet.size === targetSet.size &&
+        Array.from(memberSet).every((id) => targetSet.has(id))
+      ) {
+        return true;
+      }
+    }
+    return false;
+  },
+
+  async hasDismissedKakiBridgeSuggestion(userId, eventId) {
+    const s = store();
+    return s.kakiBridgeDismissals.some(
+      (v) => v.user_id === userId && v.event_id === eventId
+    );
+  },
+
+  async dismissKakiBridgeSuggestion(userId, eventId) {
+    const s = store();
+    if (
+      s.kakiBridgeDismissals.some(
+        (v) => v.user_id === userId && v.event_id === eventId
+      )
+    ) {
+      return;
+    }
+    s.kakiBridgeDismissals.push({
+      user_id: userId,
+      event_id: eventId,
+      dismissed_at: new Date().toISOString(),
     });
   },
 
@@ -2310,7 +2369,7 @@ export const demoRepo: Repo = {
 
   // ---- Kakis ----
 
-  async createKaki(userId, name) {
+  async createKaki(userId, name, initialMemberIds = []) {
     const s = store();
     const kaki: Kaki = {
       id: `demo-kaki-${uuid().slice(0, 8)}`,
@@ -2320,12 +2379,15 @@ export const demoRepo: Repo = {
       created_at: new Date().toISOString(),
     };
     s.kakis.push(kaki);
-    s.kakiMembers.push({
-      kaki_id: kaki.id,
-      user_id: userId,
-      joined_at: new Date().toISOString(),
-    });
-    return { ...kaki, member_count: 1 };
+    const memberIds = Array.from(new Set([userId, ...initialMemberIds]));
+    for (const memberId of memberIds) {
+      s.kakiMembers.push({
+        kaki_id: kaki.id,
+        user_id: memberId,
+        joined_at: new Date().toISOString(),
+      });
+    }
+    return { ...kaki, member_count: memberIds.length };
   },
 
   async getKaki(idOrToken) {

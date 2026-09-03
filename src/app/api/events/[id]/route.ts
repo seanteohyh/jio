@@ -5,6 +5,7 @@ import { badRequest, errorResponse, json, notFound, readJson } from "@/lib/api";
 import { featureGate } from "@/lib/config";
 import { redactHiddenVotes } from "@/lib/voting";
 import { qualifiesForDecidedCelebration } from "@/lib/decidedCelebration";
+import { qualifiesForKakiBridgeSuggestion } from "@/lib/kakiBridge";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -70,6 +71,40 @@ export async function GET(_request: NextRequest, { params }: Params) {
       await repo.markDecidedCelebrationShown(user.id, id);
     }
 
+    // "Turn this into a Kaki?" bridge suggestion — host-only, and only
+    // worth the extra repo calls at all once the cheap checks already pass.
+    // See qualifiesForKakiBridgeSuggestion's own doc comment for the full
+    // reasoning; `participantIds` is exactly what a "yes" pre-fills the
+    // create-Kaki form with.
+    let kakiBridgeSuggestion: { participantIds: string[] } | null = null;
+    const bridgeParticipantIds = Array.from(
+      new Set([event.host_id, ...event.invitees.map((i) => i.user_id)])
+    );
+    if (
+      event.host_id === user.id &&
+      event.status === "closed" &&
+      Boolean(event.winner_place_id) &&
+      !event.kaki_id &&
+      bridgeParticipantIds.length >= 2
+    ) {
+      const [alreadyDismissed, alreadyHasMatchingKaki] = await Promise.all([
+        repo.hasDismissedKakiBridgeSuggestion(user.id, id),
+        repo.hasMatchingKakiForParticipants(user.id, bridgeParticipantIds),
+      ]);
+      const qualifies = qualifiesForKakiBridgeSuggestion({
+        isHost: true,
+        eventStatus: event.status,
+        hasWinner: Boolean(event.winner_place_id),
+        alreadyLinkedToKaki: Boolean(event.kaki_id),
+        participantCount: bridgeParticipantIds.length,
+        alreadyDismissed,
+        alreadyHasMatchingKaki,
+      });
+      if (qualifies) {
+        kakiBridgeSuggestion = { participantIds: bridgeParticipantIds };
+      }
+    }
+
     // CHANGES_20260821c.md §1 — only fetched for someone confirmed going,
     // since that's the only case the "starting soon" reminder card ever
     // renders for. Two extra reads (prefs, this event's override) rather
@@ -102,6 +137,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
         myRsvp,
         reminder,
         decidedCelebration,
+        kakiBridgeSuggestion,
       },
     });
   } catch (error) {

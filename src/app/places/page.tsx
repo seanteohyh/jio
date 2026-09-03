@@ -426,7 +426,9 @@ function BrowseList() {
               ? "highest rated first"
               : filters.sortBy === "kaki_rating"
                 ? "rated highly by your Kaki group first"
-                : "nearest first"}
+                : filters.sortBy === "newly_rated"
+                  ? "newest ratings first"
+                  : "nearest first"}
           </p>
           <ul className="space-y-2">
             {places.map((place) => (

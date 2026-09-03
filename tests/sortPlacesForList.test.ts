@@ -66,4 +66,42 @@ describe("sortPlacesForList", () => {
       sortPlacesForList(places, "rating").map((p) => p.id)
     ).toEqual(["closer", "farther"]);
   });
+
+  it("sorts by rating_updated_at descending when asked to show newly rated first", () => {
+    const places = [
+      place({ id: "old", rating_updated_at: "2026-01-01T00:00:00Z" }),
+      place({ id: "fresh", rating_updated_at: "2026-06-01T00:00:00Z" }),
+    ];
+    expect(
+      sortPlacesForList(places, "newly_rated").map((p) => p.id)
+    ).toEqual(["fresh", "old"]);
+  });
+
+  it("sinks never-rated places to the bottom of a newly-rated sort", () => {
+    const places = [
+      place({ id: "never-rated" }),
+      place({ id: "rated", rating_updated_at: "2026-01-01T00:00:00Z" }),
+    ];
+    expect(
+      sortPlacesForList(places, "newly_rated").map((p) => p.id)
+    ).toEqual(["rated", "never-rated"]);
+  });
+
+  it("still breaks a newly-rated tie by walk time", () => {
+    const places = [
+      place({
+        id: "farther",
+        rating_updated_at: "2026-01-01T00:00:00Z",
+        walk_minutes: 15,
+      }),
+      place({
+        id: "closer",
+        rating_updated_at: "2026-01-01T00:00:00Z",
+        walk_minutes: 5,
+      }),
+    ];
+    expect(
+      sortPlacesForList(places, "newly_rated").map((p) => p.id)
+    ).toEqual(["closer", "farther"]);
+  });
 });
