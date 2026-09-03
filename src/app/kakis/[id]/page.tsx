@@ -11,6 +11,7 @@ import {
   SectionHeading,
   SkeletonKakiDetail,
   Stars,
+  inputClass,
 } from "@/components/ui";
 import { KakiMetricsCharts } from "@/components/MetricsCharts";
 import { useToast } from "@/components/Toast";
@@ -53,6 +54,9 @@ export default function KakiDetailPage({
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [likingId, setLikingId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState(false);
+  const [nameValue, setNameValue] = useState("");
+  const [renaming, setRenaming] = useState(false);
 
   if (isLoading) return <SkeletonKakiDetail />;
   if (error) return <ErrorNote>{error.message}</ErrorNote>;
@@ -83,6 +87,35 @@ export default function KakiDetailPage({
       setActionError(err instanceof Error ? err.message : "Could not update your like");
     } finally {
       setLikingId(null);
+    }
+  };
+
+  const startRename = () => {
+    setNameValue(kaki.name);
+    setEditingName(true);
+    setActionError(null);
+  };
+
+  const saveName = async () => {
+    const name = nameValue.trim();
+    if (!name) {
+      setActionError("Give the group a name");
+      return;
+    }
+    setRenaming(true);
+    setActionError(null);
+    try {
+      const result = await mutateJson<{ kaki: KakiDetail }>(
+        `/api/kakis/${id}`,
+        "PATCH",
+        { name }
+      );
+      mutate({ ...data, kaki: { ...kaki, name: result.kaki.name } }, false);
+      setEditingName(false);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Could not rename it");
+    } finally {
+      setRenaming(false);
     }
   };
 
@@ -128,7 +161,47 @@ export default function KakiDetailPage({
   return (
     <div className="space-y-5">
       <header>
-        <h1 className="text-3xl font-semibold tracking-tight">{kaki.name}</h1>
+        {editingName ? (
+          <div className="flex items-center gap-2">
+            <input
+              autoFocus
+              value={nameValue}
+              onChange={(e) => setNameValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") saveName();
+                if (e.key === "Escape") setEditingName(false);
+              }}
+              maxLength={60}
+              className={`${inputClass} text-xl font-semibold`}
+            />
+            <Button size="sm" onClick={saveName} disabled={renaming}>
+              {renaming ? "Saving…" : "Save"}
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setEditingName(false)}
+              disabled={renaming}
+            >
+              Cancel
+            </Button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2">
+            <h1 className="text-3xl font-semibold tracking-tight">
+              {kaki.name}
+            </h1>
+            {viewer.isMember && (
+              <button
+                type="button"
+                onClick={startRename}
+                className="tap-target-text text-stone hover:text-ink text-xs underline"
+              >
+                Rename
+              </button>
+            )}
+          </div>
+        )}
         <p className="text-stone mt-1 text-sm">
           {kaki.members.length} member{kaki.members.length === 1 ? "" : "s"}
           {kaki.created_at && ` · since ${formatDate(kaki.created_at)}`}

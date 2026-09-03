@@ -656,6 +656,13 @@ export interface Repo {
     userId: string,
     addedBy: string
   ): Promise<void>;
+  /**
+   * Renames a Kaki. Any current member may do this, same trust level as
+   * `addKakiMember` — not creator-only, despite `kakis_update`'s original
+   * RLS shape (widened in 079_kaki_member_rename.sql). Throws if the
+   * caller isn't a member.
+   */
+  renameKaki(kakiId: string, userId: string, name: string): Promise<Kaki>;
 
   // ---- Lobangs (personalized tip-offs sent to a teammate, a Kaki, or the public) ----
   /**
@@ -1072,6 +1079,7 @@ export const REPO_METHODS = [
   "joinKaki",
   "leaveKaki",
   "addKakiMember",
+  "renameKaki",
   "sendLobang",
   "listLobangsReceived",
   "listLobangsSent",

@@ -62,3 +62,44 @@ describe("addKakiMember", () => {
     ).rejects.toThrow(/not exist/i);
   });
 });
+
+describe("renameKaki", () => {
+  it("lets the creator rename their own group", async () => {
+    const kaki = await demoRepo.createKaki(DEMO_USER_ID, "Lunch crew");
+
+    const renamed = await demoRepo.renameKaki(kaki.id, DEMO_USER_ID, "The 12:15 Crew");
+    expect(renamed.name).toBe("The 12:15 Crew");
+
+    const detail = await demoRepo.getKaki(kaki.id);
+    expect(detail?.name).toBe("The 12:15 Crew");
+  });
+
+  it("lets any member rename it, not just the creator", async () => {
+    const kaki = await demoRepo.createKaki(DEMO_USER_ID, "Lunch crew");
+    await demoRepo.addKakiMember(kaki.id, DEMO_TEAMMATE_A, DEMO_USER_ID);
+
+    const renamed = await demoRepo.renameKaki(
+      kaki.id,
+      DEMO_TEAMMATE_A,
+      "Renamed by a member"
+    );
+    expect(renamed.name).toBe("Renamed by a member");
+  });
+
+  it("stops someone who isn't a member from renaming it", async () => {
+    const kaki = await demoRepo.createKaki(DEMO_USER_ID, "Lunch crew");
+
+    await expect(
+      demoRepo.renameKaki(kaki.id, STRANGER, "Hijacked name")
+    ).rejects.toThrow(/only a member/i);
+
+    const detail = await demoRepo.getKaki(kaki.id);
+    expect(detail?.name).toBe("Lunch crew");
+  });
+
+  it("rejects renaming a group that does not exist", async () => {
+    await expect(
+      demoRepo.renameKaki("no-such-kaki", DEMO_USER_ID, "New name")
+    ).rejects.toThrow(/not exist/i);
+  });
+});

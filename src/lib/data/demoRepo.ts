@@ -2478,6 +2478,25 @@ export const demoRepo: Repo = {
     }
   },
 
+  async renameKaki(kakiId, userId, name) {
+    const s = store();
+    const kaki = s.kakis.find((k) => k.id === kakiId);
+    if (!kaki) throw new Error("That group does not exist");
+
+    const isMember = s.kakiMembers.some(
+      (m) => m.kaki_id === kakiId && m.user_id === userId
+    );
+    if (!isMember) {
+      throw new Error("Only a member of this group can rename it");
+    }
+
+    kaki.name = name;
+    return {
+      ...kaki,
+      member_count: s.kakiMembers.filter((m) => m.kaki_id === kakiId).length,
+    };
+  },
+
   // ---- Lobangs ----
 
   async sendLobang(fromUserId, target, placeId, note, eventId) {
