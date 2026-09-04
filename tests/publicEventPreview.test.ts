@@ -95,6 +95,29 @@ describe("getPublicEventPreview", () => {
     expect(preview?.winnerPlaceName).toBe("Albert Centre Market & Food Centre");
   });
 
+  it("surfaces the host's notes, even signed out", async () => {
+    const event = await demoRepo.createEvent(
+      DEMO_USER_ID,
+      "Test lunch",
+      TOMORROW,
+      DEFAULT_OFFICE.id,
+      ["demo-place-01"],
+      null,
+      [],
+      false,
+      "Meet at the lobby, park at B2"
+    );
+
+    const preview = await demoRepo.getPublicEventPreview(event.invite_token);
+    expect(preview?.notes).toBe("Meet at the lobby, park at B2");
+  });
+
+  it("notes is null when the host left it blank", async () => {
+    const event = await makeEvent();
+    const preview = await demoRepo.getPublicEventPreview(event.invite_token);
+    expect(preview?.notes).toBeNull();
+  });
+
   it("is unaffected by a Jio's hide_votes setting — always redacted regardless", async () => {
     const event = await demoRepo.createEvent(
       DEMO_USER_ID,

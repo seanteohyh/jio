@@ -679,6 +679,13 @@ export default function EventDetailPage({
         </div>
       </header>
 
+      {event.notes && (
+        <Card className="border-line bg-cream/60">
+          <p className="text-stone text-xs font-medium">Notes from the host</p>
+          <p className="mt-1 text-sm whitespace-pre-wrap">{event.notes}</p>
+        </Card>
+      )}
+
       {/*
         Share sits directly under the header, not at the foot of the page.
         Inviting people is the whole reason a Jio exists, and buried at the

@@ -1166,7 +1166,8 @@ export const demoRepo: Repo = {
     placeIds,
     kakiId,
     inviteeIds,
-    hideVotes
+    hideVotes,
+    notes
   ) {
     const s = store();
     const event: LunchEvent = {
@@ -1180,6 +1181,7 @@ export const demoRepo: Repo = {
       winner_place_id: null,
       kaki_id: kakiId ?? null,
       hide_votes: hideVotes ?? false,
+      notes: notes ?? null,
       created_at: new Date().toISOString(),
     };
     s.events.push(event);
@@ -1209,7 +1211,8 @@ export const demoRepo: Repo = {
     kakiId,
     inviteeIds,
     hideVotes,
-    timeOfDay
+    timeOfDay,
+    notes
   ) {
     const uniqueDates = Array.from(new Set(candidateDates));
     if (uniqueDates.length < 2) {
@@ -1235,6 +1238,7 @@ export const demoRepo: Repo = {
       winner_place_id: null,
       kaki_id: kakiId ?? null,
       hide_votes: hideVotes ?? false,
+      notes: notes ?? null,
       date_phase: "polling",
       created_at: new Date().toISOString(),
     };
@@ -1358,6 +1362,7 @@ export const demoRepo: Repo = {
       scheduledAt: event.scheduled_at,
       datePhase: event.date_phase ?? null,
       status: event.status,
+      notes: event.notes ?? null,
       goingCount,
       placeOptions,
       winnerPlaceName,
