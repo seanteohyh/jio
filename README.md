@@ -931,9 +931,14 @@ condition for it succeeding" shape `sendPushToUsers` already established
 for push, so a failure logging `jio.hosted` can never fail creating the
 Jio itself. `AppVisitTracker` is mounted in `layout.tsx` only when
 `getValidatedUser()` resolves someone signed in — there is nothing to
-attribute a page view to otherwise — and posts to `/api/track/visit` on
+attribute a page view to otherwise — and posts to `/api/activity/ping` on
 mount and on every `usePathname()` change, which only fires on a real
-navigation, never a prefetch (those don't run client code at all).
+navigation, never a prefetch (those don't run client code at all). The
+endpoint was originally `/api/track/visit`, renamed after a real gap
+turned up: that path's "track" substring is a common ad-blocker/privacy-
+filter match, so a signed-in session on a machine with such a filter could
+go completely uncounted with no error anywhere, since the beacon's own
+failure handling is silent by design.
 
 **Staying signed in depends on `middleware.ts`, not just the Supabase
 client config.** `@supabase/ssr`'s access token is short-lived; the refresh
