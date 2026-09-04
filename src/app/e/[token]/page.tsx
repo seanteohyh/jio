@@ -100,6 +100,13 @@ export default async function EventInvitePage({
           )}
         </header>
 
+        {preview.notes && (
+          <Card className="border-line bg-cream/60">
+            <p className="text-stone text-xs font-medium">Notes from the host</p>
+            <p className="mt-1 text-sm whitespace-pre-wrap">{preview.notes}</p>
+          </Card>
+        )}
+
         <Card className="space-y-3 text-center">
           <p className="text-sm">
             <span className="font-medium">{config.appName}</span>{" "}

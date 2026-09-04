@@ -330,6 +330,10 @@ export interface LunchEvent {
    * like any other Jio.
    */
   hide_votes?: boolean;
+  /** Free text the host fills in at creation — parking, dress code,
+   *  whatever doesn't fit a place name or a date. Shown to every invitee,
+   *  including the signed-out `/e/[token]` preview. Set once, no edit path. */
+  notes?: string | null;
   /** Set once, when `closeEvent` runs — powers §13b's time-to-decision
    *  metric. `null`/absent for anything still open or cancelled. */
   closed_at?: string | null;
@@ -510,6 +514,8 @@ export interface PublicEventPreview {
   scheduledAt: string;
   datePhase: DatePhase | null;
   status: EventStatus;
+  /** Same free-text field as `LunchEvent.notes` — visible pre-signup too. */
+  notes?: string | null;
   goingCount: number;
   placeOptions: { id: string; name: string }[];
   /** UX review log #25 — the decided place's name, only set once

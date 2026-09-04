@@ -1254,7 +1254,8 @@ export const supabaseRepo: Repo = {
     placeIds,
     kakiId,
     inviteeIds,
-    hideVotes
+    hideVotes,
+    notes
   ) {
     const client = await db();
 
@@ -1269,6 +1270,7 @@ export const supabaseRepo: Repo = {
         invite_token: generateToken(),
         status: "open",
         hide_votes: hideVotes ?? false,
+        notes: notes ?? null,
       })
       .select()
       .single();
@@ -1308,7 +1310,8 @@ export const supabaseRepo: Repo = {
     kakiId,
     inviteeIds,
     hideVotes,
-    timeOfDay
+    timeOfDay,
+    notes
   ) {
     const uniqueDates = Array.from(new Set(candidateDates));
     if (uniqueDates.length < 2) {
@@ -1336,6 +1339,7 @@ export const supabaseRepo: Repo = {
         status: "open",
         date_phase: "polling",
         hide_votes: hideVotes ?? false,
+        notes: notes ?? null,
       })
       .select()
       .single();

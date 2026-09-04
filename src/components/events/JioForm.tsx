@@ -92,6 +92,7 @@ export default function JioForm({
   const [budgetMax, setBudgetMax] = useState<BudgetTier>(6);
   const [newOnly, setNewOnly] = useState(false);
   const [hideVotes, setHideVotes] = useState(false);
+  const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -190,6 +191,7 @@ export default function JioForm({
     const shared = {
       title: title.trim() || "Lunch",
       hide_votes: hideVotes,
+      notes: notes.trim() || null,
       invitee_ids: invite.userIds,
       // Both, deliberately: the server snapshots every group's members into
       // individual invitees, and keeps the first group as display provenance
@@ -458,6 +460,22 @@ export default function JioForm({
         <Wrapper {...wrapperProps}>
           <SectionHeading>Who is coming</SectionHeading>
           <InvitePicker value={invite} onChange={setInvite} />
+        </Wrapper>
+
+        <Wrapper {...wrapperProps}>
+          <Field
+            label="Notes for invitees (optional)"
+            hint="Parking, dress code, anything else worth knowing before they show up."
+          >
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              maxLength={500}
+              rows={3}
+              className={inputClass}
+              placeholder="e.g. Meet at the lobby, park at B2"
+            />
+          </Field>
         </Wrapper>
 
         <Wrapper {...wrapperProps}>

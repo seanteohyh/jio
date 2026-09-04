@@ -91,10 +91,14 @@ interface CreateEventBody {
   /** §14 — set only here, at creation. No edit path exists once a Jio has
    *  votes to hide. */
   hide_votes?: boolean;
+  /** Free text for invitees — parking, dress code, whatever doesn't fit a
+   *  place name or a date. Set only here, at creation. */
+  notes?: string | null;
 }
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+const MAX_NOTES_LENGTH = 500;
 
 export async function POST(request: NextRequest) {
   const blocked = featureGate("events");
@@ -107,6 +111,12 @@ export async function POST(request: NextRequest) {
 
     if (!body) return badRequest("That didn't save — mind trying again?");
     const title = body.title?.trim() || "Lunch";
+
+    const trimmedNotes = body.notes?.trim();
+    if (trimmedNotes && trimmedNotes.length > MAX_NOTES_LENGTH) {
+      return badRequest("That note is a bit long");
+    }
+    const notes = trimmedNotes || null;
 
     const kakiIds = body.kaki_ids ?? (body.kaki_id ? [body.kaki_id] : []);
     const invitees = await expandInvitees(
@@ -134,7 +144,8 @@ export async function POST(request: NextRequest) {
         kakiId,
         invitees,
         body.hide_votes ?? false,
-        body.time_of_day
+        body.time_of_day,
+        notes
       );
       await notifyInvitees(repo, invitees, event.id, title);
       await logAction(repo, user.id, "jio.hosted", { eventId: event.id });
@@ -157,7 +168,8 @@ export async function POST(request: NextRequest) {
       body.place_ids ?? [],
       kakiId,
       invitees,
-      body.hide_votes ?? false
+      body.hide_votes ?? false,
+      notes
     );
     await notifyInvitees(repo, invitees, event.id, title);
     await logAction(repo, user.id, "jio.hosted", { eventId: event.id });
