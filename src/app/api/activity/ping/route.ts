@@ -8,6 +8,12 @@ import { sgtDateKey } from "@/lib/utils";
  * every real route change. A 401 for a signed-out caller is expected and
  * harmless: the tracker itself is never mounted while signed out (see
  * `layout.tsx`), so this only fires for a session that expires mid-visit.
+ *
+ * Deliberately not named `/api/track/*` (its original path) — that
+ * substring is a common ad-blocker/privacy-filter match, and a blocked
+ * beacon fails completely silently (see `AppVisitTracker`'s `.catch`),
+ * making a real signed-in session invisible to the Daily Activity Log
+ * with no indication anything went wrong.
  */
 export async function POST() {
   try {
