@@ -2,9 +2,10 @@ import { getCurrentUser } from "@/lib/auth";
 import { getRepoAsync } from "@/lib/data/repo";
 import { BudgetBadge, Card, Chip, LinkButton, SectionHeading, Stars } from "@/components/ui";
 import ShareLink from "@/components/ShareLink";
+import SocialsIcon from "@/components/SocialsIcon";
 import { lobangShareUrl } from "@/lib/shareUrl";
 import { config } from "@/lib/config";
-import { formatCuisine, googleMapsPlaceUrl } from "@/lib/utils";
+import { formatCuisine, googleMapsPlaceUrl, socialsLabel } from "@/lib/utils";
 
 /**
  * Public lobang preview — CHANGES_20260816.md §4, "Share this lobang"'s
@@ -82,14 +83,27 @@ export default async function PublicLobangPage({
           {place.visit_count > 0 && <span>{place.visit_count} visits</span>}
         </div>
 
-        <a
-          href={googleMapsPlaceUrl(place)}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="border-line bg-paper text-ink hover:bg-cream mt-3 inline-flex items-center rounded-lg border px-4 py-2.5 text-sm font-medium"
-        >
-          View on Google Maps
-        </a>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <a
+            href={googleMapsPlaceUrl(place)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="border-line bg-paper text-ink hover:bg-cream inline-flex items-center rounded-lg border px-4 py-2.5 text-sm font-medium"
+          >
+            View on Google Maps
+          </a>
+          {place.socials_url && (
+            <a
+              href={place.socials_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="border-line bg-paper text-ink hover:bg-cream inline-flex items-center gap-1.5 rounded-lg border px-4 py-2.5 text-sm font-medium"
+            >
+              <SocialsIcon url={place.socials_url} className="h-3.5 w-3.5" />
+              {socialsLabel(place.socials_url)}
+            </a>
+          )}
+        </div>
 
         {(place.cuisine.length > 0 || place.custom_cuisine_tags.length > 0) && (
           <div className="mt-3 flex flex-wrap gap-1.5">
