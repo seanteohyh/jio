@@ -133,6 +133,9 @@ export interface PublicPlace {
    *  found (src/lib/googlePlaces.ts) — `null` means fall back to a
    *  coordinate-based Maps link, same shape as `Place.google_place_id`. */
   google_place_id: string | null;
+  /** Same shape as `Place.socials_url` — a place's own public link carries
+   *  no more sensitivity than its coordinates or Google listing already do. */
+  socials_url: string | null;
 }
 
 export interface Visit {

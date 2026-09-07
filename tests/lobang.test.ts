@@ -289,6 +289,34 @@ describe("lobangs", () => {
       expect(await demoRepo.getPublicLobang("not-a-real-token")).toBeNull();
     });
 
+    it("carries the place's socials_url, same as getPublicPlace does", async () => {
+      const place = await demoRepo.createPlace({
+        name: "Socials Test Place",
+        address: "1 Test Street",
+        lat: 1.3,
+        lng: 103.85,
+        cuisine: ["local"],
+        custom_cuisine_tags: [],
+        budget_tier: 2,
+        source: "manual",
+        status: "active",
+        best_dishes: [],
+        notes: null,
+        created_by: DEMO_TEAMMATE_A,
+        socials_url: "https://instagram.com/socialstestplace",
+      });
+      const lobang = await demoRepo.sendLobang(
+        DEMO_TEAMMATE_A,
+        { type: "public" },
+        place.id
+      );
+
+      const resolved = await demoRepo.getPublicLobang(lobang.public_token!);
+      expect(resolved?.place.socials_url).toBe(
+        "https://instagram.com/socialstestplace"
+      );
+    });
+
     it("returns null once the place is no longer active", async () => {
       const lobang = await demoRepo.sendLobang(
         DEMO_TEAMMATE_A,

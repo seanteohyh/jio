@@ -504,6 +504,7 @@ export const supabaseRepo: Repo = {
       lat: row.lat,
       lng: row.lng,
       google_place_id: row.google_place_id ?? null,
+      socials_url: row.socials_url ?? null,
     };
   },
 
@@ -3424,6 +3425,7 @@ export const supabaseRepo: Repo = {
         lat: row.lat,
         lng: row.lng,
         google_place_id: row.google_place_id ?? null,
+        socials_url: row.socials_url ?? null,
       },
       from_display_name: row.from_display_name ?? "A teammate",
       note: row.note ?? null,

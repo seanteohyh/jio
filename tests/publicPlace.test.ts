@@ -77,6 +77,20 @@ describe("getPublicPlace", () => {
     expect(await demoRepo.getPublicPlace(place.id)).toBeNull();
   });
 
+  it("carries socials_url, since it's a link the place's own owner chose to make public", async () => {
+    const place = await seedPlace({ socials_url: "https://instagram.com/kopitiamtest" });
+
+    const pub = await demoRepo.getPublicPlace(place.id);
+    expect(pub?.socials_url).toBe("https://instagram.com/kopitiamtest");
+  });
+
+  it("socials_url is null when the place has none set", async () => {
+    const place = await seedPlace();
+
+    const pub = await demoRepo.getPublicPlace(place.id);
+    expect(pub?.socials_url).toBeNull();
+  });
+
   it("returns null for a place that does not exist", async () => {
     expect(await demoRepo.getPublicPlace("no-such-place")).toBeNull();
   });
