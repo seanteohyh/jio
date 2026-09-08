@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import useSWR from "swr";
+import useSWR, { mutate as globalMutate } from "swr";
 import {
   Button,
   Card,
@@ -148,6 +148,21 @@ export default function ProfilePage() {
         }),
       ]);
       mutatePrefs();
+      // /api/places and /api/suggest resolve the default office (and taste
+      // preferences) server-side, so their SWR cache keys — never including
+      // officeId or the cuisine likes/dislikes themselves — don't change
+      // when this save does. Without this, the Map and Places pages, and a
+      // Jio's own suggestion rails, kept showing whatever office's/taste's
+      // results happened to already be cached until something else forced
+      // a refetch (a focus revalidation, or the cache entry aging out) —
+      // a saved office change with no visible effect until then.
+      globalMutate(
+        (key) =>
+          typeof key === "string" &&
+          (key.startsWith("/api/places") || key.startsWith("/api/suggest")),
+        undefined,
+        { revalidate: true }
+      );
       setSaved(true);
       window.setTimeout(() => setSaved(false), 2500);
     } catch (err) {
