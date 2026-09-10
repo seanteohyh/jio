@@ -3931,6 +3931,25 @@ export const demoRepo: Repo = {
     return store().kakis.map((k) => k.id);
   },
 
+  async listAllVisitsForCron() {
+    return store().visits.map((v) => ({ ...v }));
+  },
+
+  async listAllPlacesForCron() {
+    return store().places.map((p) => enrich(p));
+  },
+
+  async listAllKakisForCron() {
+    const s = store();
+    return s.kakis.map((k) => ({
+      id: k.id,
+      name: k.name,
+      memberIds: s.kakiMembers
+        .filter((m) => m.kaki_id === k.id)
+        .map((m) => m.user_id),
+    }));
+  },
+
   async saveUserFoodIdentitySnapshot(
     userId: string,
     month: string,

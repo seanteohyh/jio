@@ -930,6 +930,35 @@ export interface Repo {
    *  group-level snapshots. */
   listAllKakiIds(): Promise<string[]>;
   /**
+   * Every visit across every account, in one query — the food-identity
+   * cron's own bulk read, grouped by `user_id` in the route itself.
+   * `visits_select` (007_rls.sql) is `authenticated`-only, and a Vercel
+   * Cron invocation carries no user session at all, so the ordinary
+   * per-request `listVisits()` this cron used to call once per account
+   * saw nothing: every account's `totalVisits` came out 0 regardless of
+   * how many visits actually existed, permanently locking every snapshot
+   * as `just_getting_started`. Same "no session to go through RLS with"
+   * situation `listReviewLikesSince` already documents for the
+   * weekly-recap cron — this closes the equivalent gap here.
+   */
+  listAllVisitsForCron(): Promise<Visit[]>;
+  /**
+   * Every place, any status — same reasoning as `listAllVisitsForCron`:
+   * `places_select` is also `authenticated`-only, so this cron's own
+   * `listPlaces()` call was equally blind to a no-session request.
+   */
+  listAllPlacesForCron(): Promise<Place[]>;
+  /**
+   * Every Kaki with its member ids — same reasoning again: `kakis_select`/
+   * `kaki_members_select` (010_kakis.sql) are both `authenticated`-only,
+   * so this cron's per-Kaki `getKaki()` call returned null for every id,
+   * which is why `kaki_food_identity_snapshots` has stayed empty
+   * regardless of whether any Kaki actually exists.
+   */
+  listAllKakisForCron(): Promise<
+    { id: string; name: string; memberIds: string[] }[]
+  >;
+  /**
    * Locks in one month's card for one account. Called only by the monthly
    * cron; there is no authenticated write policy on the underlying table
    * (see 068_food_identity_snapshots.sql), so nothing else can call this
@@ -1121,6 +1150,9 @@ export const REPO_METHODS = [
   "resolvePersonalInvite",
   "listAllUserIds",
   "listAllKakiIds",
+  "listAllVisitsForCron",
+  "listAllPlacesForCron",
+  "listAllKakisForCron",
   "saveUserFoodIdentitySnapshot",
   "listUserFoodIdentitySnapshots",
   "saveKakiFoodIdentitySnapshot",
