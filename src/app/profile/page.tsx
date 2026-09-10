@@ -80,6 +80,7 @@ export default function ProfilePage() {
   const { data: metricsData } = useSWR<{
     user: UserMetrics;
     foodIdentity: UserFoodIdentitySnapshot | null;
+    foodIdentityHistory: UserFoodIdentitySnapshot[];
   }>(features.metrics ? "/api/metrics" : null, fetcher);
   const { data: visitsData } = useSWR<{ visits: Visit[] }>(
     "/api/visits",
@@ -389,9 +390,12 @@ export default function ProfilePage() {
           {features.metrics && metricsData?.user && (
             <section className="space-y-3">
               <SectionHeading>Your numbers</SectionHeading>
-              {metricsData.user.totalVisits > 0 && (
-                <FoodIdentityCard snapshot={metricsData.foodIdentity ?? null} />
-              )}
+              <FoodIdentityCard
+                snapshot={metricsData.foodIdentity ?? null}
+                history={metricsData.foodIdentityHistory ?? []}
+                totalVisits={metricsData.user.totalVisits}
+                metrics={metricsData.user}
+              />
               <UserMetricsCharts metrics={metricsData.user} />
             </section>
           )}

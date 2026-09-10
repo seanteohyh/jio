@@ -324,6 +324,60 @@ describe("computeKakiMetrics", () => {
 
     expect(computeKakiMetrics(visits, places, members).trailblazer).toBeNull();
   });
+
+  it("returns every member's full ranking for each award, sorted highest-first", () => {
+    const places = [
+      place("shared", ["local"]),
+      place("alex-only", ["thai"]),
+      place("mei-only", ["korean"]),
+    ];
+    const visits = new Map([
+      [
+        "alex",
+        [
+          visit("shared", 4, "2026-07-01", "alex"),
+          visit("shared", 4, "2026-07-02", "alex"),
+          visit("alex-only", 4, "2026-07-03", "alex"),
+        ],
+      ],
+      [
+        "mei",
+        [
+          visit("shared", 4, "2026-07-04", "mei"),
+          visit("mei-only", 4, "2026-07-05", "mei"),
+        ],
+      ],
+    ]);
+
+    const metrics = computeKakiMetrics(visits, places, members);
+
+    expect(metrics.activeRanking).toEqual([
+      { user_id: "alex", visits: 3 },
+      { user_id: "mei", visits: 2 },
+    ]);
+    expect(metrics.adventurerRanking).toEqual([
+      { user_id: "alex", distinctPlaces: 2 },
+      { user_id: "mei", distinctPlaces: 2 },
+    ]);
+    // Both have exactly one place nobody else has been to — a genuine tie,
+    // so ranking order between them isn't asserted, only membership/values.
+    expect(metrics.trailblazerRanking).toHaveLength(2);
+    expect(metrics.trailblazerRanking).toEqual(
+      expect.arrayContaining([
+        { user_id: "alex", uniquePlaces: 1 },
+        { user_id: "mei", uniquePlaces: 1 },
+      ])
+    );
+  });
+
+  it("leaves a member out of a ranking entirely once their value is 0", () => {
+    const places = [place("shared", ["local"])];
+    const visits = new Map([["alex", [visit("shared", 4, "2026-07-01", "alex")]]]);
+
+    const metrics = computeKakiMetrics(visits, places, members);
+    expect(metrics.activeRanking.map((r) => r.user_id)).not.toContain("mei");
+    expect(metrics.adventurerRanking.map((r) => r.user_id)).not.toContain("mei");
+  });
 });
 
 describe("computeCuisineStreak", () => {

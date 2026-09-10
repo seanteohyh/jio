@@ -149,6 +149,9 @@ function emptyKakiMetrics(): KakiMetrics {
     mostActiveMember: null,
     adventurer: null,
     trailblazer: null,
+    activeRanking: [],
+    adventurerRanking: [],
+    trailblazerRanking: [],
   };
 }
 
@@ -274,8 +277,11 @@ export function computeKakiMetrics(
         perMemberBudgetAvgs.length
       : 0;
 
-  let mostActiveMember: KakiMetrics["mostActiveMember"] = null;
-  let adventurer: KakiMetrics["adventurer"] = null;
+  // Log 6 Part A — collect every member's number, not just the running
+  // max, so KakiFoodIdentityCard can expand an award row into the full
+  // leaderboard rather than only ever showing the single winner.
+  const activeRanking: KakiMetrics["activeRanking"] = [];
+  const adventurerRanking: KakiMetrics["adventurerRanking"] = [];
   const memberPlaceSets = new Map<string, Set<string>>();
 
   for (const member of members) {
@@ -283,26 +289,25 @@ export function computeKakiMetrics(
     const distinctPlaces = new Set(visits.map((v) => v.place_id));
     memberPlaceSets.set(member.user_id, distinctPlaces);
 
-    if (
-      visits.length > 0 &&
-      (!mostActiveMember || visits.length > mostActiveMember.visits)
-    ) {
-      mostActiveMember = { user_id: member.user_id, visits: visits.length };
+    if (visits.length > 0) {
+      activeRanking.push({ user_id: member.user_id, visits: visits.length });
     }
-    if (
-      distinctPlaces.size > 0 &&
-      (!adventurer || distinctPlaces.size > adventurer.distinctPlaces)
-    ) {
-      adventurer = { user_id: member.user_id, distinctPlaces: distinctPlaces.size };
+    if (distinctPlaces.size > 0) {
+      adventurerRanking.push({
+        user_id: member.user_id,
+        distinctPlaces: distinctPlaces.size,
+      });
     }
   }
+  activeRanking.sort((a, b) => b.visits - a.visits);
+  adventurerRanking.sort((a, b) => b.distinctPlaces - a.distinctPlaces);
 
   // Trailblazer: places in this member's own history that no other member
   // has been to — distinct from "most visits" (mostActiveMember) or "most
   // distinct places personally" (adventurer), either of which can just
   // mean someone eats out a lot. This rewards genuinely bringing the
   // group somewhere new, even at low volume.
-  let trailblazer: KakiMetrics["trailblazer"] = null;
+  const trailblazerRanking: KakiMetrics["trailblazerRanking"] = [];
   for (const member of members) {
     const ownPlaces = memberPlaceSets.get(member.user_id);
     if (!ownPlaces || ownPlaces.size === 0) continue;
@@ -318,13 +323,11 @@ export function computeKakiMetrics(
       (placeId) => !othersPlaces.has(placeId)
     ).length;
 
-    if (
-      uniquePlaces > 0 &&
-      (!trailblazer || uniquePlaces > trailblazer.uniquePlaces)
-    ) {
-      trailblazer = { user_id: member.user_id, uniquePlaces };
+    if (uniquePlaces > 0) {
+      trailblazerRanking.push({ user_id: member.user_id, uniquePlaces });
     }
   }
+  trailblazerRanking.sort((a, b) => b.uniquePlaces - a.uniquePlaces);
 
   return {
     groupTotalVisits: allVisits.length,
@@ -333,9 +336,12 @@ export function computeKakiMetrics(
     groupAvgBudgetTier,
     groupAvgBudgetLabel: groupAvgBudgetTier > 0 ? budgetLabel(groupAvgBudgetTier) : "—",
     groupCuisineBreakdown,
-    mostActiveMember,
-    adventurer,
-    trailblazer,
+    mostActiveMember: activeRanking[0] ?? null,
+    adventurer: adventurerRanking[0] ?? null,
+    trailblazer: trailblazerRanking[0] ?? null,
+    activeRanking,
+    adventurerRanking,
+    trailblazerRanking,
   };
 }
 
