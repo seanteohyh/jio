@@ -17,20 +17,23 @@ import type {
  * regardless of what the other numbers happen to say about three visits'
  * worth of data.
  */
-const MIN_VISITS_FOR_ARCHETYPE = 3;
+export const MIN_VISITS_FOR_ARCHETYPE = 3;
 
-/** The Loyalist: one cuisine this dominant is a real pattern, not chance. */
-const LOYALIST_CUISINE_SHARE = 0.5;
+/** The Loyalist: one cuisine this dominant is a real pattern, not chance.
+ *  Exported (Log 4) so the profile card's tap-to-reveal "why" panel can
+ *  compare the account's actual share against the same threshold that
+ *  decided its archetype, rather than a hardcoded copy of this value. */
+export const LOYALIST_CUISINE_SHARE = 0.5;
 
 /** The Explorer: distinct cuisines *tried*, not how evenly spread they are. */
-const EXPLORER_CUISINE_COUNT = 6;
+export const EXPLORER_CUISINE_COUNT = 6;
 
 /** The Regular: one place taking this big a slice of all visits. */
-const REGULAR_PLACE_SHARE = 0.3;
+export const REGULAR_PLACE_SHARE = 0.3;
 
 /** The Enthusiast: genuinely generous, not just "slightly positive" (which
  *  most people already are by default on a 1-5 scale). */
-const ENTHUSIAST_MIN_RATING = 4.5;
+export const ENTHUSIAST_MIN_RATING = 4.5;
 
 /** The Connoisseur / Budget Hunter: mapped onto today's 6-tier budget scale
  *  (tiers 1-6, `BUDGET_TIERS` in constants.ts) by reading this doc's original
@@ -38,8 +41,8 @@ const ENTHUSIAST_MIN_RATING = 4.5;
  *  is "$", tier 2 "$$", tier 3 "$$$", etc. Written before the 6-tier split
  *  (CHANGES_20260821.md §1), but the per-tier labels didn't change, so the
  *  literal reading still lines up. */
-const CONNOISSEUR_TIERS = new Set([2, 3]);
-const BUDGET_HUNTER_TIER = 1;
+export const CONNOISSEUR_TIERS = new Set([2, 3]);
+export const BUDGET_HUNTER_TIER = 1;
 
 /** A real, non-trivial chunk of visits going to a cuisine this account
  *  said it dislikes — not just one off night, worth calling out as an
@@ -182,6 +185,94 @@ function pickArchetype(metrics: UserMetrics): FoodIdentityCard {
     headline: "The Well-Rounded Eater",
     description: "A bit of everything — no single label fits you yet.",
   };
+}
+
+/** One row of the tap-to-reveal "why" panel (Log 4). */
+export interface ArchetypeRule {
+  label: string;
+  actual: string;
+  threshold: string;
+  matched: boolean;
+}
+
+/**
+ * Log 4 — the exact same checks `pickArchetype` runs, in the exact same
+ * order, re-surfaced as human-readable rows instead of a return value.
+ * Deliberately re-derives `topCuisine`/`topPlaceShare` the same way
+ * `pickArchetype` does rather than having that function return them —
+ * this stays a pure read of `UserMetrics` (the same object already fetched
+ * for the profile page), so it can never drift from what actually decided
+ * the account's current archetype as long as both functions are edited
+ * together. Stops at (and marks matched) the first rule that would win;
+ * rows after that point are never reached in `pickArchetype` either, so
+ * they're not returned here.
+ */
+export function getArchetypeRuleTrace(metrics: UserMetrics): ArchetypeRule[] {
+  const rows: ArchetypeRule[] = [];
+
+  const cuisineEntries = Object.entries(metrics.cuisineBreakdown);
+  const topCuisine = cuisineEntries.reduce<{ cuisine: string; share: number } | null>(
+    (best, [cuisine, share]) =>
+      !best || share > best.share ? { cuisine, share } : best,
+    null
+  );
+  const topCuisineShare = topCuisine?.share ?? 0;
+  const loyalistMatch = topCuisine != null && topCuisineShare >= LOYALIST_CUISINE_SHARE;
+  rows.push({
+    label: topCuisine ? `Top cuisine (${formatCuisine(topCuisine.cuisine)})` : "Top cuisine",
+    actual: `${Math.round(topCuisineShare * 100)}%`,
+    threshold: `${Math.round(LOYALIST_CUISINE_SHARE * 100)}%`,
+    matched: loyalistMatch,
+  });
+  if (loyalistMatch) return rows;
+
+  const explorerMatch = cuisineEntries.length >= EXPLORER_CUISINE_COUNT;
+  rows.push({
+    label: "Distinct cuisines tried",
+    actual: `${cuisineEntries.length}`,
+    threshold: `${EXPLORER_CUISINE_COUNT}`,
+    matched: explorerMatch,
+  });
+  if (explorerMatch) return rows;
+
+  const topPlace = metrics.favouritePlaces[0];
+  const topPlaceShare = topPlace ? topPlace.visit_count / metrics.totalVisits : 0;
+  const regularMatch = topPlace != null && topPlaceShare >= REGULAR_PLACE_SHARE;
+  rows.push({
+    label: topPlace ? `Top place share (${topPlace.place_name})` : "Top place share",
+    actual: `${Math.round(topPlaceShare * 100)}%`,
+    threshold: `${Math.round(REGULAR_PLACE_SHARE * 100)}%`,
+    matched: regularMatch,
+  });
+  if (regularMatch) return rows;
+
+  const enthusiastMatch = metrics.avgRatingGiven >= ENTHUSIAST_MIN_RATING;
+  rows.push({
+    label: "Average rating given",
+    actual: metrics.avgRatingGiven.toFixed(1),
+    threshold: ENTHUSIAST_MIN_RATING.toFixed(1),
+    matched: enthusiastMatch,
+  });
+  if (enthusiastMatch) return rows;
+
+  const roundedTier = Math.round(metrics.avgBudgetTier);
+  const connoisseurMatch = CONNOISSEUR_TIERS.has(roundedTier);
+  rows.push({
+    label: "Average budget tier",
+    actual: `${roundedTier}`,
+    threshold: [...CONNOISSEUR_TIERS].sort().join("-"),
+    matched: connoisseurMatch,
+  });
+  if (connoisseurMatch) return rows;
+
+  const budgetHunterMatch = roundedTier === BUDGET_HUNTER_TIER;
+  rows.push({
+    label: "Average budget tier",
+    actual: `${roundedTier}`,
+    threshold: `${BUDGET_HUNTER_TIER}`,
+    matched: budgetHunterMatch,
+  });
+  return rows;
 }
 
 /**

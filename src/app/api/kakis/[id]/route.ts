@@ -4,9 +4,112 @@ import { getRepoAsync } from "@/lib/data/repo";
 import { badRequest, errorResponse, json, notFound, readJson } from "@/lib/api";
 import { featureGate } from "@/lib/config";
 import { computeKakiMetrics, selectFreshReviews } from "@/lib/metrics";
-import type { Visit } from "@/types";
+import {
+  resolveKakiAwardCrown,
+  type CrownedAward,
+  type OtherKakiStanding,
+} from "@/lib/kakiCrown";
+import type { KakiDetail, KakiMetrics, Place, Visit } from "@/types";
 
 type Params = { params: Promise<{ id: string }> };
+
+type AwardKind = "mostActive" | "adventurer" | "trailblazer";
+
+const RANKING_FIELD: Record<AwardKind, keyof KakiMetrics> = {
+  mostActive: "activeRanking",
+  adventurer: "adventurerRanking",
+  trailblazer: "trailblazerRanking",
+};
+
+/** Each `KakiMetrics` ranking array uses a different field name for its raw
+ *  stat (`visits`/`distinctPlaces`/`uniquePlaces`) — this reads whichever
+ *  one applies and maps every ranking onto the common {user_id, value}
+ *  shape `resolveKakiAwardCrown` expects. */
+function toGenericRanking(
+  rows: { user_id: string; visits?: number; distinctPlaces?: number; uniquePlaces?: number }[]
+): { user_id: string; value: number }[] {
+  return rows.map((r) => ({
+    user_id: r.user_id,
+    value: r.visits ?? r.distinctPlaces ?? r.uniquePlaces ?? 0,
+  }));
+}
+
+/**
+ * Log 6 Part B — the home-kaki crown rule. Deliberately stateless (see
+ * `resolveKakiAwardCrown`'s own doc comment): resolved fresh on every page
+ * load from live per-group rankings, never persisted, so a streak breaking
+ * or starting takes effect immediately with no cooldown. For the winner of
+ * each award in this kaki, this fetches every OTHER kaki they belong to and
+ * recomputes each one's own live ranking for the same award, to check
+ * whether they're #1 there too — the one piece of real new cross-group I/O
+ * this rule needs (the log's own §"Part B" flags this as the scope-costly
+ * part; the exact strategy, this function, is left to engineering
+ * judgment, the output contract in the log's rule table is not).
+ */
+async function resolveCrowns(
+  repo: Awaited<ReturnType<typeof getRepoAsync>>,
+  kaki: KakiDetail,
+  metrics: KakiMetrics,
+  places: Place[]
+): Promise<Record<AwardKind, CrownedAward | null>> {
+  const kinds: AwardKind[] = ["mostActive", "adventurer", "trailblazer"];
+  const result: Record<AwardKind, CrownedAward | null> = {
+    mostActive: null,
+    adventurer: null,
+    trailblazer: null,
+  };
+
+  for (const kind of kinds) {
+    const ranking = toGenericRanking(
+      metrics[RANKING_FIELD[kind]] as { user_id: string }[]
+    );
+    if (ranking.length === 0) continue;
+
+    const winnerId = ranking[0].user_id;
+    const otherKakis = (await repo.listKakis(winnerId)).filter(
+      (k) => k.id !== kaki.id
+    );
+
+    const winnerElsewhere: OtherKakiStanding[] = [];
+    for (const otherKaki of otherKakis) {
+      const otherDetail = await repo.getKaki(otherKaki.id);
+      if (!otherDetail) continue;
+
+      const otherMemberVisits = new Map<string, Visit[]>();
+      await Promise.all(
+        otherDetail.members.map(async (member) => {
+          const visits = await repo.listVisits(undefined, member.user_id);
+          otherMemberVisits.set(member.user_id, visits);
+        })
+      );
+      const otherMetrics = computeKakiMetrics(
+        otherMemberVisits,
+        places,
+        otherDetail.members
+      );
+      const otherRanking = toGenericRanking(
+        otherMetrics[RANKING_FIELD[kind]] as { user_id: string }[]
+      );
+      if (otherRanking[0]?.user_id === winnerId) {
+        winnerElsewhere.push({
+          kakiId: otherKaki.id,
+          kakiName: otherKaki.name,
+          createdAt: otherKaki.created_at ?? "",
+          value: otherRanking[0].value,
+        });
+      }
+    }
+
+    result[kind] = resolveKakiAwardCrown(
+      kaki.id,
+      kaki.created_at ?? "",
+      ranking,
+      winnerElsewhere
+    );
+  }
+
+  return result;
+}
 
 export async function GET(_request: NextRequest, { params }: Params) {
   const blocked = featureGate("kakis");
@@ -39,6 +142,13 @@ export async function GET(_request: NextRequest, { params }: Params) {
     // for why. `null` until the cron has run at least once for this group.
     const foodIdentityHistory = await repo.listKakiFoodIdentitySnapshots(id);
     const foodIdentity = foodIdentityHistory[0] ?? null;
+
+    // Log 6 Part B — only worth resolving once this group actually has a
+    // card to show; skips the extra cross-kaki work entirely for a group
+    // that hasn't had its first monthly snapshot yet.
+    const crowns = foodIdentity
+      ? await resolveCrowns(repo, kaki, metrics, places)
+      : { mostActive: null, adventurer: null, trailblazer: null };
 
     // The group's "fresh reviews" feed. `memberVisits` already excludes
     // what RLS wouldn't let this caller see for anyone but themself, same
@@ -73,6 +183,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
       metrics,
       foodIdentity,
       foodIdentityHistory,
+      crowns,
       freshReviews: freshReviewsWithLikes,
       viewer: {
         id: user.id,

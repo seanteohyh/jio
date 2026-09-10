@@ -27,11 +27,17 @@ import type {
   KakiMetrics,
   Visit,
 } from "@/types";
+import type { CrownedAward } from "@/lib/kakiCrown";
 
 interface KakiResponse {
   kaki: KakiDetail;
   metrics: KakiMetrics;
   foodIdentity: KakiFoodIdentitySnapshot | null;
+  crowns: {
+    mostActive: CrownedAward | null;
+    adventurer: CrownedAward | null;
+    trailblazer: CrownedAward | null;
+  };
   freshReviews: Visit[];
   viewer: { id: string; isMember: boolean; isCreator: boolean };
 }
@@ -62,7 +68,7 @@ export default function KakiDetailPage({
   if (error) return <ErrorNote>{error.message}</ErrorNote>;
   if (!data) return null;
 
-  const { kaki, metrics, foodIdentity, freshReviews, viewer } = data;
+  const { kaki, metrics, foodIdentity, crowns, freshReviews, viewer } = data;
 
   const toggleLike = async (visitId: string) => {
     setLikingId(visitId);
@@ -221,6 +227,7 @@ export default function KakiDetailPage({
           snapshot={foodIdentity}
           nameFor={nameFor}
           metrics={metrics}
+          crowns={crowns}
         />
       )}
 

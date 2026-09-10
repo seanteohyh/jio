@@ -3,6 +3,7 @@ import { computeUserMetrics, computeKakiMetrics } from "@/lib/metrics";
 import {
   computeFoodIdentity,
   computeKakiFoodIdentity,
+  getArchetypeRuleTrace,
   previousMonthKey,
 } from "@/lib/foodIdentity";
 import type { BudgetTier, KakiMember, Place, Visit } from "@/types";
@@ -268,6 +269,66 @@ describe("computeFoodIdentity", () => {
     ];
     const card = computeFoodIdentity(computeUserMetrics(visits, places));
     expect(card.archetype).toBe("loyalist");
+  });
+});
+
+describe("getArchetypeRuleTrace", () => {
+  it("stops at and marks the rule that matched, for a Loyalist", () => {
+    const places = [
+      place("a", ["japanese"]),
+      place("b", ["japanese"]),
+      place("c", ["thai"]),
+    ];
+    const visits = [
+      visit("a", 4, "2026-07-01"),
+      visit("a", 4, "2026-07-02"),
+      visit("b", 4, "2026-07-03"),
+      visit("c", 4, "2026-07-04"),
+    ];
+    const rows = getArchetypeRuleTrace(computeUserMetrics(visits, places));
+    expect(rows).toHaveLength(1);
+    expect(rows[0].matched).toBe(true);
+    expect(rows[0].actual).toBe("75%");
+    expect(rows[0].threshold).toBe("50%");
+  });
+
+  it("lists every unmatched rule in order before the one that finally matches", () => {
+    // Same Enthusiast scenario as the archetype test above: no dominant
+    // cuisine, not enough distinct cuisines, no dominant place, but a
+    // high average rating — Loyalist/Explorer/Regular rows should all be
+    // present and unmatched before the Enthusiast row matches.
+    const places = [
+      place("a", ["japanese"]),
+      place("b", ["thai"]),
+      place("c", ["korean"]),
+      place("d", ["indian"]),
+    ];
+    const visits = [
+      visit("a", 5, "2026-07-01"),
+      visit("b", 5, "2026-07-02"),
+      visit("c", 4, "2026-07-03"),
+      visit("d", 5, "2026-07-04"),
+    ];
+    const rows = getArchetypeRuleTrace(computeUserMetrics(visits, places));
+    expect(rows.map((r) => r.matched)).toEqual([false, false, false, true]);
+  });
+
+  it("falls through to the last-checked rule, unmatched, for the well-rounded catch-all", () => {
+    const places = [
+      place("a", ["japanese"], 5),
+      place("b", ["thai"], 5),
+      place("c", ["korean"], 5),
+      place("d", ["indian"], 5),
+    ];
+    const visits = [
+      visit("a", 3, "2026-07-01"),
+      visit("b", 3, "2026-07-02"),
+      visit("c", 3, "2026-07-03"),
+      visit("d", 3, "2026-07-04"),
+    ];
+    const rows = getArchetypeRuleTrace(computeUserMetrics(visits, places));
+    expect(rows.every((r) => !r.matched)).toBe(true);
+    expect(rows[rows.length - 1].label).toBe("Average budget tier");
   });
 });
 

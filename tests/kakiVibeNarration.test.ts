@@ -19,6 +19,9 @@ function baseMetrics(overrides: Partial<KakiMetrics> = {}): KakiMetrics {
     mostActiveMember: null,
     adventurer: null,
     trailblazer: null,
+    activeRanking: [],
+    adventurerRanking: [],
+    trailblazerRanking: [],
     ...overrides,
   };
 }

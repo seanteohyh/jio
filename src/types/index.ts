@@ -858,6 +858,14 @@ export interface KakiMetrics {
    *  logs the most, while this rewards someone genuinely bringing the
    *  group somewhere new, even at low volume. */
   trailblazer: { user_id: string; uniquePlaces: number } | null;
+  /** Log 6 Part A — the full per-member ranking behind each of the three
+   *  award slots above, not just the single winner, so
+   *  `KakiFoodIdentityCard` can expand an award row into the whole
+   *  leaderboard. Members with 0 for the relevant stat are left out, same
+   *  as the winner-only fields above; sorted highest-first. */
+  activeRanking: { user_id: string; visits: number }[];
+  adventurerRanking: { user_id: string; distinctPlaces: number }[];
+  trailblazerRanking: { user_id: string; uniquePlaces: number }[];
 }
 
 /**
