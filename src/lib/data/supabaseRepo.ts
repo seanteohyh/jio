@@ -4104,6 +4104,22 @@ export const supabaseRepo: Repo = {
     }));
   },
 
+  async listAllUserPrefsForCron() {
+    const { createServiceRoleClient } = await import(
+      "@/lib/supabase/serviceClient"
+    );
+    const admin = createServiceRoleClient();
+    const { data, error } = await admin
+      .from("user_prefs")
+      .select("user_id, cuisine_likes, cuisine_dislikes");
+    if (error) fail("Could not list preferences", error);
+    return (data ?? []) as {
+      user_id: string;
+      cuisine_likes: string[];
+      cuisine_dislikes: string[];
+    }[];
+  },
+
   async saveUserFoodIdentitySnapshot(userId, month, card: FoodIdentityCard) {
     // There is no user session in a cron run, so the normal anon-key path
     // would be rejected outright by RLS (068_food_identity_snapshots.sql
@@ -4154,6 +4170,8 @@ export const supabaseRepo: Repo = {
         most_active_visits: card.mostActive?.visits ?? null,
         adventurer_user_id: card.adventurer?.user_id ?? null,
         adventurer_distinct_places: card.adventurer?.distinctPlaces ?? null,
+        trailblazer_user_id: card.trailblazer?.user_id ?? null,
+        trailblazer_unique_places: card.trailblazer?.uniquePlaces ?? null,
         computed_at: new Date().toISOString(),
       },
       { onConflict: "kaki_id,month" }
@@ -4166,7 +4184,7 @@ export const supabaseRepo: Repo = {
     const { data, error } = await client
       .from("kaki_food_identity_snapshots")
       .select(
-        "month, headline, description, most_active_user_id, most_active_visits, adventurer_user_id, adventurer_distinct_places, computed_at"
+        "month, headline, description, most_active_user_id, most_active_visits, adventurer_user_id, adventurer_distinct_places, trailblazer_user_id, trailblazer_unique_places, computed_at"
       )
       .eq("kaki_id", kakiId)
       .order("month", { ascending: false });
@@ -4186,6 +4204,14 @@ export const supabaseRepo: Repo = {
           ? {
               user_id: row.adventurer_user_id as string,
               distinctPlaces: row.adventurer_distinct_places,
+            }
+          : null,
+      trailblazer:
+        row.trailblazer_user_id &&
+        typeof row.trailblazer_unique_places === "number"
+          ? {
+              user_id: row.trailblazer_user_id as string,
+              uniquePlaces: row.trailblazer_unique_places,
             }
           : null,
     })) as KakiFoodIdentitySnapshot[];

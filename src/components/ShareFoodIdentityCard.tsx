@@ -23,6 +23,12 @@ interface ShareFoodIdentityCardProps {
 
 const CARD_W = 1200;
 const CARD_H = 760;
+const AWARD_ROW_H = 76;
+/** Card grows to fit a third award row (Trailblazer) rather than clipping or
+ *  cramming it in — the first two rows keep their existing spacing exactly. */
+function cardHeightFor(awardCount: number): number {
+  return CARD_H + Math.max(0, awardCount - 2) * AWARD_ROW_H;
+}
 
 /** Same palette as ShareResultCard — one shared "brand," not per-card colors. */
 const COLOR = {
@@ -95,16 +101,17 @@ function draw(
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
 
+  const cardH = cardHeightFor(awards.length);
   canvas.width = CARD_W;
-  canvas.height = CARD_H;
+  canvas.height = cardH;
 
   ctx.fillStyle = COLOR.paper;
-  ctx.fillRect(0, 0, CARD_W, CARD_H);
+  ctx.fillRect(0, 0, CARD_W, cardH);
 
   const pad = 72;
 
   ctx.fillStyle = COLOR.cream;
-  roundRect(ctx, pad / 2, pad / 2, CARD_W - pad, CARD_H - pad, 28);
+  roundRect(ctx, pad / 2, pad / 2, CARD_W - pad, cardH - pad, 28);
   ctx.fill();
 
   // Eyebrow pill.
@@ -150,7 +157,7 @@ function draw(
     ctx.stroke();
 
     let rowY = dividerY + 56;
-    for (const award of awards.slice(0, 2)) {
+    for (const award of awards.slice(0, 3)) {
       ctx.fillStyle = COLOR.stone;
       ctx.font = "700 22px system-ui, -apple-system, sans-serif";
       ctx.fillText(award.label.toUpperCase(), pad, rowY);
@@ -165,7 +172,7 @@ function draw(
         ctx.fillText(award.sub, pad + 340, rowY + 42);
       }
 
-      rowY += 76;
+      rowY += AWARD_ROW_H;
     }
   }
 
@@ -173,13 +180,13 @@ function draw(
   ctx.fillStyle = COLOR.stone;
   ctx.font = "500 24px system-ui, -apple-system, sans-serif";
   ctx.textBaseline = "alphabetic";
-  ctx.fillText(monthLabel, pad, CARD_H - pad - 4);
+  ctx.fillText(monthLabel, pad, cardH - pad - 4);
 
   // "jio" wordmark, bottom-right.
   ctx.fillStyle = COLOR.ember;
   ctx.font = "800 34px system-ui, -apple-system, sans-serif";
   ctx.textAlign = "right";
-  ctx.fillText("jio", CARD_W - pad, CARD_H - pad - 8);
+  ctx.fillText("jio", CARD_W - pad, cardH - pad - 8);
   ctx.textAlign = "left";
 }
 
@@ -189,8 +196,10 @@ function draw(
  * `ShareResultCard` (client-side render, no server screenshot service,
  * `toBlob` run fresh per gesture for Copy/Share) — a separate component
  * rather than a shared one, since the content shapes genuinely differ
- * (Kaki-level carries two award rows the personal card has no equivalent
- * for), but the drawing helpers and button row are deliberately identical.
+ * (Kaki-level carries up to three award rows — Most active / Adventurer /
+ * Trailblazer — the personal card has no equivalent for; the canvas grows
+ * taller to fit a third row rather than clipping or cramming it in), but
+ * the drawing helpers and button row are deliberately identical.
  */
 export default function ShareFoodIdentityCard(props: ShareFoodIdentityCardProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -271,7 +280,7 @@ export default function ShareFoodIdentityCard(props: ShareFoodIdentityCardProps)
       <canvas
         ref={canvasRef}
         className="border-line w-full rounded-lg border"
-        style={{ aspectRatio: `${CARD_W} / ${CARD_H}` }}
+        style={{ aspectRatio: `${CARD_W} / ${cardHeightFor(props.awards?.length ?? 0)}` }}
       />
 
       <div className="flex flex-wrap gap-2">

@@ -54,6 +54,14 @@ describe("listAllVisitsForCron / listAllPlacesForCron / listAllKakisForCron", ()
     expect(seeded?.memberIds.length).toBeGreaterThan(0);
     expect(seeded?.name).toBeTruthy();
   });
+
+  it("returns every account's cuisine likes/dislikes", async () => {
+    const prefs = await demoRepo.listAllUserPrefsForCron();
+    const seeded = prefs.find((p) => p.user_id === DEMO_USER_ID);
+    expect(seeded).toBeDefined();
+    expect(Array.isArray(seeded?.cuisine_likes)).toBe(true);
+    expect(Array.isArray(seeded?.cuisine_dislikes)).toBe(true);
+  });
 });
 
 describe("user food identity snapshots", () => {
@@ -98,6 +106,7 @@ const KAKI_CARD: KakiFoodIdentityCard = {
   description: "3 places tried together across 5 visits.",
   mostActive: { user_id: DEMO_USER_ID, visits: 3 },
   adventurer: { user_id: DEMO_USER_ID, distinctPlaces: 2 },
+  trailblazer: { user_id: DEMO_USER_ID, uniquePlaces: 1 },
 };
 
 describe("kaki food identity snapshots", () => {

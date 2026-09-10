@@ -41,6 +41,51 @@ const ENTHUSIAST_MIN_RATING = 4.5;
 const CONNOISSEUR_TIERS = new Set([2, 3]);
 const BUDGET_HUNTER_TIER = 1;
 
+/** A real, non-trivial chunk of visits going to a cuisine this account
+ *  said it dislikes — not just one off night, worth calling out as an
+ *  actual pattern. */
+const DISLIKED_CUISINE_NOTE_SHARE = 0.15;
+/** Comfortably means "sticking to what you said you like," not just
+ *  "happens to edge out everything else by a hair." */
+const LIKED_CUISINE_NOTE_SHARE = 0.5;
+
+/**
+ * An optional extra sentence comparing what someone actually ate against
+ * what they told the app they like/dislike (Profile's Taste section) —
+ * appended to whichever archetype `computeFoodIdentity` already picked,
+ * not a new archetype of its own. `null` whenever there's nothing
+ * interesting to say: no preferences ever set, or behaviour that doesn't
+ * clearly lean either way. Checked disliked-first — a real chunk of
+ * dislike-defying visits is the rarer, more interesting signal, same
+ * "most specific wins" ordering `computeFoodIdentity` itself uses.
+ */
+function preferenceNote(
+  cuisineBreakdown: Record<string, number>,
+  prefs?: { likes: string[]; dislikes: string[] }
+): string | null {
+  if (!prefs || (prefs.likes.length === 0 && prefs.dislikes.length === 0)) {
+    return null;
+  }
+
+  const dislikedShare = prefs.dislikes.reduce(
+    (sum, cuisine) => sum + (cuisineBreakdown[cuisine] ?? 0),
+    0
+  );
+  if (dislikedShare >= DISLIKED_CUISINE_NOTE_SHARE) {
+    return `And ${Math.round(dislikedShare * 100)}% of your visits were to cuisines you said weren't your thing — comfort zone, meet its edges.`;
+  }
+
+  const likedShare = prefs.likes.reduce(
+    (sum, cuisine) => sum + (cuisineBreakdown[cuisine] ?? 0),
+    0
+  );
+  if (likedShare >= LIKED_CUISINE_NOTE_SHARE) {
+    return "And you're mostly sticking to what you already said you like.";
+  }
+
+  return null;
+}
+
 function justGettingStarted(): FoodIdentityCard {
   return {
     archetype: "just_getting_started",
@@ -54,12 +99,28 @@ function justGettingStarted(): FoodIdentityCard {
  * doc's own listed order, not an arbitrary one: a dominant cuisine or place
  * is a stronger, more legible signal than an average rating or budget tier,
  * so those get first refusal.
+ *
+ * `prefs` — the account's Profile Taste preferences (`user_prefs.cuisine_
+ * likes`/`cuisine_dislikes`), when available — never changes *which*
+ * archetype gets picked, only whether an extra sentence comparing stated
+ * preference against actual behaviour gets appended to it (see
+ * `preferenceNote`). Optional, and a no-op whenever omitted or empty, so
+ * every existing caller keeps working unchanged.
  */
-export function computeFoodIdentity(metrics: UserMetrics): FoodIdentityCard {
+export function computeFoodIdentity(
+  metrics: UserMetrics,
+  prefs?: { likes: string[]; dislikes: string[] }
+): FoodIdentityCard {
   if (metrics.totalVisits < MIN_VISITS_FOR_ARCHETYPE) {
     return justGettingStarted();
   }
 
+  const card = pickArchetype(metrics);
+  const note = preferenceNote(metrics.cuisineBreakdown, prefs);
+  return note ? { ...card, description: `${card.description} ${note}` } : card;
+}
+
+function pickArchetype(metrics: UserMetrics): FoodIdentityCard {
   const cuisineEntries = Object.entries(metrics.cuisineBreakdown);
   const topCuisine = cuisineEntries.reduce<{ cuisine: string; share: number } | null>(
     (best, [cuisine, share]) =>
@@ -163,5 +224,6 @@ export function computeKakiFoodIdentity(
     description: `${metrics.groupDistinctPlaces} place${metrics.groupDistinctPlaces === 1 ? "" : "s"} tried together across ${metrics.groupTotalVisits} visit${metrics.groupTotalVisits === 1 ? "" : "s"}.`,
     mostActive: metrics.mostActiveMember,
     adventurer: metrics.adventurer,
+    trailblazer: metrics.trailblazer,
   };
 }

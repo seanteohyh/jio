@@ -148,6 +148,7 @@ function emptyKakiMetrics(): KakiMetrics {
     groupCuisineBreakdown: {},
     mostActiveMember: null,
     adventurer: null,
+    trailblazer: null,
   };
 }
 
@@ -174,13 +175,16 @@ export function computeKakiMetrics(
 
   if (allVisits.length === 0) return emptyKakiMetrics();
 
+  // Literal totals/favourites still pool every visit regardless of whose
+  // it is — "how many places has this group been, in total" is genuinely
+  // a volume question. `_coverage` (distinct members who've been) already
+  // ranks favourites ahead of raw visit count, which is its own existing
+  // guard against one person's frequent haunt looking like a group
+  // favourite.
   const perPlace = new Map<
     string,
     { count: number; members: Set<string>; ratingSum: number; ratingCount: number }
   >();
-  let budgetSum = 0;
-  let budgetCount = 0;
-  const cuisineShares: Record<string, number> = {};
 
   for (const visit of allVisits) {
     const entry = perPlace.get(visit.place_id) || {
@@ -196,17 +200,6 @@ export function computeKakiMetrics(
       entry.ratingCount += 1;
     }
     perPlace.set(visit.place_id, entry);
-
-    const place = placeById.get(visit.place_id);
-    if (place) {
-      budgetSum += place.budget_tier;
-      budgetCount += 1;
-      const cuisines = place.cuisine.length > 0 ? place.cuisine : ["other"];
-      const share = 1 / cuisines.length;
-      for (const cuisine of cuisines) {
-        cuisineShares[cuisine] = (cuisineShares[cuisine] || 0) + share;
-      }
-    }
   }
 
   const groupFavouritePlaces: FavouritePlace[] = Array.from(perPlace.entries())
@@ -226,45 +219,123 @@ export function computeKakiMetrics(
     .slice(0, 5)
     .map(({ _coverage: _ignored, ...rest }) => rest);
 
-  const totalShare = Object.values(cuisineShares).reduce((a, b) => a + b, 0);
+  // Cuisine breakdown and average spend are the two numbers that actually
+  // drive "what does this group like" — the headline itself. Pooling raw
+  // visits here (the previous approach) let whoever logs the most
+  // silently become "the group's taste." Each member's own shares are
+  // normalised to sum to 1 first, then averaged across members equally,
+  // so a member with 3 visits counts exactly as much as one with 50.
+  const perMemberCuisineShares: Record<string, number>[] = [];
+  const perMemberBudgetAvgs: number[] = [];
+
+  for (const member of members) {
+    const visits = memberVisitsMap.get(member.user_id) || [];
+    if (visits.length === 0) continue;
+
+    const shares: Record<string, number> = {};
+    let budgetSum = 0;
+    let budgetCount = 0;
+    for (const visit of visits) {
+      const place = placeById.get(visit.place_id);
+      if (!place) continue;
+      const cuisines = place.cuisine.length > 0 ? place.cuisine : ["other"];
+      const share = 1 / cuisines.length;
+      for (const cuisine of cuisines) {
+        shares[cuisine] = (shares[cuisine] || 0) + share;
+      }
+      budgetSum += place.budget_tier;
+      budgetCount += 1;
+    }
+
+    const totalShare = Object.values(shares).reduce((a, b) => a + b, 0);
+    if (totalShare > 0) {
+      const normalised: Record<string, number> = {};
+      for (const [cuisine, share] of Object.entries(shares)) {
+        normalised[cuisine] = share / totalShare;
+      }
+      perMemberCuisineShares.push(normalised);
+    }
+    if (budgetCount > 0) perMemberBudgetAvgs.push(budgetSum / budgetCount);
+  }
+
   const groupCuisineBreakdown: Record<string, number> = {};
-  if (totalShare > 0) {
-    for (const [cuisine, share] of Object.entries(cuisineShares)) {
-      groupCuisineBreakdown[cuisine] = share / totalShare;
+  if (perMemberCuisineShares.length > 0) {
+    for (const memberShares of perMemberCuisineShares) {
+      for (const [cuisine, share] of Object.entries(memberShares)) {
+        groupCuisineBreakdown[cuisine] =
+          (groupCuisineBreakdown[cuisine] || 0) +
+          share / perMemberCuisineShares.length;
+      }
     }
   }
+  const groupAvgBudgetTier =
+    perMemberBudgetAvgs.length > 0
+      ? perMemberBudgetAvgs.reduce((a, b) => a + b, 0) /
+        perMemberBudgetAvgs.length
+      : 0;
 
   let mostActiveMember: KakiMetrics["mostActiveMember"] = null;
   let adventurer: KakiMetrics["adventurer"] = null;
+  const memberPlaceSets = new Map<string, Set<string>>();
 
   for (const member of members) {
-    const visits = (memberVisitsMap.get(member.user_id) || []).length;
-    const distinct = new Set(
-      (memberVisitsMap.get(member.user_id) || []).map((v) => v.place_id)
-    ).size;
+    const visits = memberVisitsMap.get(member.user_id) || [];
+    const distinctPlaces = new Set(visits.map((v) => v.place_id));
+    memberPlaceSets.set(member.user_id, distinctPlaces);
 
-    if (visits > 0 && (!mostActiveMember || visits > mostActiveMember.visits)) {
-      mostActiveMember = { user_id: member.user_id, visits };
+    if (
+      visits.length > 0 &&
+      (!mostActiveMember || visits.length > mostActiveMember.visits)
+    ) {
+      mostActiveMember = { user_id: member.user_id, visits: visits.length };
     }
     if (
-      distinct > 0 &&
-      (!adventurer || distinct > adventurer.distinctPlaces)
+      distinctPlaces.size > 0 &&
+      (!adventurer || distinctPlaces.size > adventurer.distinctPlaces)
     ) {
-      adventurer = { user_id: member.user_id, distinctPlaces: distinct };
+      adventurer = { user_id: member.user_id, distinctPlaces: distinctPlaces.size };
     }
   }
 
-  const groupAvgBudgetTier = budgetCount > 0 ? budgetSum / budgetCount : 0;
+  // Trailblazer: places in this member's own history that no other member
+  // has been to — distinct from "most visits" (mostActiveMember) or "most
+  // distinct places personally" (adventurer), either of which can just
+  // mean someone eats out a lot. This rewards genuinely bringing the
+  // group somewhere new, even at low volume.
+  let trailblazer: KakiMetrics["trailblazer"] = null;
+  for (const member of members) {
+    const ownPlaces = memberPlaceSets.get(member.user_id);
+    if (!ownPlaces || ownPlaces.size === 0) continue;
+
+    const othersPlaces = new Set<string>();
+    for (const other of members) {
+      if (other.user_id === member.user_id) continue;
+      for (const placeId of memberPlaceSets.get(other.user_id) ?? []) {
+        othersPlaces.add(placeId);
+      }
+    }
+    const uniquePlaces = Array.from(ownPlaces).filter(
+      (placeId) => !othersPlaces.has(placeId)
+    ).length;
+
+    if (
+      uniquePlaces > 0 &&
+      (!trailblazer || uniquePlaces > trailblazer.uniquePlaces)
+    ) {
+      trailblazer = { user_id: member.user_id, uniquePlaces };
+    }
+  }
 
   return {
     groupTotalVisits: allVisits.length,
     groupDistinctPlaces: perPlace.size,
     groupFavouritePlaces,
     groupAvgBudgetTier,
-    groupAvgBudgetLabel: budgetCount > 0 ? budgetLabel(groupAvgBudgetTier) : "—",
+    groupAvgBudgetLabel: groupAvgBudgetTier > 0 ? budgetLabel(groupAvgBudgetTier) : "—",
     groupCuisineBreakdown,
     mostActiveMember,
     adventurer,
+    trailblazer,
   };
 }
 

@@ -65,13 +65,28 @@ export async function GET(request: NextRequest) {
     visitsByUser.set(visit.user_id, list);
   }
 
+  // Taste preferences, keyed by account — compared against what someone
+  // actually ate (see `computeFoodIdentity`'s `prefs` param) to note when
+  // behaviour lines up with, or defies, what they said they like/dislike
+  // on Profile. Purely additive: an account with neither set (most of
+  // them) gets no note at all, same archetype either way.
+  const allPrefs = await repo.listAllUserPrefsForCron();
+  const prefsByUser = new Map(allPrefs.map((p) => [p.user_id, p]));
+
   const revealedUsers: string[] = [];
   const userIds = await repo.listAllUserIds();
   for (const userId of userIds) {
     try {
       const visits = visitsByUser.get(userId) ?? [];
       const metrics = computeUserMetrics(visits, places);
-      const card = computeFoodIdentity(metrics);
+      const prefs = prefsByUser.get(userId);
+      const card = computeFoodIdentity(
+        metrics,
+        prefs && {
+          likes: prefs.cuisine_likes,
+          dislikes: prefs.cuisine_dislikes,
+        }
+      );
       await repo.saveUserFoodIdentitySnapshot(userId, month, card);
       revealedUsers.push(userId);
     } catch {
