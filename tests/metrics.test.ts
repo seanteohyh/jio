@@ -250,6 +250,80 @@ describe("computeKakiMetrics", () => {
 
     expect(computeKakiMetrics(visits, places, members).groupTotalVisits).toBe(1);
   });
+
+  it("weighs each member's cuisine taste equally, not by visit volume", () => {
+    const places = [place("thai-spot", ["thai"]), place("jp-spot", ["japanese"])];
+
+    // Alex eats thai 10 times; Mei eats japanese once. Pooling by raw
+    // visit count would make this group read as ~91% thai — but a group
+    // vibe should reflect that half its members lean thai and half lean
+    // japanese, not whichever member logs the most.
+    const alexVisits = Array.from({ length: 10 }, (_, i) =>
+      visit("thai-spot", 4, `2026-07-${String(i + 1).padStart(2, "0")}`, "alex")
+    );
+    const visits = new Map([
+      ["alex", alexVisits],
+      ["mei", [visit("jp-spot", 5, "2026-07-01", "mei")]],
+    ]);
+
+    const metrics = computeKakiMetrics(visits, places, members);
+    expect(metrics.groupCuisineBreakdown.thai).toBeCloseTo(0.5);
+    expect(metrics.groupCuisineBreakdown.japanese).toBeCloseTo(0.5);
+  });
+
+  it("weighs each member's average spend equally, not by visit volume", () => {
+    const places = [
+      place("cheap", ["local"], 1),
+      place("pricey", ["local"], 5),
+    ];
+
+    // Alex visits the cheap place 9 times; Mei visits the pricey place
+    // once. Pooling by raw visit count would put the group average near
+    // tier 1.4 — averaging each member's own spend puts it at tier 3,
+    // the actual midpoint between what each of them spends.
+    const alexVisits = Array.from({ length: 9 }, (_, i) =>
+      visit("cheap", 4, `2026-07-${String(i + 1).padStart(2, "0")}`, "alex")
+    );
+    const visits = new Map([
+      ["alex", alexVisits],
+      ["mei", [visit("pricey", 4, "2026-07-01", "mei")]],
+    ]);
+
+    const metrics = computeKakiMetrics(visits, places, members);
+    expect(metrics.groupAvgBudgetTier).toBeCloseTo(3);
+  });
+
+  it("names the trailblazer as whoever's been somewhere no one else has, regardless of volume", () => {
+    const places = [
+      place("shared", ["local"]),
+      place("alex-only", ["thai"]),
+    ];
+
+    // Alex goes out a lot, but only ever to the place everyone shares.
+    // Mei barely goes out, but the one time she does, it's somewhere
+    // nobody else in the group has been — she should still win this slot.
+    const alexVisits = Array.from({ length: 8 }, (_, i) =>
+      visit("shared", 4, `2026-07-${String(i + 1).padStart(2, "0")}`, "alex")
+    );
+    const visits = new Map([
+      ["alex", [...alexVisits, visit("alex-only", 4, "2026-07-09", "alex")]],
+      ["mei", [visit("shared", 4, "2026-07-01", "mei")]],
+    ]);
+
+    const metrics = computeKakiMetrics(visits, places, members);
+    expect(metrics.trailblazer?.user_id).toBe("alex");
+    expect(metrics.trailblazer?.uniquePlaces).toBe(1);
+  });
+
+  it("trailblazer is null when every place has been shared by everyone", () => {
+    const places = [place("shared", ["local"])];
+    const visits = new Map([
+      ["alex", [visit("shared", 4, "2026-07-01", "alex")]],
+      ["mei", [visit("shared", 4, "2026-07-02", "mei")]],
+    ]);
+
+    expect(computeKakiMetrics(visits, places, members).trailblazer).toBeNull();
+  });
 });
 
 describe("computeCuisineStreak", () => {

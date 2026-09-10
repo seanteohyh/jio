@@ -851,6 +851,13 @@ export interface KakiMetrics {
   groupCuisineBreakdown: Record<string, number>;
   mostActiveMember: { user_id: string; visits: number } | null;
   adventurer: { user_id: string; distinctPlaces: number } | null;
+  /** The member with the most places in their own history that no other
+   *  member has been to — a third award slot alongside `mostActiveMember`/
+   *  `adventurer`, deliberately not just "most visits" or "most distinct
+   *  places personally": either of those already tends to go to whoever
+   *  logs the most, while this rewards someone genuinely bringing the
+   *  group somewhere new, even at low volume. */
+  trailblazer: { user_id: string; uniquePlaces: number } | null;
 }
 
 /**
@@ -890,6 +897,8 @@ export interface KakiFoodIdentityCard {
   description: string;
   mostActive: { user_id: string; visits: number } | null;
   adventurer: { user_id: string; distinctPlaces: number } | null;
+  /** See `KakiMetrics.trailblazer`'s own doc comment. */
+  trailblazer: { user_id: string; uniquePlaces: number } | null;
 }
 
 export interface KakiFoodIdentitySnapshot extends KakiFoodIdentityCard {

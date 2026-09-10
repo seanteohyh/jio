@@ -73,6 +73,88 @@ describe("computeFoodIdentity", () => {
     expect(card.description).toContain("Japanese");
   });
 
+  it("notes a real chunk of visits to a disliked cuisine", () => {
+    const places = [
+      place("a", ["japanese"]),
+      place("b", ["japanese"]),
+      place("c", ["thai"]),
+    ];
+    const visits = [
+      visit("a", 4, "2026-07-01"),
+      visit("a", 4, "2026-07-02"),
+      visit("b", 4, "2026-07-03"),
+      visit("c", 4, "2026-07-04"),
+    ];
+    const card = computeFoodIdentity(computeUserMetrics(visits, places), {
+      likes: [],
+      dislikes: ["thai"],
+    });
+    expect(card.archetype).toBe("loyalist");
+    expect(card.description).toContain("25%");
+    expect(card.description).toContain("weren't your thing");
+  });
+
+  it("notes sticking to a liked cuisine", () => {
+    const places = [
+      place("a", ["japanese"]),
+      place("b", ["japanese"]),
+      place("c", ["thai"]),
+    ];
+    const visits = [
+      visit("a", 4, "2026-07-01"),
+      visit("a", 4, "2026-07-02"),
+      visit("b", 4, "2026-07-03"),
+      visit("c", 4, "2026-07-04"),
+    ];
+    const card = computeFoodIdentity(computeUserMetrics(visits, places), {
+      likes: ["japanese"],
+      dislikes: [],
+    });
+    expect(card.description).toContain("already said you like");
+  });
+
+  it("adds no note when no preferences are set", () => {
+    const places = [
+      place("a", ["japanese"]),
+      place("b", ["japanese"]),
+      place("c", ["thai"]),
+    ];
+    const visits = [
+      visit("a", 4, "2026-07-01"),
+      visit("a", 4, "2026-07-02"),
+      visit("b", 4, "2026-07-03"),
+      visit("c", 4, "2026-07-04"),
+    ];
+    const withPrefs = computeFoodIdentity(computeUserMetrics(visits, places), {
+      likes: [],
+      dislikes: [],
+    });
+    const withoutPrefs = computeFoodIdentity(computeUserMetrics(visits, places));
+    expect(withPrefs.description).toBe(withoutPrefs.description);
+  });
+
+  it("adds no note when preferences don't clearly lean either way", () => {
+    const places = [
+      place("a", ["japanese"]),
+      place("b", ["japanese"]),
+      place("c", ["thai"]),
+    ];
+    const visits = [
+      visit("a", 4, "2026-07-01"),
+      visit("a", 4, "2026-07-02"),
+      visit("b", 4, "2026-07-03"),
+      visit("c", 4, "2026-07-04"),
+    ];
+    // Neither liked nor disliked cuisine appears in this account's actual
+    // visits at all, so neither threshold has anything to measure.
+    const card = computeFoodIdentity(computeUserMetrics(visits, places), {
+      likes: ["korean"],
+      dislikes: ["indian"],
+    });
+    expect(card.description).not.toContain("weren't your thing");
+    expect(card.description).not.toContain("already said you like");
+  });
+
   it("is The Explorer with 6+ distinct cuisines and no dominant one", () => {
     const cuisines = ["japanese", "thai", "korean", "indian", "malay", "western"];
     const places = cuisines.map((c, i) => place(String(i), [c]));

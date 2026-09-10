@@ -71,6 +71,11 @@ export default function KakiFoodIdentityCard({
       value: nameFor(snapshot.adventurer.user_id),
       sub: `${snapshot.adventurer.distinctPlaces} different places`,
     },
+    snapshot.trailblazer && {
+      label: "Trailblazer",
+      value: nameFor(snapshot.trailblazer.user_id),
+      sub: `${snapshot.trailblazer.uniquePlaces} place${snapshot.trailblazer.uniquePlaces === 1 ? "" : "s"} nobody else has been`,
+    },
   ].filter((a): a is { label: string; value: string; sub: string } => Boolean(a));
 
   return (

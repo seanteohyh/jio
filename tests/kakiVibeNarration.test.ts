@@ -18,6 +18,7 @@ function baseMetrics(overrides: Partial<KakiMetrics> = {}): KakiMetrics {
     groupCuisineBreakdown: {},
     mostActiveMember: null,
     adventurer: null,
+    trailblazer: null,
     ...overrides,
   };
 }

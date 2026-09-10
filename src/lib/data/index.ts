@@ -959,6 +959,17 @@ export interface Repo {
     { id: string; name: string; memberIds: string[] }[]
   >;
   /**
+   * Every account's cuisine likes/dislikes, in one query — the
+   * food-identity cron's own bulk read, used to compare stated Taste
+   * preferences (Profile) against what someone actually ate that month.
+   * Same reasoning as the other `*ForCron` methods: `user_prefs_select`
+   * (007_rls.sql) is `authenticated`-only and scoped to the caller's own
+   * row, and a cron run has no `auth.uid()` to match against.
+   */
+  listAllUserPrefsForCron(): Promise<
+    { user_id: string; cuisine_likes: string[]; cuisine_dislikes: string[] }[]
+  >;
+  /**
    * Locks in one month's card for one account. Called only by the monthly
    * cron; there is no authenticated write policy on the underlying table
    * (see 068_food_identity_snapshots.sql), so nothing else can call this
@@ -1153,6 +1164,7 @@ export const REPO_METHODS = [
   "listAllVisitsForCron",
   "listAllPlacesForCron",
   "listAllKakisForCron",
+  "listAllUserPrefsForCron",
   "saveUserFoodIdentitySnapshot",
   "listUserFoodIdentitySnapshots",
   "saveKakiFoodIdentitySnapshot",

@@ -3950,6 +3950,14 @@ export const demoRepo: Repo = {
     }));
   },
 
+  async listAllUserPrefsForCron() {
+    return store().prefs.map((p) => ({
+      user_id: p.user_id,
+      cuisine_likes: p.cuisine_likes,
+      cuisine_dislikes: p.cuisine_dislikes,
+    }));
+  },
+
   async saveUserFoodIdentitySnapshot(
     userId: string,
     month: string,
