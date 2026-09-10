@@ -24,6 +24,38 @@ describe("listAllUserIds / listAllKakiIds", () => {
   });
 });
 
+/**
+ * The cron's own bulk reads — added alongside a live-Supabase bug fix: the
+ * per-request `listVisits`/`listPlaces`/`getKaki` calls the cron used to
+ * make are gated `authenticated`-only by RLS, and a Vercel Cron invocation
+ * has no session at all, so those reads silently returned nothing against
+ * a real Supabase project (every snapshot came out `just_getting_started`
+ * regardless of real visit history). demoRepo has no RLS to reproduce
+ * that failure mode, so these only verify the demo-mode data shape is
+ * correct — they cannot exercise the bug itself, which was specific to
+ * supabaseRepo's live-mode auth.
+ */
+describe("listAllVisitsForCron / listAllPlacesForCron / listAllKakisForCron", () => {
+  it("returns every visit, across every account", async () => {
+    const visits = await demoRepo.listAllVisitsForCron();
+    expect(visits.length).toBeGreaterThan(0);
+    expect(visits.some((v) => v.user_id === DEMO_USER_ID)).toBe(true);
+  });
+
+  it("returns every place", async () => {
+    const places = await demoRepo.listAllPlacesForCron();
+    expect(places.length).toBeGreaterThan(0);
+  });
+
+  it("returns every Kaki with its member ids", async () => {
+    const kakis = await demoRepo.listAllKakisForCron();
+    const seeded = kakis.find((k) => k.id === DEMO_KAKI_ID);
+    expect(seeded).toBeDefined();
+    expect(seeded?.memberIds.length).toBeGreaterThan(0);
+    expect(seeded?.name).toBeTruthy();
+  });
+});
+
 describe("user food identity snapshots", () => {
   it("saves and lists a snapshot for a given month", async () => {
     await demoRepo.saveUserFoodIdentitySnapshot(DEMO_USER_ID, "2026-07", CARD);

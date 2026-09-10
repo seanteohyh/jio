@@ -50,13 +50,26 @@ export async function GET(request: NextRequest) {
 
   const repo = await getRepoAsync();
   const month = previousMonthKey();
-  const { places } = await repo.listPlaces({ status: "all" });
+
+  // Bulk, service-role reads (see the three `*ForCron` methods' own doc
+  // comments in `lib/data/index.ts`) — a Vercel Cron invocation has no
+  // user session, so the ordinary per-request `listPlaces`/`listVisits`/
+  // `getKaki` this route used to call are gated `authenticated`-only by
+  // RLS and silently returned nothing to it.
+  const places = await repo.listAllPlacesForCron();
+  const allVisits = await repo.listAllVisitsForCron();
+  const visitsByUser = new Map<string, Visit[]>();
+  for (const visit of allVisits) {
+    const list = visitsByUser.get(visit.user_id) ?? [];
+    list.push(visit);
+    visitsByUser.set(visit.user_id, list);
+  }
 
   const revealedUsers: string[] = [];
   const userIds = await repo.listAllUserIds();
   for (const userId of userIds) {
     try {
-      const visits = await repo.listVisits(undefined, userId);
+      const visits = visitsByUser.get(userId) ?? [];
       const metrics = computeUserMetrics(visits, places);
       const card = computeFoodIdentity(metrics);
       await repo.saveUserFoodIdentitySnapshot(userId, month, card);
@@ -68,36 +81,28 @@ export async function GET(request: NextRequest) {
   }
 
   const revealedKakis: string[] = [];
-  const kakiIds = await repo.listAllKakiIds();
-  for (const kakiId of kakiIds) {
+  const kakis = await repo.listAllKakisForCron();
+  for (const kaki of kakis) {
     try {
-      const kaki = await repo.getKaki(kakiId);
-      if (!kaki) continue;
-
       const memberVisits = new Map<string, Visit[]>();
-      await Promise.all(
-        kaki.members.map(async (member) => {
-          memberVisits.set(
-            member.user_id,
-            await repo.listVisits(undefined, member.user_id)
-          );
-        })
-      );
+      for (const memberId of kaki.memberIds) {
+        memberVisits.set(memberId, visitsByUser.get(memberId) ?? []);
+      }
+      const members = kaki.memberIds.map((user_id) => ({
+        kaki_id: kaki.id,
+        user_id,
+      }));
 
-      const metrics = computeKakiMetrics(memberVisits, places, kaki.members);
+      const metrics = computeKakiMetrics(memberVisits, places, members);
       const card = computeKakiFoodIdentity(metrics);
-      await repo.saveKakiFoodIdentitySnapshot(kakiId, month, card);
-      revealedKakis.push(kakiId);
+      await repo.saveKakiFoodIdentitySnapshot(kaki.id, month, card);
+      revealedKakis.push(kaki.id);
 
-      await sendPushToUsers(
-        repo,
-        kaki.members.map((m) => m.user_id),
-        {
-          title: `${kaki.name}'s ${formatMonthKey(month)} vibe is ready`,
-          body: card.headline,
-          url: `/kakis/${kakiId}`,
-        }
-      );
+      await sendPushToUsers(repo, kaki.memberIds, {
+        title: `${kaki.name}'s ${formatMonthKey(month)} vibe is ready`,
+        body: card.headline,
+        url: `/kakis/${kaki.id}`,
+      });
     } catch {
       // Same reasoning as the per-user loop above.
     }

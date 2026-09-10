@@ -615,11 +615,26 @@ data has moved — an Auth Admin API operation no RLS policy could ever grant;
 every user's `review_likes` rows with no user session to satisfy that
 table's owner-only RLS policy; and the food identity cron
 (CHANGES_20260821_combined2.md Item 1) — `listAllUserIds`/`listAllKakiIds`
-(the cron's own iteration set) and the two `save*FoodIdentitySnapshot`
-methods, since 068_food_identity_snapshots.sql deliberately grants
-`authenticated` no insert/update policy on either table at all — only the
-cron, via these methods, ever writes them. The module throws at import time
-if it is ever bundled for the browser.
+(the cron's own iteration set), the two `save*FoodIdentitySnapshot`
+methods (068_food_identity_snapshots.sql deliberately grants `authenticated`
+no insert/update policy on either table at all), and, since a real bug fix,
+`listAllVisitsForCron`/`listAllPlacesForCron`/`listAllKakisForCron`. That
+fix mattered: the cron used to gather its own input data — visits, places,
+Kaki membership — through the ordinary per-request client (`listVisits`,
+`listPlaces`, `getKaki`), every one of which is `authenticated`-only under
+RLS, same as `review_likes`. A Vercel Cron invocation has no session at
+all, so those reads silently returned nothing against a live project —
+`totalVisits` came out 0 for every single account regardless of real
+history, permanently locking every month's snapshot as
+`just_getting_started`, and the per-Kaki loop never found a Kaki to
+snapshot at all. `computeFoodIdentity()`/`computeUserMetrics()` themselves
+were never at fault (confirmed correct by feeding them real data directly)
+— the bug was entirely in what the cron could actually see. Once a
+snapshot is written for a given month it is never recomputed, so an
+account that already has a `just_getting_started` row locked in from
+before this fix stays that way until next month's run; there is no
+automatic backfill for a month already written incorrectly. The module
+throws at import time if it is ever bundled for the browser.
 
 **`middleware.ts` validates the session once per request; every page and
 route trusts that instead of repeating it.** Speed Insights showed FCP/LCP

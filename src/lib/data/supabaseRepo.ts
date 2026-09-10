@@ -4045,6 +4045,65 @@ export const supabaseRepo: Repo = {
     return (data ?? []).map((row) => row.id as string);
   },
 
+  // Bug fix (see Repo interface doc comment): the food-identity cron used
+  // to gather its own input data — visits, places, Kaki membership — via
+  // the ordinary per-request client (`listVisits`, `listPlaces`,
+  // `getKaki`), all of which are gated `authenticated`-only by RLS. A
+  // Vercel Cron invocation has no session at all, so every one of those
+  // reads silently returned nothing: `totalVisits` came out 0 for every
+  // account regardless of real history, permanently locking every
+  // snapshot as `just_getting_started`, and the per-Kaki loop never found
+  // a single Kaki to snapshot. These three reach for the service-role
+  // client instead, same as `listAllUserIds`/`listAllKakiIds` just above
+  // and `listReviewLikesSince`'s own identical fix for the weekly-recap
+  // cron.
+  async listAllVisitsForCron() {
+    const { createServiceRoleClient } = await import(
+      "@/lib/supabase/serviceClient"
+    );
+    const admin = createServiceRoleClient();
+    const { data, error } = await admin.from("visits").select("*");
+    if (error) fail("Could not list visits", error);
+    return (data ?? []) as Visit[];
+  },
+
+  async listAllPlacesForCron() {
+    const { createServiceRoleClient } = await import(
+      "@/lib/supabase/serviceClient"
+    );
+    const admin = createServiceRoleClient();
+    const { data, error } = await admin.from("places").select("*");
+    if (error) fail("Could not list places", error);
+    return (data ?? []) as Place[];
+  },
+
+  async listAllKakisForCron() {
+    const { createServiceRoleClient } = await import(
+      "@/lib/supabase/serviceClient"
+    );
+    const admin = createServiceRoleClient();
+    const [{ data: kakiRows, error: kakiError }, { data: memberRows, error: memberError }] =
+      await Promise.all([
+        admin.from("kakis").select("id, name"),
+        admin.from("kaki_members").select("kaki_id, user_id"),
+      ]);
+    if (kakiError) fail("Could not list Kakis", kakiError);
+    if (memberError) fail("Could not list Kaki members", memberError);
+
+    const membersByKaki = new Map<string, string[]>();
+    for (const row of (memberRows ?? []) as { kaki_id: string; user_id: string }[]) {
+      const list = membersByKaki.get(row.kaki_id) ?? [];
+      list.push(row.user_id);
+      membersByKaki.set(row.kaki_id, list);
+    }
+
+    return ((kakiRows ?? []) as { id: string; name: string }[]).map((k) => ({
+      id: k.id,
+      name: k.name,
+      memberIds: membersByKaki.get(k.id) ?? [],
+    }));
+  },
+
   async saveUserFoodIdentitySnapshot(userId, month, card: FoodIdentityCard) {
     // There is no user session in a cron run, so the normal anon-key path
     // would be rejected outright by RLS (068_food_identity_snapshots.sql
