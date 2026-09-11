@@ -10,8 +10,10 @@ import FavouriteButton from "@/components/FavouriteButton";
 import SuggestionRails from "@/components/places/SuggestionRails";
 import FilterBar, {
   DEFAULT_FILTERS,
+  filterPlaces,
   type FilterState,
 } from "@/components/FilterBar";
+import { sortPlacesForList } from "@/lib/utils";
 import {
   Button,
   Card,
@@ -45,6 +47,17 @@ function SaveActions({ placeId }: { placeId: string }) {
 
 export default function PlacesPage() {
   const [tab, setTab] = useState<Tab>("all");
+
+  // Lifted above every tab, not owned by the browse list — search, cuisine,
+  // budget, walk-time and Foodpanda/Grab now narrow Want to try/Tried/
+  // Favourites the same way they already narrowed "All", instead of those
+  // three being un-narrowable lists you had to scroll through by eye.
+  const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
+  // See `filterPlaces`'s `applyMaxWalk` doc — the walk slider's own default
+  // (30 min) would otherwise silently hide a saved place across town the
+  // instant this bar starts applying to a tab that was never walk-filtered
+  // to begin with.
+  const [filtersTouched, setFiltersTouched] = useState(false);
 
   // Want to try / Favourites entries come back with their place joined on,
   // so neither tab needs a second request or pagination — both are small
@@ -142,6 +155,16 @@ export default function PlacesPage() {
         save anywhere you want to try or already love.
       </HintCard>
 
+      {tab !== "lobangs" && (
+        <FilterBar
+          value={filters}
+          onChange={setFilters}
+          showSort
+          showKakiFilter={tab === "all"}
+          onTouchedChange={setFiltersTouched}
+        />
+      )}
+
       {tabs.length > 1 && (
         <div className="border-line no-scrollbar flex gap-1 overflow-x-auto rounded-full border p-1 text-sm">
           {tabs.map(([key, label]) => (
@@ -167,16 +190,38 @@ export default function PlacesPage() {
         <WantToTryList
           entries={wantToTryEntries}
           loading={wishlistLoading}
+          filters={filters}
+          filtersTouched={filtersTouched}
           onBrowse={() => setTab("all")}
           onChanged={() => mutateWishlist()}
+          onClearFilters={() => {
+            setFilters(DEFAULT_FILTERS);
+            setFiltersTouched(false);
+          }}
         />
       ) : tab === "tried" ? (
-        <TriedList places={triedPlaces} loading={triedLoading} onBrowse={() => setTab("all")} />
+        <TriedList
+          places={triedPlaces}
+          loading={triedLoading}
+          filters={filters}
+          filtersTouched={filtersTouched}
+          onBrowse={() => setTab("all")}
+          onClearFilters={() => {
+            setFilters(DEFAULT_FILTERS);
+            setFiltersTouched(false);
+          }}
+        />
       ) : tab === "favourites" ? (
         <FavouritesList
           places={favouritePlaces}
           loading={favouritesLoading}
+          filters={filters}
+          filtersTouched={filtersTouched}
           onBrowse={() => setTab("all")}
+          onClearFilters={() => {
+            setFilters(DEFAULT_FILTERS);
+            setFiltersTouched(false);
+          }}
         />
       ) : tab === "lobangs" ? (
         <LobangsList
@@ -187,7 +232,7 @@ export default function PlacesPage() {
         />
       ) : (
         <Suspense fallback={<SkeletonRows count={6} rowClassName="h-28 w-full" />}>
-          <BrowseList />
+          <BrowseList filters={filters} />
         </Suspense>
       )}
     </div>
@@ -261,16 +306,71 @@ function WantToTryRow({
   );
 }
 
+/** The shared filter row (above every tab) narrowed a real, non-empty
+ *  list down to nothing — distinct from the list itself being genuinely
+ *  empty, which gets its own tab-specific empty state below. */
+function NoFilterMatches({ onClearFilters }: { onClearFilters: () => void }) {
+  return (
+    <EmptyState
+      icon={<NoPlacesMotif />}
+      title="Nothing here matches these filters"
+      description="Try widening the cuisine, budget, or walk-time filters above."
+      action={
+        <Button variant="secondary" onClick={onClearFilters}>
+          Clear filters
+        </Button>
+      }
+    />
+  );
+}
+
+/** `sortPlacesForList` has no "kaki_rating" axis — that sort needs a
+ *  Kaki-scoped rating only ever computed for the "All" tab's own
+ *  server-backed list (see `filterPlaces`'s doc comment), so it's hidden
+ *  from the sort dropdown on every other tab (`showKakiFilter`). A value
+ *  already set to it can still carry over from a shared `filters` state
+ *  though, so every client-side sort falls back to "walk" rather than
+ *  erroring or silently doing nothing. */
+function clientSortBy(sortBy: FilterState["sortBy"]): "walk" | "rating" | "newly_rated" {
+  return sortBy === "kaki_rating" ? "walk" : sortBy;
+}
+
+/** Filters, then sorts, a list of entries by their joined `place` — the
+ *  same shared `filterPlaces`/`sortPlacesForList` the plain browse list
+ *  already used server-side, run here in the browser since Want to try's
+ *  entries never round-trip through the API on a filter change. */
+function filterAndSortEntries<T extends { place_id: string; place: Place }>(
+  entries: T[],
+  filters: FilterState,
+  filtersTouched: boolean
+): T[] {
+  const byId = new Map(entries.map((e) => [e.place_id, e]));
+  const matched = filterPlaces(
+    entries.map((e) => e.place),
+    filters,
+    { applyMaxWalk: filtersTouched }
+  );
+  return sortPlacesForList(matched, clientSortBy(filters.sortBy)).map(
+    (p) => byId.get(p.id)!
+  );
+}
+
 function WantToTryList({
   entries,
   loading,
+  filters,
+  filtersTouched,
   onBrowse,
   onChanged,
+  onClearFilters,
 }: {
   entries: (WishlistEntry & { place: Place })[];
   loading: boolean;
+  filters: FilterState;
+  filtersTouched: boolean;
   onBrowse: () => void;
   onChanged: () => void;
+  onClearFilters: () => void;
 }) {
   if (loading) return <SkeletonRows count={3} rowClassName="h-28 w-full" />;
 
@@ -289,9 +389,14 @@ function WantToTryList({
     );
   }
 
+  const visible = filterAndSortEntries(entries, filters, filtersTouched);
+  if (visible.length === 0) {
+    return <NoFilterMatches onClearFilters={onClearFilters} />;
+  }
+
   return (
     <ul className="space-y-2">
-      {entries.map((entry) => (
+      {visible.map((entry) => (
         <WantToTryRow key={entry.place_id} entry={entry} onChanged={onChanged} />
       ))}
     </ul>
@@ -301,11 +406,17 @@ function WantToTryList({
 function FavouritesList({
   places,
   loading,
+  filters,
+  filtersTouched,
   onBrowse,
+  onClearFilters,
 }: {
   places: Place[];
   loading: boolean;
+  filters: FilterState;
+  filtersTouched: boolean;
   onBrowse: () => void;
+  onClearFilters: () => void;
 }) {
   if (loading) return <SkeletonRows count={3} rowClassName="h-28 w-full" />;
 
@@ -324,9 +435,17 @@ function FavouritesList({
     );
   }
 
+  const visible = sortPlacesForList(
+    filterPlaces(places, filters, { applyMaxWalk: filtersTouched }),
+    clientSortBy(filters.sortBy)
+  );
+  if (visible.length === 0) {
+    return <NoFilterMatches onClearFilters={onClearFilters} />;
+  }
+
   return (
     <ul className="space-y-2">
-      {places.map((place) => (
+      {visible.map((place) => (
         <li key={place.id}>
           <PlaceCard place={place} action={<SaveActions placeId={place.id} />} />
         </li>
@@ -345,11 +464,17 @@ function FavouritesList({
 function TriedList({
   places,
   loading,
+  filters,
+  filtersTouched,
   onBrowse,
+  onClearFilters,
 }: {
   places: Place[];
   loading: boolean;
+  filters: FilterState;
+  filtersTouched: boolean;
   onBrowse: () => void;
+  onClearFilters: () => void;
 }) {
   if (loading) return <SkeletonRows count={3} rowClassName="h-28 w-full" />;
 
@@ -368,9 +493,17 @@ function TriedList({
     );
   }
 
+  const visible = sortPlacesForList(
+    filterPlaces(places, filters, { applyMaxWalk: filtersTouched }),
+    clientSortBy(filters.sortBy)
+  );
+  if (visible.length === 0) {
+    return <NoFilterMatches onClearFilters={onClearFilters} />;
+  }
+
   return (
     <ul className="space-y-2">
-      {places.map((place) => (
+      {visible.map((place) => (
         <li key={place.id}>
           <PlaceCard place={place} action={<SaveActions placeId={place.id} />} />
         </li>
@@ -486,16 +619,14 @@ function LobangsList({
 }
 
 /**
- * The browse list: filters, walk-time sort, Load More.
+ * The browse list: server-paginated, sorted and filtered by the same
+ * `filters` the parent now owns and renders one shared `FilterBar` for.
  *
- * Kept as its own component so its paging state unmounts with the tab. Sharing
- * it with the saved list would mean a filter change quietly resetting a list
- * that does not use filters.
+ * Kept as its own component so its paging state unmounts with the tab.
  */
-function BrowseList() {
+function BrowseList({ filters }: { filters: FilterState }) {
   const searchParams = useSearchParams();
   const excludeCuisine = searchParams.get("exclude") ?? undefined;
-  const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
   const [page, setPage] = useState(1);
   const [loaded, setLoaded] = useState<Place[]>([]);
 
@@ -561,8 +692,6 @@ function BrowseList() {
 
   return (
     <div className="space-y-5">
-      <FilterBar value={filters} onChange={setFilters} showSort />
-
       {isPlainBrowse && <SuggestionRails excludeCuisine={excludeCuisine} />}
 
       {pending.length > 0 && (
