@@ -19,12 +19,14 @@ export default function PlaceCard({
   rank,
   action,
   compact,
+  footer,
 }: {
   place: Place;
   why?: string;
   rank?: number;
   action?: React.ReactNode;
   compact?: boolean;
+  footer?: React.ReactNode;
 }) {
   return (
     <div
@@ -113,6 +115,8 @@ export default function PlaceCard({
               Try: {place.best_dishes.slice(0, 3).join(", ")}
             </p>
           )}
+
+          {footer && <div className="mt-2">{footer}</div>}
         </div>
       </div>
     </div>
