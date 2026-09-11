@@ -12,7 +12,12 @@ import {
   inputClass,
 } from "@/components/ui";
 import { BUDGET_TIERS } from "@/lib/constants";
-import { formatCuisine, instagramSearchUrl, slugifyCuisine } from "@/lib/utils";
+import {
+  formatCuisine,
+  grabFoodSearchUrl,
+  instagramSearchUrl,
+  slugifyCuisine,
+} from "@/lib/utils";
 import { fetcher, mutateJson } from "@/lib/fetcher";
 import type { BudgetTier, CuisineOption, Place } from "@/types";
 
@@ -60,6 +65,10 @@ export default function PlaceForm({
   const [dishes, setDishes] = useState((place?.best_dishes ?? []).join(", "));
   const [notes, setNotes] = useState(place?.notes ?? "");
   const [socialsUrl, setSocialsUrl] = useState(place?.socials_url ?? "");
+  const [foodpandaUrl, setFoodpandaUrl] = useState(
+    place?.foodpanda_url ?? ""
+  );
+  const [grabUrl, setGrabUrl] = useState(place?.grab_url ?? "");
   const [busy, setBusy] = useState(false);
   const [geocoding, setGeocoding] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -215,6 +224,8 @@ export default function PlaceForm({
         .filter(Boolean),
       notes: notes.trim() || null,
       socials_url: socialsUrl.trim() || null,
+      foodpanda_url: foodpandaUrl.trim() || null,
+      grab_url: grabUrl.trim() || null,
     };
 
     setBusy(true);
@@ -455,6 +466,43 @@ export default function PlaceForm({
               className="text-ember mt-1 inline-block text-xs underline"
             >
               Search Instagram for &quot;{name.trim()}&quot;
+            </a>
+          )}
+        </Field>
+
+        <Field
+          label="Foodpanda"
+          hint="If some offices subsidize orders there — paste the restaurant's Foodpanda link, if it's listed."
+        >
+          <input
+            value={foodpandaUrl}
+            onChange={(e) => setFoodpandaUrl(e.target.value)}
+            className={inputClass}
+            placeholder="https://foodpanda.sg/restaurant/..."
+          />
+        </Field>
+
+        <Field label="Grab" hint="Same idea, for GrabFood.">
+          <input
+            value={grabUrl}
+            onChange={(e) => setGrabUrl(e.target.value)}
+            className={inputClass}
+            placeholder="https://food.grab.com/sg/en/restaurant/..."
+          />
+          {/*
+            Same shortcut as Instagram's search-assist above — GrabFood's own
+            search-results URL, confirmed working, not guessed. Foodpanda has
+            no equivalent link yet since its exact search URL couldn't be
+            confirmed the same way (see grabFoodSearchUrl's own doc comment).
+          */}
+          {!grabUrl.trim() && name.trim() && (
+            <a
+              href={grabFoodSearchUrl(name.trim())}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-ember mt-1 inline-block text-xs underline"
+            >
+              Search GrabFood for &quot;{name.trim()}&quot;
             </a>
           )}
         </Field>

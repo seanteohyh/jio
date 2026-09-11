@@ -86,6 +86,8 @@ describe("updatePlace", () => {
       best_dishes: ["chicken rice", "kaya toast"],
       notes: "updated notes",
       socials_url: "https://facebook.com/editedplace",
+      foodpanda_url: "https://foodpanda.sg/restaurant/editedplace",
+      grab_url: "https://food.grab.com/sg/en/restaurant/editedplace",
     };
     const updated = await demoRepo.updatePlace(place.id, patch);
 
@@ -98,6 +100,16 @@ describe("updatePlace", () => {
       socials_url: null,
     });
     expect(updated.socials_url).toBeNull();
+  });
+
+  it("lets foodpanda_url and grab_url be cleared back to null", async () => {
+    const place = await seedPlace();
+    const updated = await demoRepo.updatePlace(place.id, {
+      foodpanda_url: null,
+      grab_url: null,
+    });
+    expect(updated.foodpanda_url).toBeNull();
+    expect(updated.grab_url).toBeNull();
   });
 
   it("cannot move status through a plain edit", async () => {

@@ -63,6 +63,18 @@ export interface Place {
    * name the way Google Places resolution does), so this is manual-only.
    */
   socials_url?: string | null;
+  /**
+   * An optional link to order this place for delivery through Foodpanda —
+   * some offices subsidize staff orders through specific delivery apps, so
+   * having the link ready next to Maps/Socials at Jio voting time saves
+   * everyone re-searching for it. Same class as `socials_url`: stored
+   * exactly as pasted, manual-only (no lookup-by-business-name API exists
+   * for Foodpanda either), freely editable by anyone who can edit the
+   * place at all.
+   */
+  foodpanda_url?: string | null;
+  /** Same as `foodpanda_url`, for Grab/GrabFood. */
+  grab_url?: string | null;
   created_by?: string | null;
   created_at?: string;
   updated_at?: string;
@@ -136,6 +148,10 @@ export interface PublicPlace {
   /** Same shape as `Place.socials_url` — a place's own public link carries
    *  no more sensitivity than its coordinates or Google listing already do. */
   socials_url: string | null;
+  /** Same shape/reasoning as `socials_url`, for `Place.foodpanda_url`. */
+  foodpanda_url: string | null;
+  /** Same shape/reasoning as `socials_url`, for `Place.grab_url`. */
+  grab_url: string | null;
 }
 
 export interface Visit {

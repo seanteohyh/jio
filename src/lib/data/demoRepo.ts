@@ -652,6 +652,8 @@ export const demoRepo: Repo = {
       lng: place.lng,
       google_place_id: place.google_place_id ?? null,
       socials_url: place.socials_url ?? null,
+      foodpanda_url: place.foodpanda_url ?? null,
+      grab_url: place.grab_url ?? null,
     };
   },
 
@@ -2637,6 +2639,8 @@ export const demoRepo: Repo = {
         lng: enriched.lng,
         google_place_id: enriched.google_place_id ?? null,
         socials_url: enriched.socials_url ?? null,
+        foodpanda_url: enriched.foodpanda_url ?? null,
+        grab_url: enriched.grab_url ?? null,
       },
       from_display_name: displayNameFor(lobang.from_user_id),
       note: lobang.note ?? null,

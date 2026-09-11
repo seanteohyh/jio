@@ -72,6 +72,28 @@ export async function PUT(request: NextRequest, { params }: Params) {
       body.socials_url = body.socials_url.trim() || null;
     }
 
+    if (
+      typeof body.foodpanda_url === "string" &&
+      body.foodpanda_url.trim() &&
+      !isHttpUrl(body.foodpanda_url.trim())
+    ) {
+      return badRequest("Foodpanda link must be a valid http(s) URL");
+    }
+    if (typeof body.foodpanda_url === "string") {
+      body.foodpanda_url = body.foodpanda_url.trim() || null;
+    }
+
+    if (
+      typeof body.grab_url === "string" &&
+      body.grab_url.trim() &&
+      !isHttpUrl(body.grab_url.trim())
+    ) {
+      return badRequest("Grab link must be a valid http(s) URL");
+    }
+    if (typeof body.grab_url === "string") {
+      body.grab_url = body.grab_url.trim() || null;
+    }
+
     const place = await repo.updatePlace(id, body);
 
     // Only re-resolve when the match-relevant fields actually changed — a

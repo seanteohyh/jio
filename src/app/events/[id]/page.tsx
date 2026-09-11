@@ -33,6 +33,7 @@ import ShareLink from "@/components/ShareLink";
 import ShareResultCard from "@/components/ShareResultCard";
 import InvitePicker, { type InviteSelection } from "@/components/InvitePicker";
 import SocialsIcon from "@/components/SocialsIcon";
+import { FoodpandaIcon, GrabIcon } from "@/components/DeliveryIcons";
 import { InfoIcon } from "@/components/icons";
 import {
   LEAD_TIME_OPTIONS,
@@ -1290,6 +1291,28 @@ export default function EventDetailPage({
                         />
                       </a>
                     )}
+                    {option.place?.foodpanda_url && (
+                      <a
+                        href={option.place.foodpanda_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        aria-label={`Order ${option.place.name} on Foodpanda`}
+                        className="text-stone hover:text-ember ml-1.5 inline-block align-middle"
+                      >
+                        <FoodpandaIcon className="h-3.5 w-3.5" />
+                      </a>
+                    )}
+                    {option.place?.grab_url && (
+                      <a
+                        href={option.place.grab_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        aria-label={`Order ${option.place.name} on Grab`}
+                        className="text-stone hover:text-ember ml-1.5 inline-block align-middle"
+                      >
+                        <GrabIcon className="h-3.5 w-3.5" />
+                      </a>
+                    )}
                     {/*
                       CHANGES_20260819d.md §1 — a free-text option (no
                       `place` behind it) gets the same slot's opposite
@@ -1414,6 +1437,28 @@ export default function EventDetailPage({
                             url={option.place.socials_url}
                             className="h-3.5 w-3.5"
                           />
+                        </a>
+                      )}
+                      {option?.place?.foodpanda_url && (
+                        <a
+                          href={option.place.foodpanda_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          aria-label={`Order ${option.place.name} on Foodpanda`}
+                          className="text-stone hover:text-ember shrink-0"
+                        >
+                          <FoodpandaIcon className="h-3.5 w-3.5" />
+                        </a>
+                      )}
+                      {option?.place?.grab_url && (
+                        <a
+                          href={option.place.grab_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          aria-label={`Order ${option.place.name} on Grab`}
+                          className="text-stone hover:text-ember shrink-0"
+                        >
+                          <GrabIcon className="h-3.5 w-3.5" />
                         </a>
                       )}
                     </span>

@@ -30,6 +30,7 @@ import {
   socialsLabel,
 } from "@/lib/utils";
 import SocialsIcon from "@/components/SocialsIcon";
+import { FoodpandaIcon, GrabIcon } from "@/components/DeliveryIcons";
 import { InfoIcon } from "@/components/icons";
 import { DEFAULT_FILTERS, MAX_WALK_MINUTES } from "@/components/FilterBar";
 import { walkTimeVisibilityNotice } from "@/lib/walkTimeNotice";
@@ -516,6 +517,32 @@ export default function PlaceDetailPage({
               <span className="flex items-center gap-1.5">
                 <SocialsIcon url={place.socials_url} className="h-3.5 w-3.5" />
                 {socialsLabel(place.socials_url)}
+              </span>
+            </LinkButton>
+          )}
+          {place.foodpanda_url && (
+            <LinkButton
+              href={place.foodpanda_url}
+              variant="secondary"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <span className="flex items-center gap-1.5">
+                <FoodpandaIcon className="h-3.5 w-3.5" />
+                Order on Foodpanda
+              </span>
+            </LinkButton>
+          )}
+          {place.grab_url && (
+            <LinkButton
+              href={place.grab_url}
+              variant="secondary"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <span className="flex items-center gap-1.5">
+                <GrabIcon className="h-3.5 w-3.5" />
+                Order on Grab
               </span>
             </LinkButton>
           )}

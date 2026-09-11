@@ -272,6 +272,25 @@ export function instagramSearchUrl(placeName: string): string {
 }
 
 /**
+ * Same shortcut as `instagramSearchUrl`, for GrabFood — some offices
+ * subsidize staff orders through it, so having a way to find the matching
+ * listing while adding a place saves a re-search later at Jio voting time.
+ * GrabFood Singapore's own search-results URL (`food.grab.com/sg/en/
+ * restaurants?search=`), confirmed against a live search result, not
+ * guessed — there's no lookup-by-business-name API to call instead, same
+ * gap Instagram/Facebook have.
+ *
+ * Foodpanda deliberately has no equivalent helper yet: its search-results
+ * URL couldn't be confirmed the same way (network access to foodpanda.sg
+ * is blocked from this environment) — add one once the exact URL is
+ * confirmed rather than guess it, since a wrong guess is worse than no
+ * shortcut at all.
+ */
+export function grabFoodSearchUrl(placeName: string): string {
+  return `https://food.grab.com/sg/en/restaurants?search=${encodeURIComponent(placeName)}`;
+}
+
+/**
  * True when the app should use the in-memory demo store.
  * Kept as a standalone function because both server and client code read it.
  */
