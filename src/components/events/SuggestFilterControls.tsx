@@ -70,11 +70,15 @@ function CuisinePicker({
   );
   const cuisines = data?.cuisines ?? [];
   const [open, setOpen] = useState(false);
+  // Which edge of the trigger button the panel hangs off — a fixed `left-0`
+  // ran off the right edge of the screen whenever the button itself landed
+  // in the second half of a wrapped row (iOS report: "right side cut off").
+  // Measured against the viewport on open rather than assumed, since where
+  // the button lands depends on how the rest of the row happens to wrap.
+  const [align, setAlign] = useState<"left" | "right">("left");
   const ref = useRef<HTMLDivElement>(null);
+  const panelWidthPx = 208; // matches w-52 below
 
-  // A wide chip strip either scrolled off both edges illegibly or wrapped
-  // into a wall of chips — a dropdown keeps the row a fixed one-line height
-  // regardless of how many cuisines exist.
   useEffect(() => {
     if (!open) return;
     const onClick = (e: MouseEvent) => {
@@ -96,11 +100,20 @@ function CuisinePicker({
     );
   };
 
+  const openPanel = () => {
+    const rect = ref.current?.getBoundingClientRect();
+    if (rect) {
+      const overflowsRight = rect.left + panelWidthPx > window.innerWidth - 16;
+      setAlign(overflowsRight ? "right" : "left");
+    }
+    setOpen((v) => !v);
+  };
+
   return (
     <div className="relative" ref={ref}>
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={openPanel}
         aria-haspopup="true"
         aria-expanded={open}
         className={pillClass(selected.length > 0)}
@@ -108,7 +121,9 @@ function CuisinePicker({
         Cuisine{selected.length > 0 ? ` (${selected.length})` : ""}
       </button>
       {open && (
-        <div className="border-line bg-paper absolute top-full left-0 z-10 mt-1.5 max-h-64 w-52 overflow-y-auto rounded-lg border p-1.5 shadow-[var(--shadow-sm)]">
+        <div
+          className={`border-line bg-paper absolute top-full z-10 mt-1.5 max-h-64 w-52 max-w-[calc(100vw-2rem)] overflow-y-auto rounded-lg border p-1.5 shadow-[var(--shadow-sm)] ${align === "left" ? "left-0" : "right-0"}`}
+        >
           {cuisines.map((c) => (
             <label
               key={c.slug}
@@ -222,23 +237,30 @@ export default function SuggestFilterControls({
       </div>
 
       {surprise && (
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="text-stone shrink-0 text-xs">Try:</span>
-          <button
-            type="button"
-            onClick={() => onPickSurprise?.(surprise!.id)}
-            className="border-ember text-ink shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium"
-          >
-            {surprise.name}
-          </button>
+        <div className="flex items-center gap-1.5">
+          {/* Reroll comes first and never changes size, so it stays under
+              the same finger position on repeated taps — with it last, a
+              shorter/longer name reflowed the row and the button that used
+              to be under your thumb became the place pill instead (iOS
+              report: "accidentally click the place when trying to
+              randomise"). `tap-target-text` (UX review log #2) grows the
+              real hit area to ~44px without the glyph itself growing. */}
           <button
             type="button"
             onClick={() => onReroll?.()}
             aria-label="Show a different random pick"
             title="Show a different random pick"
-            className="border-line text-stone hover:border-ember hover:text-ember shrink-0 rounded-full border px-2 py-1 text-xs"
+            className="tap-target-text border-line bg-paper text-stone hover:border-ember hover:text-ember shrink-0 rounded-full border text-base leading-none"
           >
             <span aria-hidden="true">↻</span>
+          </button>
+          <span className="text-stone shrink-0 text-xs">Try:</span>
+          <button
+            type="button"
+            onClick={() => onPickSurprise?.(surprise!.id)}
+            className="border-ember text-ink min-w-0 truncate rounded-full border px-2.5 py-1 text-xs font-medium"
+          >
+            {surprise.name}
           </button>
         </div>
       )}
