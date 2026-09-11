@@ -701,6 +701,28 @@ export interface Repo {
   markLobangSeen(userId: string, lobangId: string): Promise<void>;
   dismissLobang(userId: string, lobangId: string): Promise<void>;
   /**
+   * Toggle the recipient's heart on a lobang they received — on if it
+   * wasn't liked, off if it was, same "no separate add/remove endpoints"
+   * shape as `toggleReviewLike`. `from_user_id` comes back so the caller
+   * can push a "they liked your lobang" notification without a second
+   * lookup. Throws if `userId` isn't actually a recipient of this lobang.
+   */
+  toggleLobangLike(
+    userId: string,
+    lobangId: string
+  ): Promise<{ liked: boolean; from_user_id: string }>;
+  /**
+   * A recipient's freeform text reply back to the sender — replaces any
+   * previous reply from the same recipient rather than threading multiple.
+   * `from_user_id` comes back for the same reason `toggleLobangLike` returns
+   * it. Throws if `userId` isn't a recipient, or `text` is empty.
+   */
+  replyToLobang(
+    userId: string,
+    lobangId: string,
+    text: string
+  ): Promise<{ from_user_id: string }>;
+  /**
    * Resolves a public lobang's token to the same narrow, privacy-safe
    * shape `getPublicPlace` uses — `null` for an unknown token or one whose
    * place is no longer `active`. `SECURITY DEFINER` live (migration 051):
@@ -1127,6 +1149,8 @@ export const REPO_METHODS = [
   "listLobangsSent",
   "markLobangSeen",
   "dismissLobang",
+  "toggleLobangLike",
+  "replyToLobang",
   "getPublicLobang",
   "suggestPlacesForFriend",
   "isAdmin",

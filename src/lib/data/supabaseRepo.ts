@@ -293,7 +293,7 @@ async function hydrateReceivedLobangs(
       displayNameMap(client, [...lobangs.map((l) => l.from_user_id), viewerId]),
       client
         .from("lobang_recipients")
-        .select("lobang_id, seen_at")
+        .select("lobang_id, seen_at, liked_at, reply, reply_created_at")
         .eq("user_id", viewerId)
         .in(
           "lobang_id",
@@ -301,10 +301,16 @@ async function hydrateReceivedLobangs(
         ),
     ]);
 
-  const seenById = new Map(
-    ((recipientRows ?? []) as { lobang_id: string; seen_at: string | null }[]).map(
-      (r) => [r.lobang_id, r.seen_at]
-    )
+  const recipientById = new Map(
+    (
+      (recipientRows ?? []) as {
+        lobang_id: string;
+        seen_at: string | null;
+        liked_at: string | null;
+        reply: string | null;
+        reply_created_at: string | null;
+      }[]
+    ).map((r) => [r.lobang_id, r])
   );
 
   return lobangs.map((l) => ({
@@ -312,7 +318,10 @@ async function hydrateReceivedLobangs(
     from_display_name: names.get(l.from_user_id),
     to_user_id: viewerId,
     to_display_name: names.get(viewerId),
-    seen_at: seenById.get(l.id) ?? null,
+    seen_at: recipientById.get(l.id)?.seen_at ?? null,
+    liked_at: recipientById.get(l.id)?.liked_at ?? null,
+    reply: recipientById.get(l.id)?.reply ?? null,
+    reply_created_at: recipientById.get(l.id)?.reply_created_at ?? null,
     place: placeById.get(l.place_id),
     event_title: l.event_id ? eventTitles.get(l.event_id) ?? null : null,
   }));
@@ -335,20 +344,25 @@ async function hydrateSentLobangs(
       lobangCommon(client, lobangs),
       client
         .from("lobang_recipients")
-        .select("lobang_id, user_id")
+        .select("lobang_id, user_id, seen_at, liked_at, reply, reply_created_at")
         .in("lobang_id", lobangIds),
       kakiIds.length === 0
         ? Promise.resolve({ data: [] as { id: string; name: string }[] })
         : client.from("kakis").select("id, name").in("id", kakiIds),
     ]);
 
-  const recipientsByLobang = new Map<string, string[]>();
-  for (const row of (recipientRows ?? []) as {
+  type RecipientRow = {
     lobang_id: string;
     user_id: string;
-  }[]) {
+    seen_at: string | null;
+    liked_at: string | null;
+    reply: string | null;
+    reply_created_at: string | null;
+  };
+  const recipientsByLobang = new Map<string, RecipientRow[]>();
+  for (const row of (recipientRows ?? []) as RecipientRow[]) {
     const list = recipientsByLobang.get(row.lobang_id) ?? [];
-    list.push(row.user_id);
+    list.push(row);
     recipientsByLobang.set(row.lobang_id, list);
   }
 
@@ -358,19 +372,23 @@ async function hydrateSentLobangs(
 
   const names = await displayNameMap(client, [
     ...lobangs.map((l) => l.from_user_id),
-    ...Array.from(recipientsByLobang.values()).flat(),
+    ...Array.from(recipientsByLobang.values())
+      .flat()
+      .map((r) => r.user_id),
   ]);
 
   return lobangs.map((l) => {
     const recipients = recipientsByLobang.get(l.id) ?? [];
     let toUserId: string | undefined;
     let toDisplayName: string | undefined;
+    let singleRecipient: RecipientRow | undefined;
 
     if (l.kaki_id) {
       toDisplayName = kakiNameById.get(l.kaki_id) ?? "a Kaki";
     } else if (recipients.length === 1) {
-      toUserId = recipients[0];
-      toDisplayName = names.get(recipients[0]);
+      singleRecipient = recipients[0];
+      toUserId = singleRecipient.user_id;
+      toDisplayName = names.get(singleRecipient.user_id);
     } else if (recipients.length > 1) {
       toDisplayName = `${recipients.length} teammates`;
     }
@@ -380,6 +398,10 @@ async function hydrateSentLobangs(
       from_display_name: names.get(l.from_user_id),
       to_user_id: toUserId,
       to_display_name: toDisplayName,
+      seen_at: singleRecipient?.seen_at ?? null,
+      liked_at: singleRecipient?.liked_at ?? null,
+      reply: singleRecipient?.reply ?? null,
+      reply_created_at: singleRecipient?.reply_created_at ?? null,
       place: placeById.get(l.place_id),
       event_title: l.event_id ? eventTitles.get(l.event_id) ?? null : null,
     };
@@ -3401,6 +3423,79 @@ export const supabaseRepo: Repo = {
       .eq("user_id", userId);
 
     if (error) fail("Could not remove that lobang", error);
+  },
+
+  async toggleLobangLike(userId, lobangId) {
+    const client = await db();
+
+    const { data: lobangRow, error: lobangError } = await client
+      .from("lobangs")
+      .select("from_user_id")
+      .eq("id", lobangId)
+      .maybeSingle();
+    if (lobangError) fail("Could not react to that lobang", lobangError);
+    if (!lobangRow) throw new Error("That lobang does not exist");
+
+    const { data: recipientRow, error: recipientError } = await client
+      .from("lobang_recipients")
+      .select("liked_at")
+      .eq("lobang_id", lobangId)
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (recipientError) fail("Could not react to that lobang", recipientError);
+    if (!recipientRow) {
+      throw new Error("Only a recipient can react to this lobang");
+    }
+
+    const liked = !(recipientRow as { liked_at: string | null }).liked_at;
+    const { error } = await client
+      .from("lobang_recipients")
+      .update({ liked_at: liked ? new Date().toISOString() : null })
+      .eq("lobang_id", lobangId)
+      .eq("user_id", userId);
+    if (error) fail("Could not react to that lobang", error);
+
+    return {
+      liked,
+      from_user_id: (lobangRow as { from_user_id: string }).from_user_id,
+    };
+  },
+
+  async replyToLobang(userId, lobangId, text) {
+    const trimmed = text.trim();
+    if (!trimmed) throw new Error("A reply can't be empty");
+
+    const client = await db();
+
+    const { data: lobangRow, error: lobangError } = await client
+      .from("lobangs")
+      .select("from_user_id")
+      .eq("id", lobangId)
+      .maybeSingle();
+    if (lobangError) fail("Could not send that reply", lobangError);
+    if (!lobangRow) throw new Error("That lobang does not exist");
+
+    const { data: recipientRow, error: recipientError } = await client
+      .from("lobang_recipients")
+      .select("user_id")
+      .eq("lobang_id", lobangId)
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (recipientError) fail("Could not send that reply", recipientError);
+    if (!recipientRow) {
+      throw new Error("Only a recipient can reply to this lobang");
+    }
+
+    const { error } = await client
+      .from("lobang_recipients")
+      .update({ reply: trimmed, reply_created_at: new Date().toISOString() })
+      .eq("lobang_id", lobangId)
+      .eq("user_id", userId);
+    if (error) fail("Could not send that reply", error);
+
+    return {
+      from_user_id: (lobangRow as { from_user_id: string }).from_user_id,
+    };
   },
 
   async getPublicLobang(token) {

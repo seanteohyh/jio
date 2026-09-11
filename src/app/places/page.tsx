@@ -310,6 +310,8 @@ function BrowseList() {
   }
   if (filters.search) baseQuery.set("q", filters.search);
   if (filters.kakiFavouritesOnly) baseQuery.set("kakiFavouritesOnly", "true");
+  if (filters.hasFoodpanda) baseQuery.set("hasFoodpanda", "true");
+  if (filters.hasGrab) baseQuery.set("hasGrab", "true");
   const filterKey = baseQuery.toString();
 
   // A filter change starts the list over at page 1.

@@ -24,6 +24,10 @@ export interface FilterState {
    *  §2's "real filter" gap on top of the existing sort. Also computed at
    *  the API layer, same place as the sort. */
   kakiFavouritesOnly: boolean;
+  /** Presence-only filters, same "narrows the list" shape and same
+   *  API-layer computation as kakiFavouritesOnly above. */
+  hasFoodpanda: boolean;
+  hasGrab: boolean;
 }
 
 export const DEFAULT_FILTERS: FilterState = {
@@ -33,6 +37,8 @@ export const DEFAULT_FILTERS: FilterState = {
   maxWalk: 30,
   sortBy: "walk",
   kakiFavouritesOnly: false,
+  hasFoodpanda: false,
+  hasGrab: false,
 };
 
 /** The walk-time slider's ceiling — a place farther than this can never
@@ -164,6 +170,24 @@ export default function FilterBar({
             Kaki favourites only
           </Chip>
         )}
+
+        <Chip
+          active={value.hasFoodpanda}
+          onClick={() =>
+            update({ ...value, hasFoodpanda: !value.hasFoodpanda })
+          }
+          pressed={value.hasFoodpanda}
+        >
+          On Foodpanda
+        </Chip>
+
+        <Chip
+          active={value.hasGrab}
+          onClick={() => update({ ...value, hasGrab: !value.hasGrab })}
+          pressed={value.hasGrab}
+        >
+          On Grab
+        </Chip>
 
         <label className="flex items-center gap-2 text-xs">
           <span className="text-stone">Up to</span>

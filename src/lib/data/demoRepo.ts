@@ -131,7 +131,14 @@ interface DemoStore {
   reviewLikes: { visit_id: string; user_id: string; created_at: string }[];
   lobangs: Lobang[];
   /** Recipients, snapshotted at send time. */
-  lobangRecipients: { lobang_id: string; user_id: string; seen_at: string | null }[];
+  lobangRecipients: {
+    lobang_id: string;
+    user_id: string;
+    seen_at: string | null;
+    liked_at: string | null;
+    reply: string | null;
+    reply_created_at: string | null;
+  }[];
   kakis: Kaki[];
   kakiMembers: KakiMember[];
   walkCache: WalkCacheEntry[];
@@ -207,7 +214,12 @@ function seed(): DemoStore {
     kakiBridgeDismissals: [],
     reviewLikes: [],
     lobangs: demoLobangs.map((l) => ({ ...l })),
-    lobangRecipients: demoLobangRecipients.map((r) => ({ ...r })),
+    lobangRecipients: demoLobangRecipients.map((r) => ({
+      ...r,
+      liked_at: null,
+      reply: null,
+      reply_created_at: null,
+    })),
     kakis: demoKakis.map((k) => ({ ...k })),
     kakiMembers: demoKakiMembers.map((m) => ({ ...m })),
     walkCache: [],
@@ -387,6 +399,9 @@ function hydrateReceivedLobang(lobang: Lobang, viewerId: string): Lobang {
     to_user_id: viewerId,
     to_display_name: displayNameFor(viewerId),
     seen_at: recipient?.seen_at ?? null,
+    liked_at: recipient?.liked_at ?? null,
+    reply: recipient?.reply ?? null,
+    reply_created_at: recipient?.reply_created_at ?? null,
     place: place ? enrich(place) : undefined,
     event_title: event?.title ?? null,
   };
@@ -403,13 +418,15 @@ function hydrateSentLobang(lobang: Lobang): Lobang {
 
   let toUserId: string | undefined;
   let toDisplayName: string | undefined;
+  let singleRecipient: (typeof recipients)[number] | undefined;
 
   if (lobang.kaki_id) {
     const kaki = s.kakis.find((k) => k.id === lobang.kaki_id);
     toDisplayName = kaki?.name ?? "a Kaki";
   } else if (recipients.length === 1) {
-    toUserId = recipients[0].user_id;
-    toDisplayName = displayNameFor(recipients[0].user_id);
+    singleRecipient = recipients[0];
+    toUserId = singleRecipient.user_id;
+    toDisplayName = displayNameFor(singleRecipient.user_id);
   } else if (recipients.length > 1) {
     toDisplayName = `${recipients.length} teammates`;
   }
@@ -419,6 +436,10 @@ function hydrateSentLobang(lobang: Lobang): Lobang {
     from_display_name: displayNameFor(lobang.from_user_id),
     to_user_id: toUserId,
     to_display_name: toDisplayName,
+    seen_at: singleRecipient?.seen_at ?? null,
+    liked_at: singleRecipient?.liked_at ?? null,
+    reply: singleRecipient?.reply ?? null,
+    reply_created_at: singleRecipient?.reply_created_at ?? null,
     place: place ? enrich(place) : undefined,
     event_title: event?.title ?? null,
   };
@@ -2556,7 +2577,14 @@ export const demoRepo: Repo = {
     };
     s.lobangs.push(lobang);
     for (const userId of recipientIds) {
-      s.lobangRecipients.push({ lobang_id: lobang.id, user_id: userId, seen_at: null });
+      s.lobangRecipients.push({
+        lobang_id: lobang.id,
+        user_id: userId,
+        seen_at: null,
+        liked_at: null,
+        reply: null,
+        reply_created_at: null,
+      });
     }
 
     return { ...hydrateSentLobang(lobang), recipient_ids: recipientIds };
@@ -2611,6 +2639,41 @@ export const demoRepo: Repo = {
     s.lobangRecipients = s.lobangRecipients.filter(
       (r) => !(r.lobang_id === lobangId && r.user_id === userId)
     );
+  },
+
+  async toggleLobangLike(userId, lobangId) {
+    const s = store();
+    const lobang = s.lobangs.find((l) => l.id === lobangId);
+    if (!lobang) throw new Error("That lobang does not exist");
+
+    const recipient = s.lobangRecipients.find(
+      (r) => r.lobang_id === lobangId && r.user_id === userId
+    );
+    if (!recipient) {
+      throw new Error("Only a recipient can react to this lobang");
+    }
+
+    const liked = !recipient.liked_at;
+    recipient.liked_at = liked ? new Date().toISOString() : null;
+    return { liked, from_user_id: lobang.from_user_id };
+  },
+
+  async replyToLobang(userId, lobangId, text) {
+    const s = store();
+    const lobang = s.lobangs.find((l) => l.id === lobangId);
+    if (!lobang) throw new Error("That lobang does not exist");
+    if (!text.trim()) throw new Error("A reply can't be empty");
+
+    const recipient = s.lobangRecipients.find(
+      (r) => r.lobang_id === lobangId && r.user_id === userId
+    );
+    if (!recipient) {
+      throw new Error("Only a recipient can reply to this lobang");
+    }
+
+    recipient.reply = text.trim();
+    recipient.reply_created_at = new Date().toISOString();
+    return { from_user_id: lobang.from_user_id };
   },
 
   async getPublicLobang(token) {

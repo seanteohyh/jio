@@ -15,13 +15,19 @@ import {
 import InvitePicker, {
   type InviteSelection,
 } from "@/components/InvitePicker";
-import AreaPicker, { type AreaSelection } from "@/components/events/AreaPicker";
+import SuggestFilterControls, {
+  DEFAULT_SUGGEST_FILTERS,
+  suggestFilterParams,
+  type SuggestFilters,
+} from "@/components/events/SuggestFilterControls";
 import HintCard from "@/components/HintCard";
 import { useToast } from "@/components/Toast";
 import { fetcher, mutateJson } from "@/lib/fetcher";
 import { features } from "@/lib/config";
-import { BUDGET_TIERS } from "@/lib/constants";
-import type { BudgetTier, Place, ScoredPlace } from "@/types";
+import type { Place, ScoredPlace } from "@/types";
+
+/** Rows of ~2-3 chips each — CHANGES §2's "limit to 5 rows" ask. */
+const SUGGEST_LIMIT = 8;
 
 function defaultDateTime(): string {
   // Noon today, or noon tomorrow if that has already gone past.
@@ -85,12 +91,11 @@ export default function JioForm({
   const [placeQuery, setPlaceQuery] = useState("");
   // Suggest Area Filter spec §2 — per-Jio × per-request, never persisted:
   // just another input feeding the same suggestQuery/useSWR fetch below,
-  // exactly like the group/personal switch already does.
-  const [area, setArea] = useState<AreaSelection | null>(null);
-  // 6 (the top tier) is a true no-op default — nothing is tiered above it —
-  // same "Up to" convention as the Places page's own budget filter.
-  const [budgetMax, setBudgetMax] = useState<BudgetTier>(6);
-  const [newOnly, setNewOnly] = useState(false);
+  // exactly like the group/personal switch already does. Cuisine/budget/
+  // Foodpanda/Grab live in the same bundle now (CHANGES §5).
+  const [suggestFilters, setSuggestFilters] = useState<SuggestFilters>(
+    DEFAULT_SUGGEST_FILTERS
+  );
   const [hideVotes, setHideVotes] = useState(false);
   const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState(false);
@@ -102,17 +107,14 @@ export default function JioForm({
   // mixed or ad-hoc-only falls back to today's personal-taste suggestions.
   const groupScoped =
     features.kakis && invite.kakiIds.length === 1 && invite.userIds.length === 0;
-  const areaParams = area ? `&areaLat=${area.lat}&areaLng=${area.lng}` : "";
-  const filterParams =
-    (budgetMax !== 6 ? `&budgetMax=${budgetMax}` : "") +
-    (newOnly ? `&excludeVisited=true` : "");
+  const filterParams = suggestFilterParams(suggestFilters);
   const suggestQuery = groupScoped
-    ? `/api/suggest?mode=group&kakiId=${invite.kakiIds[0]}&limit=15${areaParams}${filterParams}`
-    : `/api/suggest?limit=15${areaParams}${filterParams}`;
-  const { data: suggestData } = useSWR<{ suggestions: ScoredPlace[] }>(
-    suggestQuery,
-    fetcher
-  );
+    ? `/api/suggest?mode=group&kakiId=${invite.kakiIds[0]}&limit=${SUGGEST_LIMIT}${filterParams}`
+    : `/api/suggest?limit=${SUGGEST_LIMIT}${filterParams}`;
+  const { data: suggestData, mutate: rerollSuggest } = useSWR<{
+    suggestions: ScoredPlace[];
+    surprise: ScoredPlace | null;
+  }>(suggestQuery, fetcher);
 
   // Only hit the places endpoint once there is something to search for —
   // otherwise every open of the form pulls the whole list for nothing.
@@ -361,43 +363,33 @@ export default function JioForm({
               />
             </Field>
 
-            <div className="flex items-center gap-2">
-              <span className="text-stone text-xs">Suggestions near</span>
-              <AreaPicker value={area} onChange={setArea} />
-            </div>
+            <SuggestFilterControls
+              value={suggestFilters}
+              onChange={setSuggestFilters}
+            />
 
-            <div className="flex flex-wrap items-center gap-3">
-              <label className="flex items-center gap-1.5 text-xs">
-                <span className="text-stone">Up to</span>
-                <select
-                  value={budgetMax}
-                  onChange={(e) =>
-                    setBudgetMax(Number(e.target.value) as BudgetTier)
-                  }
-                  className="border-line bg-paper rounded-lg border px-2 py-1 text-xs"
-                  aria-label="Maximum budget for suggestions"
+            {suggestData?.surprise && (
+              <div className="border-line flex items-center justify-between gap-2 rounded-lg border border-dashed px-3 py-2">
+                <button
+                  type="button"
+                  onClick={() => toggleOption(suggestData.surprise!.place.id)}
+                  className="min-w-0 truncate text-left text-sm"
                 >
-                  {BUDGET_TIERS.map((tier) => (
-                    <option key={tier.tier} value={tier.tier}>
-                      {tier.label} ({tier.description})
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <button
-                type="button"
-                onClick={() => setNewOnly((v) => !v)}
-                aria-pressed={newOnly}
-                className={
-                  newOnly
-                    ? "bg-ember rounded-full px-2.5 py-1 text-xs font-medium text-white"
-                    : "border-line text-stone hover:border-ember hover:text-ember rounded-full border px-2.5 py-1 text-xs"
-                }
-              >
-                New to you only
-              </button>
-            </div>
+                  <span className="text-stone">Feeling lucky? </span>
+                  <span className="font-medium">
+                    {suggestData.surprise.place.name}
+                  </span>
+                </button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => rerollSuggest()}
+                >
+                  Randomize
+                </Button>
+              </div>
+            )}
 
             {trimmedQuery.length >= 2 && searching && (
               <p className="text-stone text-xs">Searching…</p>
