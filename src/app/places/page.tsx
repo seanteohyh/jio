@@ -232,29 +232,31 @@ function WantToTryRow({
         place={entry.place}
         why={!editing && entry.note ? `Reminder: ${entry.note}` : undefined}
         action={<SaveActions placeId={entry.place_id} />}
+        footer={
+          !editing ? (
+            <button
+              type="button"
+              onClick={() => setEditing(true)}
+              className="text-stone hover:text-ember tap-target-text text-xs underline"
+            >
+              {entry.note ? "Edit reminder" : "Add a reminder — what to try here"}
+            </button>
+          ) : (
+            <div className="flex items-center gap-2">
+              <input
+                value={noteText}
+                onChange={(e) => setNoteText(e.target.value)}
+                placeholder="e.g. the laksa"
+                autoFocus
+                className="border-line bg-paper w-full min-w-0 rounded-lg border px-2.5 py-1.5 text-xs"
+              />
+              <Button size="sm" onClick={saveNote} disabled={busy}>
+                Save
+              </Button>
+            </div>
+          )
+        }
       />
-      {!editing ? (
-        <button
-          type="button"
-          onClick={() => setEditing(true)}
-          className="text-stone hover:text-ember tap-target-text mt-0.5 ml-1 text-xs underline"
-        >
-          {entry.note ? "Edit reminder" : "Add a reminder — what to try here"}
-        </button>
-      ) : (
-        <div className="mt-1.5 flex items-center gap-2 px-1">
-          <input
-            value={noteText}
-            onChange={(e) => setNoteText(e.target.value)}
-            placeholder="e.g. the laksa"
-            autoFocus
-            className="border-line bg-paper w-full min-w-0 rounded-lg border px-2.5 py-1.5 text-xs"
-          />
-          <Button size="sm" onClick={saveNote} disabled={busy}>
-            Save
-          </Button>
-        </div>
-      )}
     </li>
   );
 }
