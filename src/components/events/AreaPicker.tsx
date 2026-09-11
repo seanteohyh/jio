@@ -87,7 +87,7 @@ export default function AreaPicker({
           <button
             type="button"
             onClick={() => onChange(null)}
-            aria-label={`Clear ${value.label}, back to anywhere near office`}
+            aria-label={`Clear ${value.label}, back to the office location`}
             className="hover:opacity-70"
           >
             <span aria-hidden="true">✕</span>
@@ -99,7 +99,7 @@ export default function AreaPicker({
           onClick={openPicker}
           className="border-line text-stone hover:border-ember hover:text-ember rounded-full border px-3 py-1.5 text-xs"
         >
-          <span aria-hidden="true">📍</span> Anywhere near office
+          <span aria-hidden="true">📍</span> Location
         </button>
       )}
 

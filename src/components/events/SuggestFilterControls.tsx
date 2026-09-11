@@ -172,13 +172,10 @@ export default function SuggestFilterControls({
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-2">
-        <div className="flex items-center gap-2">
-          <span className="text-stone text-xs">Suggestions near</span>
-          <AreaPicker
-            value={value.area}
-            onChange={(area) => onChange({ ...value, area })}
-          />
-        </div>
+        <AreaPicker
+          value={value.area}
+          onChange={(area) => onChange({ ...value, area })}
+        />
 
         <CuisinePicker
           selected={value.cuisines}
