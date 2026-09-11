@@ -65,11 +65,16 @@ export async function GET(request: NextRequest) {
         ? 6
         : undefined;
 
-    const [visits, prefs, wishlist, offices] = await Promise.all([
+    const [visits, prefs, wishlist, offices, triedPlaceIds] = await Promise.all([
       repo.listVisits(undefined, user.id),
       repo.getUserPrefs(user.id),
       isEnabled("wishlist") ? repo.listWishlist(user.id) : Promise.resolve([]),
       repo.listOffices(),
+      // "New to you only" is broader than just logged visits — attending a
+      // Jio decided at a place counts as having been there even with no
+      // review ever logged for it. Skipped entirely when the toggle is off,
+      // since nothing downstream reads it in that case.
+      excludeVisited ? repo.listTriedPlaceIds(user.id) : Promise.resolve([]),
     ]);
 
     // When an area is active, this request never resolves or references an
@@ -114,6 +119,7 @@ export async function GET(request: NextRequest) {
       maxWalkMinutes: maxWalk,
       budgetMax,
       excludeVisited,
+      additionalExcludedPlaceIds: triedPlaceIds,
     };
 
     let ranked: ScoredPlace[];
@@ -131,19 +137,25 @@ export async function GET(request: NextRequest) {
       } else {
         const membersData: MemberData[] = await Promise.all(
           kaki.members.map(async (member) => {
-            const [memberVisits, memberPrefs, memberWishlist] =
+            const [memberVisits, memberPrefs, memberWishlist, memberTried] =
               await Promise.all([
                 repo.listVisits(undefined, member.user_id),
                 repo.getUserPrefs(member.user_id),
                 member.user_id === user.id
                   ? Promise.resolve(wishlist)
                   : Promise.resolve([]),
+                member.user_id === user.id
+                  ? Promise.resolve(triedPlaceIds)
+                  : excludeVisited
+                    ? repo.listTriedPlaceIds(member.user_id)
+                    : Promise.resolve([]),
               ]);
             return {
               userId: member.user_id,
               visits: memberVisits,
               prefs: memberPrefs,
               wishlistPlaceIds: memberWishlist.map((w) => w.place_id),
+              triedPlaceIds: memberTried,
             };
           })
         );

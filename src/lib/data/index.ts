@@ -11,6 +11,7 @@ import type {
   DuplicateProfileGroup,
   EventDetail,
   EventOption,
+  FavouriteEntry,
   Filters,
   FlagReason,
   FlagResolution,
@@ -622,12 +623,41 @@ export interface Repo {
    */
   generateDueOccurrences(hostId: string): Promise<number>;
 
-  // ---- Wishlist ----
+  // ---- Wishlist ("Want to try") ----
   listWishlist(userId: string): Promise<WishlistEntry[]>;
   toggleWishlist(
     userId: string,
     placeId: string
   ): Promise<{ added: boolean }>;
+  /** Sets or clears a saved place's reminder note. Throws if `userId` has
+   *  no wishlist entry for `placeId` — there's nothing to attach a note
+   *  to until the place is actually saved. `null` clears it. */
+  updateWishlistNote(
+    userId: string,
+    placeId: string,
+    note: string | null
+  ): Promise<void>;
+
+  // ---- Favourites (independent of the wishlist — see FavouriteEntry) ----
+  listFavourites(userId: string): Promise<FavouriteEntry[]>;
+  toggleFavourite(
+    userId: string,
+    placeId: string
+  ): Promise<{ added: boolean }>;
+
+  // ---- Tried (never user-toggled — derived from visits + attended Jios) ----
+  /**
+   * Every place ids-only, either logged a review for, or actually attended
+   * a Jio decided there (RSVP'd yes, or hosted — merely being invited, or
+   * answering Maybe/Can't/never responding, doesn't count). Cheap enough to
+   * call once per `/api/suggest` request (personal, or per member in group
+   * mode) to fold into `excludeVisited`'s broader exclusion set.
+   */
+  listTriedPlaceIds(userId: string): Promise<string[]>;
+  /** Same set as `listTriedPlaceIds`, hydrated into full `Place` records
+   *  (walk time computed the same default-office way `listWishlist` already
+   *  does) for the Places page's own "Tried" tab. */
+  listTried(userId: string): Promise<Place[]>;
 
   // ---- Kakis (lunch groups) ----
   /**
@@ -1137,6 +1167,11 @@ export const REPO_METHODS = [
   "generateDueOccurrences",
   "listWishlist",
   "toggleWishlist",
+  "updateWishlistNote",
+  "listFavourites",
+  "toggleFavourite",
+  "listTriedPlaceIds",
+  "listTried",
   "createKaki",
   "getKaki",
   "listKakis",

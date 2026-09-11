@@ -552,6 +552,26 @@ export interface WishlistEntry {
   user_id: string;
   place_id: string;
   created_at?: string;
+  /** Freeform reminder of what to actually try there — "the laksa," "ask
+   *  for the corner table" — since a plain bookmark answers "is this saved"
+   *  but not "why did I save this." Optional, editable any time. */
+  note?: string | null;
+
+  /** Derived. */
+  place?: Place;
+}
+
+/**
+ * A second, independent personal list from the wishlist ("Want to try") —
+ * a place can be saved to either, both, or neither. Same shape and toggle
+ * semantics as `WishlistEntry`, deliberately without its own note field:
+ * the reminder is specifically for what to try somewhere new, which doesn't
+ * apply to a place you already know you love.
+ */
+export interface FavouriteEntry {
+  user_id: string;
+  place_id: string;
+  created_at?: string;
 
   /** Derived. */
   place?: Place;
@@ -792,6 +812,16 @@ export interface RankOptions {
    *  not — same "never personally logged a visit to" semantics as the
    *  Places page's "New to try" rail. */
   excludeVisited?: boolean;
+  /**
+   * Extra place ids to fold into `excludeVisited`'s exclusion set, on top
+   * of whatever `visits` already implies — a place "Tried" by actually
+   * attending a Jio that was decided there, with no review ever logged for
+   * it, so a plain visits-only check would still call it new. Ignored
+   * unless `excludeVisited` is also true. In group mode, `groupRecommend`
+   * overrides this per member with `MemberData.triedPlaceIds` instead of
+   * applying one shared list to everyone.
+   */
+  additionalExcludedPlaceIds?: string[];
 }
 
 export interface MemberData {
@@ -799,6 +829,9 @@ export interface MemberData {
   visits: Visit[];
   prefs: UserPrefs | null;
   wishlistPlaceIds: string[];
+  /** This member's own "Tried" set (visits ∪ attended decided Jios) — see
+   *  `RankOptions.additionalExcludedPlaceIds`. */
+  triedPlaceIds?: string[];
 }
 
 // ---------------------------------------------------------------------------

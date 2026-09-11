@@ -14,6 +14,7 @@ export type ActionType =
   | "place.reviewed"
   | "lobang.sent"
   | "place.wishlisted"
+  | "place.favourited"
   | "place.created"
   | "kaki.created"
   | "report.filed"

@@ -64,6 +64,7 @@ import type {
   EventInvitee,
   EventOption,
   EventRsvp,
+  FavouriteEntry,
   EventVote,
   Filters,
   FlagReason,
@@ -122,6 +123,7 @@ interface DemoStore {
   candidateDates: EventCandidateDate[];
   dateVotes: EventDateVote[];
   wishlist: WishlistEntry[];
+  favourites: FavouriteEntry[];
   /** UX review log #25 / migration 070 — one row per (user, event) that has
    *  already seen its decided-Jio celebration. */
   decidedCelebrationViews: { user_id: string; event_id: string; shown_at: string }[];
@@ -210,6 +212,7 @@ function seed(): DemoStore {
     candidateDates: [],
     dateVotes: [],
     wishlist: demoWishlist.map((w) => ({ ...w })),
+    favourites: [],
     decidedCelebrationViews: [],
     kakiBridgeDismissals: [],
     reviewLikes: [],
@@ -2394,6 +2397,78 @@ export const demoRepo: Repo = {
     }
     s.wishlist.splice(index, 1);
     return { added: false };
+  },
+
+  async updateWishlistNote(userId, placeId, note) {
+    const s = store();
+    const entry = s.wishlist.find(
+      (w) => w.user_id === userId && w.place_id === placeId
+    );
+    if (!entry) throw new Error("Save this place before adding a note");
+    entry.note = note;
+  },
+
+  // ---- Favourites ----
+
+  async listFavourites(userId) {
+    const s = store();
+    return s.favourites
+      .filter((f) => f.user_id === userId)
+      .map((f) => {
+        const place = s.places.find((p) => p.id === f.place_id);
+        return { ...f, place: place ? enrich(place) : undefined };
+      });
+  },
+
+  async toggleFavourite(userId, placeId) {
+    const s = store();
+    const index = s.favourites.findIndex(
+      (f) => f.user_id === userId && f.place_id === placeId
+    );
+    if (index === -1) {
+      s.favourites.push({
+        user_id: userId,
+        place_id: placeId,
+        created_at: new Date().toISOString(),
+      });
+      return { added: true };
+    }
+    s.favourites.splice(index, 1);
+    return { added: false };
+  },
+
+  // ---- Tried ----
+
+  async listTriedPlaceIds(userId) {
+    const s = store();
+    const placeIds = new Set<string>();
+
+    for (const v of s.visits) {
+      if (v.user_id === userId) placeIds.add(v.place_id);
+    }
+
+    const attendedEventIds = new Set(
+      s.rsvps
+        .filter((r) => r.user_id === userId && r.response === "yes")
+        .map((r) => r.event_id)
+    );
+    for (const e of s.events) {
+      if (e.status !== "closed" || !e.winner_place_id) continue;
+      if (e.host_id === userId || attendedEventIds.has(e.id)) {
+        placeIds.add(e.winner_place_id);
+      }
+    }
+
+    return Array.from(placeIds);
+  },
+
+  async listTried(userId) {
+    const s = store();
+    const ids = await demoRepo.listTriedPlaceIds(userId);
+    return ids
+      .map((id) => s.places.find((p) => p.id === id))
+      .filter((p): p is Place => Boolean(p) && p!.status === "active")
+      .map((p) => enrich(p));
   },
 
   // ---- Kakis ----

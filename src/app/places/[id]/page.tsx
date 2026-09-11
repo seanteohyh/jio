@@ -73,6 +73,9 @@ export default function PlaceDetailPage({
   const { data: wishlistData, mutate: mutateWishlist } = useSWR<{
     wishlist: { place_id: string }[];
   }>(features.wishlist ? "/api/wishlist" : null, fetcher);
+  const { data: favouritesData, mutate: mutateFavourites } = useSWR<{
+    favourites: { place_id: string }[];
+  }>(features.favourites ? "/api/favourites" : null, fetcher);
   const { data: me } = useSWR<MeResponse>("/api/me", fetcher);
   // Own visits to this place, including private ones — only fetched while
   // actually resolving an ?editVisit= link, since the place page's own
@@ -95,6 +98,7 @@ export default function PlaceDetailPage({
   // UX review log #10 — guards the wishlist toggle against a fast
   // double-tap, same disable+optimistic+rollback pattern as RSVP/vote.
   const [wishlistBusy, setWishlistBusy] = useState(false);
+  const [favouriteBusy, setFavouriteBusy] = useState(false);
   const [blocking, setBlocking] = useState(false);
   const [blockReason, setBlockReason] = useState("");
   const [reporting, setReporting] = useState(false);
@@ -162,6 +166,37 @@ export default function PlaceDetailPage({
       setActionError(err instanceof Error ? err.message : "Could not save");
     } finally {
       setWishlistBusy(false);
+    }
+  };
+
+  const onFavourites =
+    favouritesData?.favourites.some((f) => f.place_id === place.id) ?? false;
+
+  const toggleFavourite = async () => {
+    if (favouriteBusy) return;
+    setFavouriteBusy(true);
+    setActionError(null);
+
+    const current = favouritesData?.favourites ?? [];
+    const optimisticList = onFavourites
+      ? current.filter((f) => f.place_id !== place.id)
+      : [...current, { place_id: place.id }];
+
+    try {
+      await mutateFavourites(
+        mutateJson("/api/favourites", "POST", { place_id: place.id }).then(() =>
+          fetcher<{ favourites: { place_id: string }[] }>("/api/favourites")
+        ),
+        {
+          optimisticData: { favourites: optimisticList },
+          rollbackOnError: true,
+          revalidate: false,
+        }
+      );
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Could not save");
+    } finally {
+      setFavouriteBusy(false);
     }
   };
 
@@ -487,6 +522,15 @@ export default function PlaceDetailPage({
                 disabled={wishlistBusy}
               >
                 {onWishlist ? "On your list ✓" : "Want to try"}
+              </Button>
+            )}
+            {features.favourites && (
+              <Button
+                variant="secondary"
+                onClick={toggleFavourite}
+                disabled={favouriteBusy}
+              >
+                {onFavourites ? "Favourited ♥" : "Favourite"}
               </Button>
             )}
           </div>
