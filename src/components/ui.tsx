@@ -439,7 +439,7 @@ export function ErrorNote({ children }: { children: React.ReactNode }) {
   return (
     <p
       role="alert"
-      className="border-ember-tint bg-ember-tint text-ember-tint-text rounded-xl border px-3 py-2 text-sm"
+      className="border-ember-tint bg-ember-tint text-ember-tint-text whitespace-pre-line rounded-xl border px-3 py-2 text-sm"
     >
       {children}
     </p>

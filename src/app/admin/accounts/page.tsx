@@ -242,9 +242,18 @@ export default function AccountsPage() {
       // there afterward with no error anywhere, indistinguishable from the
       // merge having silently done nothing at all.
       if (result.warnings && result.warnings.length > 0) {
+        // One line per warning (`whitespace-pre-line` on ErrorNote turns
+        // the "\n"s into actual line breaks) — merging 2+ stale accounts
+        // into one keeper in a single request can produce a separate
+        // delete-failure warning per account, and running them together
+        // with no separator read as one garbled, duplicated sentence.
+        const message =
+          result.warnings.length === 1
+            ? result.warnings[0]
+            : result.warnings.map((w, i) => `${i + 1}. ${w}`).join("\n");
         setErrorByGroup((prev) => ({
           ...prev,
-          [group.normalized_name]: result.warnings!.join(" "),
+          [group.normalized_name]: message,
         }));
       }
     } catch (err) {
