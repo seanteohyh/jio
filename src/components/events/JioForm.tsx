@@ -366,30 +366,10 @@ export default function JioForm({
             <SuggestFilterControls
               value={suggestFilters}
               onChange={setSuggestFilters}
+              surprise={suggestData?.surprise?.place}
+              onPickSurprise={toggleOption}
+              onReroll={() => rerollSuggest()}
             />
-
-            {suggestData?.surprise && (
-              <div className="border-line flex items-center justify-between gap-2 rounded-lg border border-dashed px-3 py-2">
-                <button
-                  type="button"
-                  onClick={() => toggleOption(suggestData.surprise!.place.id)}
-                  className="min-w-0 truncate text-left text-sm"
-                >
-                  <span className="text-stone">Feeling lucky? </span>
-                  <span className="font-medium">
-                    {suggestData.surprise.place.name}
-                  </span>
-                </button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="secondary"
-                  onClick={() => rerollSuggest()}
-                >
-                  Randomize
-                </Button>
-              </div>
-            )}
 
             {trimmedQuery.length >= 2 && searching && (
               <p className="text-stone text-xs">Searching…</p>

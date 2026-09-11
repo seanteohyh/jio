@@ -1523,29 +1523,10 @@ export default function EventDetailPage({
             <SuggestFilterControls
               value={suggestFilters}
               onChange={setSuggestFilters}
+              surprise={surprisePlace}
+              onPickSurprise={addOption}
+              onReroll={() => rerollSuggest()}
             />
-
-            {surprisePlace && (
-              <div className="border-line flex items-center justify-between gap-2 rounded-lg border border-dashed px-3 py-2">
-                <button
-                  type="button"
-                  onClick={() => addOption(surprisePlace.id)}
-                  disabled={busy}
-                  className="min-w-0 truncate text-left text-sm"
-                >
-                  <span className="text-stone">Feeling lucky? </span>
-                  <span className="font-medium">{surprisePlace.name}</span>
-                </button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="secondary"
-                  onClick={() => rerollSuggest()}
-                >
-                  Randomize
-                </Button>
-              </div>
-            )}
 
             {suggestedCandidates.length > 0 && (
               <div>
