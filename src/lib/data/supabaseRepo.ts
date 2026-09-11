@@ -4169,9 +4169,25 @@ export const supabaseRepo: Repo = {
       // exact same duplicate sitting there afterward, with no error
       // anywhere, is indistinguishable from the merge having silently done
       // nothing at all.
-      const message = `Moved everything off the old account, but could not delete it: ${deleteError.message}`;
+      //
+      // `.message` alone isn't reliable: when GoTrue's admin API returns a
+      // non-2xx response with an empty JSON body, auth-js's error handling
+      // falls back to `JSON.stringify(data)` for the message, which for an
+      // empty object is the uninformative literal string "{}". `.status`/
+      // `.code` come from the HTTP response itself, so they're still real
+      // diagnostic signal even when `.message` isn't.
+      const detail = [
+        deleteError.message && deleteError.message !== "{}"
+          ? deleteError.message
+          : null,
+        deleteError.status != null ? `HTTP ${deleteError.status}` : null,
+        deleteError.code ? `code: ${deleteError.code}` : null,
+      ]
+        .filter(Boolean)
+        .join(", ") || "no further detail from Supabase";
+      const message = `Moved everything off the old account (${mergeUserId}), but could not delete it — ${detail}.`;
       console.error(
-        `[account merge] moved data from ${mergeUserId} to ${keepUserId} but could not delete the old account: ${deleteError.message}`
+        `[account merge] moved data from ${mergeUserId} to ${keepUserId} but could not delete the old account: ${detail}`
       );
       return { deleteWarning: message };
     }
