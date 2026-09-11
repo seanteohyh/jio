@@ -67,6 +67,18 @@ export const BUDGET_TIERS: {
 /** Radius in metres used when discovering nearby POIs. */
 export const WALK_RADIUS_M = 1200;
 
+/**
+ * The walk-time cap Places/Map's own `FilterBar` defaults its slider to,
+ * and — since a place a Jio's ballot-builder surfaces should never be
+ * farther than the same list already considers "nearby" by default —
+ * what `/api/suggest` also falls back to for an office-relative request
+ * with no explicit `?maxWalk=` and no chosen area (which gets its own,
+ * tighter default). Previously unbounded in that case, so a place Places/
+ * Map would already exclude by default could still turn up as a "Try:"
+ * randomiser pick or a "Suggested for you" chip.
+ */
+export const DEFAULT_WALK_MINUTES = 30;
+
 /** Assumed walking pace when no routing provider is available. */
 export const WALK_SPEED_M_PER_MIN = 80;
 

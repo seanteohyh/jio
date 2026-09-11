@@ -8,6 +8,7 @@ import {
   learnCuisineAffinity,
   rankPlaces,
   surprisePick,
+  surprisePicks,
   varietyBonusScore,
   walkPenaltyScore,
   whyHint,
@@ -440,6 +441,36 @@ describe("surprisePick", () => {
     // rand() below the top-probability threshold means "pick from the top N".
     const pick = surprisePick(ranked, () => 0);
     expect(ranked.slice(0, C.surprise.topN)).toContain(pick);
+  });
+});
+
+describe("surprisePicks", () => {
+  it("returns an empty array for an empty ranking", () => {
+    expect(surprisePicks([])).toEqual([]);
+  });
+
+  it("returns the requested count of distinct places", () => {
+    const ranked = rankPlaces(
+      Array.from({ length: 20 }, (_, i) =>
+        place({ id: `p${i}`, walk_minutes: i + 1 })
+      ),
+      [],
+      null
+    );
+
+    const picks = surprisePicks(ranked, 3);
+    expect(picks).toHaveLength(3);
+    expect(new Set(picks.map((p) => p.place.id)).size).toBe(3);
+  });
+
+  it("returns fewer than the requested count once the ranking runs out", () => {
+    const ranked = rankPlaces(
+      Array.from({ length: 2 }, (_, i) => place({ id: `p${i}` })),
+      [],
+      null
+    );
+
+    expect(surprisePicks(ranked, 3)).toHaveLength(2);
   });
 });
 

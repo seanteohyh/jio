@@ -57,16 +57,19 @@ function pillClass(active: boolean): string {
 export default function SuggestFilterControls({
   value,
   onChange,
-  surprise,
+  surprises,
   onPickSurprise,
   onReroll,
 }: {
   value: SuggestFilters;
   onChange: (next: SuggestFilters) => void;
-  /** The recommender's one random pick for this same filter set — CHANGES
-   *  §4's randomiser. Omit entirely (or pass `null`) where there's nothing
-   *  to show yet. */
-  surprise?: Place | null;
+  /** The recommender's random picks for this same filter set — CHANGES §4's
+   *  randomiser, showing a small batch to tap through (rather than one at a
+   *  time) so a reroll is worth reaching for less often. Each is drawn from
+   *  (and so already respects) the exact same filtered/ranked list the
+   *  "Suggested for you" chips use. Omit entirely (or pass `[]`) where
+   *  there's nothing to show yet. */
+  surprises?: Place[];
   onPickSurprise?: (placeId: string) => void;
   onReroll?: () => void;
 }) {
@@ -145,31 +148,43 @@ export default function SuggestFilterControls({
         </button>
       </div>
 
-      {surprise && (
-        <div className="flex items-center gap-1.5">
-          {/* Reroll comes first and never changes size, so it stays under
-              the same finger position on repeated taps — with it last, a
-              shorter/longer name reflowed the row and the button that used
-              to be under your thumb became the place pill instead (iOS
-              report: "accidentally click the place when trying to
-              randomise"). `tap-target-text` (UX review log #2) grows the
-              real hit area to ~44px without the glyph itself growing. */}
+      {surprises && surprises.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-stone shrink-0 text-xs">Try:</span>
+          {surprises.map((place) => (
+            <button
+              key={place.id}
+              type="button"
+              onClick={() => onPickSurprise?.(place.id)}
+              className="border-ember text-ink min-w-0 truncate rounded-full border px-2.5 py-1 text-xs font-medium"
+            >
+              {place.name}
+            </button>
+          ))}
+          {/* Pinned to the row's own right edge (`ml-auto`), not placed
+              right after the last chip — its screen position then depends
+              only on the row's own (stable) width, never on how long the
+              current picks' names happen to be. A trailing position that
+              instead followed the chips directly reflowed on every reroll (a
+              shorter/longer name shifting whatever came after it), so a
+              second tap meant for reroll could land on a chip that had
+              shifted into its old spot instead (iOS report: "accidentally
+              click the place when trying to randomise"). Sized as a real,
+              visible 44px circle rather than an invisible expanded hit-area
+              over a smaller glyph (`.tap-target-text`'s negative-margin
+              trick, meant for a plain text link with no chrome of its own —
+              applied to this bordered/filled button, that same negative
+              margin shifted the *visible* circle itself up and to the left,
+              reading as a stray, half-cut-off shape floating past the
+              card's edge rather than a small control in its own row). */}
           <button
             type="button"
             onClick={() => onReroll?.()}
-            aria-label="Show a different random pick"
-            title="Show a different random pick"
-            className="tap-target-text border-line bg-paper text-stone hover:border-ember hover:text-ember shrink-0 rounded-full border text-base leading-none"
+            aria-label="Show a different set of random picks"
+            title="Show a different set of random picks"
+            className="border-line bg-paper text-stone hover:border-ember hover:text-ember ml-auto inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border text-base leading-none"
           >
             <span aria-hidden="true">↻</span>
-          </button>
-          <span className="text-stone shrink-0 text-xs">Try:</span>
-          <button
-            type="button"
-            onClick={() => onPickSurprise?.(surprise!.id)}
-            className="border-ember text-ink min-w-0 truncate rounded-full border px-2.5 py-1 text-xs font-medium"
-          >
-            {surprise.name}
           </button>
         </div>
       )}

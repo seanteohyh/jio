@@ -113,7 +113,7 @@ export default function JioForm({
     : `/api/suggest?limit=${SUGGEST_LIMIT}${filterParams}`;
   const { data: suggestData, mutate: rerollSuggest } = useSWR<{
     suggestions: ScoredPlace[];
-    surprise: ScoredPlace | null;
+    surprises: ScoredPlace[];
   }>(suggestQuery, fetcher);
 
   // Only hit the places endpoint once there is something to search for —
@@ -366,7 +366,7 @@ export default function JioForm({
             <SuggestFilterControls
               value={suggestFilters}
               onChange={setSuggestFilters}
-              surprise={suggestData?.surprise?.place}
+              surprises={suggestData?.surprises?.map((s) => s.place)}
               onPickSurprise={toggleOption}
               onReroll={() => rerollSuggest()}
             />

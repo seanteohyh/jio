@@ -410,6 +410,34 @@ export function surprisePick(
   return ranked[Math.floor(rand() * ranked.length)] ?? ranked[0];
 }
 
+/**
+ * Several distinct `surprisePick`s at once — the randomiser shows a small
+ * batch to tap through rather than one pick at a time, each still drawn
+ * from (and so still respecting every filter already narrowing) the exact
+ * same `ranked` list a single pick would use. Repeats the same
+ * epsilon-greedy draw, removing each pick from the pool before the next one
+ * so nothing can repeat; returns fewer than `count` only once `ranked`
+ * itself runs out of eligible places.
+ */
+export function surprisePicks(
+  ranked: ScoredPlace[],
+  count: number = 3,
+  rand: () => number = Math.random
+): ScoredPlace[] {
+  const remaining = [...ranked];
+  const picks: ScoredPlace[] = [];
+
+  while (picks.length < count && remaining.length > 0) {
+    const pick = surprisePick(remaining, rand);
+    if (!pick) break;
+    picks.push(pick);
+    const index = remaining.findIndex((r) => r.place.id === pick.place.id);
+    if (index !== -1) remaining.splice(index, 1);
+  }
+
+  return picks;
+}
+
 /** Human-readable justification for why a place ranked where it did. */
 export function whyHint(scored: ScoredPlace): string {
   const { place, breakdown, topReason } = scored;
