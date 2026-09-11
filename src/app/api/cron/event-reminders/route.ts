@@ -45,13 +45,42 @@ export async function GET(request: NextRequest) {
     else userIdsByEvent.set(eventId, { title, userIds: [userId] });
   }
 
+  // `listAndClaimDueReminders` already marked every row in `due` as sent —
+  // a one-shot claim taken *before* anything is actually attempted, so it
+  // can't double-fire across overlapping cron runs. That means a send that
+  // never reaches anyone (a transient error fetching push targets, every
+  // subscription for that user being dead, VAPID briefly misconfigured)
+  // would otherwise permanently lose that reminder with no way to retry.
+  // Anyone `sendPushToUsers` didn't actually reach gets un-claimed here, so
+  // the next scan picks them back up — one event throwing entirely (rather
+  // than just some of its recipients failing) un-claims that whole event's
+  // batch instead of aborting the loop and losing every event after it.
+  const toUnclaim: Array<{ eventId: string; userId: string }> = [];
+
   for (const [eventId, { title, userIds }] of userIdsByEvent) {
-    await sendPushToUsers(repo, userIds, {
-      title: `Starting soon: ${title}`,
-      body: `${title} is starting soon.`,
-      url: `/events/${eventId}`,
-    });
+    try {
+      const { succeededUserIds } = await sendPushToUsers(repo, userIds, {
+        title: `Starting soon: ${title}`,
+        body: `${title} is starting soon.`,
+        url: `/events/${eventId}`,
+      });
+      const succeeded = new Set(succeededUserIds);
+      for (const userId of userIds) {
+        if (!succeeded.has(userId)) toUnclaim.push({ eventId, userId });
+      }
+    } catch (error) {
+      console.log(`[cron/event-reminders] send failed for event ${eventId}:`, error);
+      for (const userId of userIds) toUnclaim.push({ eventId, userId });
+    }
   }
 
-  return json({ sent: due.length, events: userIdsByEvent.size });
+  if (toUnclaim.length > 0) {
+    await repo.unclaimReminders(toUnclaim);
+  }
+
+  return json({
+    sent: due.length - toUnclaim.length,
+    unclaimed: toUnclaim.length,
+    events: userIdsByEvent.size,
+  });
 }

@@ -2546,6 +2546,30 @@ export const supabaseRepo: Repo = {
     return results;
   },
 
+  /** Same service-role client as `listAndClaimDueReminders` (this also
+   *  only ever runs from the cron route, no user session). A plain
+   *  per-pair update rather than a single batched query — the compound
+   *  (event_id, user_id) key doesn't fit Supabase's `.in()` filter, and
+   *  the list here is only ever the handful of sends one cron tick's
+   *  batch actually failed to deliver. */
+  async unclaimReminders(pairs) {
+    if (pairs.length === 0) return;
+    const { createServiceRoleClient } = await import(
+      "@/lib/supabase/serviceClient"
+    );
+    const admin = createServiceRoleClient();
+
+    await Promise.all(
+      pairs.map(({ eventId, userId }) =>
+        admin
+          .from("event_reminder_state")
+          .update({ sent_at: null })
+          .eq("event_id", eventId)
+          .eq("user_id", userId)
+      )
+    );
+  },
+
   // `hostId` isn't passed to the RPC — cancel_event checks auth.uid()
   // against host_id itself, same reasoning as attach_place_to_option.
   async cancelEvent(eventId, _hostId) {

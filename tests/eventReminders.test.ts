@@ -175,3 +175,54 @@ describe("listAndClaimDueReminders", () => {
     expect(await demoRepo.listAndClaimDueReminders()).toEqual([]);
   });
 });
+
+describe("unclaimReminders", () => {
+  it("lets a claimed reminder fire again after being unclaimed", async () => {
+    // The cron route's own retry path: a send that never actually reached
+    // anyone (a transient push failure) un-claims the reminder instead of
+    // leaving the one-shot claim burned with nothing ever delivered.
+    const event = await makeEvent(minutesFromNow(5));
+    await demoRepo.rsvp(event.id, DEMO_TEAMMATE_A, "yes");
+
+    const first = await demoRepo.listAndClaimDueReminders();
+    expect(first).toHaveLength(1);
+    expect(await demoRepo.listAndClaimDueReminders()).toEqual([]); // claimed
+
+    await demoRepo.unclaimReminders([
+      { eventId: event.id, userId: DEMO_TEAMMATE_A },
+    ]);
+
+    const second = await demoRepo.listAndClaimDueReminders();
+    expect(second).toHaveLength(1);
+    expect(second[0].userId).toBe(DEMO_TEAMMATE_A);
+  });
+
+  it("only unclaims the exact (event, user) pairs given, not every claim", async () => {
+    const event = await makeEvent(minutesFromNow(5));
+    await demoRepo.rsvp(event.id, DEMO_TEAMMATE_A, "yes");
+    await demoRepo.rsvp(event.id, DEMO_TEAMMATE_B, "yes");
+
+    const due = await demoRepo.listAndClaimDueReminders();
+    expect(due).toHaveLength(2);
+
+    // Only A's send is treated as failed — B's stays claimed (delivered).
+    await demoRepo.unclaimReminders([
+      { eventId: event.id, userId: DEMO_TEAMMATE_A },
+    ]);
+
+    const retried = await demoRepo.listAndClaimDueReminders();
+    expect(retried).toHaveLength(1);
+    expect(retried[0].userId).toBe(DEMO_TEAMMATE_A);
+  });
+
+  it("is a no-op for a pair with no existing reminder state", async () => {
+    const event = await makeEvent(minutesFromNow(60));
+    // Never claimed, never even due — should not throw or create a row
+    // that later makes this pair look "sent" or otherwise due prematurely.
+    await expect(
+      demoRepo.unclaimReminders([
+        { eventId: event.id, userId: DEMO_TEAMMATE_A },
+      ])
+    ).resolves.toBeUndefined();
+  });
+});
