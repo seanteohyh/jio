@@ -290,7 +290,7 @@ export default function EventDetailPage({
     : null;
   const { data: suggestData, mutate: rerollSuggest } = useSWR<{
     suggestions: ScoredPlace[];
-    surprise: ScoredPlace | null;
+    surprises: ScoredPlace[];
   }>(suggestQuery, fetcher);
 
   if (isLoading) return <SkeletonJioDetail />;
@@ -651,11 +651,9 @@ export default function EventDetailPage({
   const suggestedCandidates = (suggestData?.suggestions ?? [])
     .map((s) => s.place)
     .filter((p) => !event.options.some((o) => o.place_id === p.id));
-  const surprisePlace =
-    suggestData?.surprise &&
-    !event.options.some((o) => o.place_id === suggestData.surprise!.place.id)
-      ? suggestData.surprise.place
-      : null;
+  const surprisePlaces = (suggestData?.surprises ?? [])
+    .map((s) => s.place)
+    .filter((p) => !event.options.some((o) => o.place_id === p.id));
 
   // CHANGES_20260819c.md §2 — not restricted to `event.options`, since the
   // whole point is correcting to wherever the group actually ended up.
@@ -1523,7 +1521,7 @@ export default function EventDetailPage({
             <SuggestFilterControls
               value={suggestFilters}
               onChange={setSuggestFilters}
-              surprise={surprisePlace}
+              surprises={surprisePlaces}
               onPickSurprise={addOption}
               onReroll={() => rerollSuggest()}
             />

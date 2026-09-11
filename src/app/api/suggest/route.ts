@@ -3,9 +3,9 @@ import { requireUser } from "@/lib/auth";
 import { getRepoAsync } from "@/lib/data/repo";
 import { errorResponse, json, listParam, numberParam } from "@/lib/api";
 import { getWeatherProvider } from "@/lib/providers/weather";
-import { groupRecommend, rankPlaces, surprisePick, whyHint } from "@/lib/recommend";
+import { groupRecommend, rankPlaces, surprisePicks, whyHint } from "@/lib/recommend";
 import { RECOMMEND_CONFIG } from "@/lib/recommendConfig";
-import { DEFAULT_OFFICE } from "@/lib/constants";
+import { DEFAULT_OFFICE, DEFAULT_WALK_MINUTES } from "@/lib/constants";
 import { isEnabled } from "@/lib/config";
 import type { BudgetTier, MemberData, ScoredPlace } from "@/types";
 
@@ -57,13 +57,18 @@ export async function GET(request: NextRequest) {
     // default (real usage after shipping the 15-minute placeholder showed
     // results as far as 14 minutes out, which doesn't read as "near" a
     // chosen spot) — 6 minutes only applies when an area is active and the
-    // caller hasn't also passed an explicit ?maxWalk=; office-relative
-    // requests keep their existing unfiltered-by-default behaviour.
+    // caller hasn't also passed an explicit ?maxWalk=. An office-relative
+    // request falls back to the same default Places/Map's own filter uses
+    // (`DEFAULT_WALK_MINUTES`) rather than no cap at all — this used to be
+    // genuinely unbounded, so a place far enough away that Places/Map would
+    // already exclude it by default could still turn up as a "Suggested for
+    // you" chip or the "Try:" randomiser pick, reading as a bug rather than
+    // a deliberately looser default once someone actually saw it happen.
     const maxWalk = params.has("maxWalk")
-      ? numberParam(params, "maxWalk", 20)
+      ? numberParam(params, "maxWalk", DEFAULT_WALK_MINUTES)
       : hasArea
         ? 6
-        : undefined;
+        : DEFAULT_WALK_MINUTES;
 
     const [visits, prefs, wishlist, offices, triedPlaceIds] = await Promise.all([
       repo.listVisits(undefined, user.id),
@@ -171,8 +176,8 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // The surprise pick is drawn from the full eligible set, not the truncated
-    // top-N, or it would never surprise anyone.
+    // The surprise picks are drawn from the full eligible set, not the
+    // truncated top-N, or they would never surprise anyone.
     const fullRanking =
       mode === "group"
         ? ranked
@@ -183,11 +188,11 @@ export async function GET(request: NextRequest) {
             wishlist.map((w) => w.place_id),
             { ...options, limit: undefined }
           );
-    const surprise = surprisePick(fullRanking);
+    const surprises = surprisePicks(fullRanking, 3);
 
     return json({
       suggestions: ranked.map((s) => ({ ...s, why: whyHint(s) })),
-      surprise: surprise ? { ...surprise, why: whyHint(surprise) } : null,
+      surprises: surprises.map((s) => ({ ...s, why: whyHint(s) })),
       weather: forecast,
       mode,
       office,

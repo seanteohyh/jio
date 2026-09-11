@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Chip, inputClass } from "./ui";
-import { BUDGET_TIERS } from "@/lib/constants";
+import { BUDGET_TIERS, DEFAULT_WALK_MINUTES } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { features } from "@/lib/config";
 import { SearchIcon } from "@/components/icons";
@@ -33,7 +33,7 @@ export const DEFAULT_FILTERS: FilterState = {
   search: "",
   cuisines: [],
   budgetMax: 6,
-  maxWalk: 30,
+  maxWalk: DEFAULT_WALK_MINUTES,
   sortBy: "walk",
   kakiFavouritesOnly: false,
   hasFoodpanda: false,
