@@ -913,7 +913,14 @@ export interface Repo {
     callerId: string,
     keepUserId: string,
     mergeUserId: string
-  ): Promise<void>;
+  ): Promise<{
+    /** Set only when every row was successfully moved but retiring
+     *  `mergeUserId`'s now-empty account itself failed (the one step that
+     *  needs the service role — see `serviceClient.ts`) — the merge is
+     *  real (nothing was rolled back), but the old account is still there
+     *  and needs a manual follow-up, not a silent success. */
+    deleteWarning?: string;
+  }>;
   /**
    * Collision-safe counterpart to name-based claim — a fresh unguessable
    * token tied to one specific account rather than a name, so it stays safe

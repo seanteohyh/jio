@@ -225,16 +225,28 @@ export default function AccountsPage() {
     setBusyGroup(group.normalized_name);
     clearGroupError(group);
     try {
-      await mutateJson("/api/admin/merge-accounts", "POST", {
-        keep_user_id: keep,
-        merge_user_ids: mergeIds,
-      });
+      const result = await mutateJson<{ warnings?: string[] }>(
+        "/api/admin/merge-accounts",
+        "POST",
+        { keep_user_id: keep, merge_user_ids: mergeIds }
+      );
       setPreviewByGroup((prev) => {
         const next = { ...prev };
         delete next[group.normalized_name];
         return next;
       });
       mutate();
+      // Every row genuinely moved — this isn't a failed request — but the
+      // old account itself couldn't be retired (the one step needing the
+      // service role), so the exact same "duplicate" would otherwise sit
+      // there afterward with no error anywhere, indistinguishable from the
+      // merge having silently done nothing at all.
+      if (result.warnings && result.warnings.length > 0) {
+        setErrorByGroup((prev) => ({
+          ...prev,
+          [group.normalized_name]: result.warnings!.join(" "),
+        }));
+      }
     } catch (err) {
       setErrorByGroup((prev) => ({
         ...prev,

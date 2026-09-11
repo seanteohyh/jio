@@ -3952,6 +3952,11 @@ export const demoRepo: Repo = {
     // profiles row, recovery_token included, with it — so a stale link to
     // an already-merged account resolves to nothing, not a ghost.
     s.recoveryTokens = s.recoveryTokens.filter((t) => t.user_id !== mergeUserId);
+
+    // No service-role Auth Admin call to fail here — the in-memory store
+    // just deletes the row above directly — so there's never a warning to
+    // report back.
+    return {};
   },
 
   async generateRecoveryToken(callerId, userId) {
