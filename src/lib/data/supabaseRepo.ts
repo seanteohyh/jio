@@ -505,6 +505,8 @@ export const supabaseRepo: Repo = {
       lng: row.lng,
       google_place_id: row.google_place_id ?? null,
       socials_url: row.socials_url ?? null,
+      foodpanda_url: row.foodpanda_url ?? null,
+      grab_url: row.grab_url ?? null,
     };
   },
 
@@ -3426,6 +3428,8 @@ export const supabaseRepo: Repo = {
         lng: row.lng,
         google_place_id: row.google_place_id ?? null,
         socials_url: row.socials_url ?? null,
+        foodpanda_url: row.foodpanda_url ?? null,
+        grab_url: row.grab_url ?? null,
       },
       from_display_name: row.from_display_name ?? "A teammate",
       note: row.note ?? null,

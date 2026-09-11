@@ -158,6 +158,8 @@ interface CreatePlaceBody {
   best_dishes?: string[];
   notes?: string;
   socials_url?: string;
+  foodpanda_url?: string;
+  grab_url?: string;
   status?: PlaceStatus;
 }
 
@@ -182,6 +184,14 @@ export async function POST(request: NextRequest) {
     if (socialsUrl && !isHttpUrl(socialsUrl)) {
       return badRequest("Socials link must be a valid http(s) URL");
     }
+    const foodpandaUrl = body.foodpanda_url?.trim() || null;
+    if (foodpandaUrl && !isHttpUrl(foodpandaUrl)) {
+      return badRequest("Foodpanda link must be a valid http(s) URL");
+    }
+    const grabUrl = body.grab_url?.trim() || null;
+    if (grabUrl && !isHttpUrl(grabUrl)) {
+      return badRequest("Grab link must be a valid http(s) URL");
+    }
 
     const place = await repo.createPlace({
       name: body.name.trim(),
@@ -197,6 +207,8 @@ export async function POST(request: NextRequest) {
       best_dishes: body.best_dishes ?? [],
       notes: body.notes?.trim() || null,
       socials_url: socialsUrl,
+      foodpanda_url: foodpandaUrl,
+      grab_url: grabUrl,
       created_by: user.id,
     } as Omit<Place, "id" | "created_at" | "updated_at" | "google_place_id">);
 

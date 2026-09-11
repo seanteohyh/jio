@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   formatDate,
   formatTime,
+  grabFoodSearchUrl,
   instagramSearchUrl,
   relativeDayLabel,
   sgtDateKey,
@@ -128,6 +129,14 @@ describe("instagramSearchUrl", () => {
   it("builds an Instagram keyword-search link for the place's name", () => {
     expect(instagramSearchUrl("Ministry Of Food")).toBe(
       "https://www.instagram.com/explore/search/keyword/?q=Ministry%20Of%20Food"
+    );
+  });
+});
+
+describe("grabFoodSearchUrl", () => {
+  it("builds a GrabFood search-results link for the place's name", () => {
+    expect(grabFoodSearchUrl("Ministry Of Food")).toBe(
+      "https://food.grab.com/sg/en/restaurants?search=Ministry%20Of%20Food"
     );
   });
 });

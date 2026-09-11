@@ -91,6 +91,29 @@ describe("getPublicPlace", () => {
     expect(pub?.socials_url).toBeNull();
   });
 
+  it("carries foodpanda_url and grab_url, same reasoning as socials_url", async () => {
+    const place = await seedPlace({
+      foodpanda_url: "https://foodpanda.sg/restaurant/kopitiamtest",
+      grab_url: "https://food.grab.com/sg/en/restaurant/kopitiamtest",
+    });
+
+    const pub = await demoRepo.getPublicPlace(place.id);
+    expect(pub?.foodpanda_url).toBe(
+      "https://foodpanda.sg/restaurant/kopitiamtest"
+    );
+    expect(pub?.grab_url).toBe(
+      "https://food.grab.com/sg/en/restaurant/kopitiamtest"
+    );
+  });
+
+  it("foodpanda_url and grab_url are null when the place has neither set", async () => {
+    const place = await seedPlace();
+
+    const pub = await demoRepo.getPublicPlace(place.id);
+    expect(pub?.foodpanda_url).toBeNull();
+    expect(pub?.grab_url).toBeNull();
+  });
+
   it("returns null for a place that does not exist", async () => {
     expect(await demoRepo.getPublicPlace("no-such-place")).toBeNull();
   });

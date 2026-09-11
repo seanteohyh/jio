@@ -317,6 +317,38 @@ describe("lobangs", () => {
       );
     });
 
+    it("carries the place's foodpanda_url and grab_url, same as socials_url", async () => {
+      const place = await demoRepo.createPlace({
+        name: "Delivery Links Test Place",
+        address: "1 Test Street",
+        lat: 1.3,
+        lng: 103.85,
+        cuisine: ["local"],
+        custom_cuisine_tags: [],
+        budget_tier: 2,
+        source: "manual",
+        status: "active",
+        best_dishes: [],
+        notes: null,
+        created_by: DEMO_TEAMMATE_A,
+        foodpanda_url: "https://foodpanda.sg/restaurant/deliverytestplace",
+        grab_url: "https://food.grab.com/sg/en/restaurant/deliverytestplace",
+      });
+      const lobang = await demoRepo.sendLobang(
+        DEMO_TEAMMATE_A,
+        { type: "public" },
+        place.id
+      );
+
+      const resolved = await demoRepo.getPublicLobang(lobang.public_token!);
+      expect(resolved?.place.foodpanda_url).toBe(
+        "https://foodpanda.sg/restaurant/deliverytestplace"
+      );
+      expect(resolved?.place.grab_url).toBe(
+        "https://food.grab.com/sg/en/restaurant/deliverytestplace"
+      );
+    });
+
     it("returns null once the place is no longer active", async () => {
       const lobang = await demoRepo.sendLobang(
         DEMO_TEAMMATE_A,

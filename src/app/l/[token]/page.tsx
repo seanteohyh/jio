@@ -3,6 +3,7 @@ import { getRepoAsync } from "@/lib/data/repo";
 import { BudgetBadge, Card, Chip, LinkButton, SectionHeading, Stars } from "@/components/ui";
 import ShareLink from "@/components/ShareLink";
 import SocialsIcon from "@/components/SocialsIcon";
+import { DeliveryIcon } from "@/components/icons";
 import { lobangShareUrl } from "@/lib/shareUrl";
 import { config } from "@/lib/config";
 import { formatCuisine, googleMapsPlaceUrl, socialsLabel } from "@/lib/utils";
@@ -101,6 +102,28 @@ export default async function PublicLobangPage({
             >
               <SocialsIcon url={place.socials_url} className="h-3.5 w-3.5" />
               {socialsLabel(place.socials_url)}
+            </a>
+          )}
+          {place.foodpanda_url && (
+            <a
+              href={place.foodpanda_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="border-line bg-paper text-ink hover:bg-cream inline-flex items-center gap-1.5 rounded-lg border px-4 py-2.5 text-sm font-medium"
+            >
+              <DeliveryIcon className="h-3.5 w-3.5" strokeWidth={2} />
+              Order on Foodpanda
+            </a>
+          )}
+          {place.grab_url && (
+            <a
+              href={place.grab_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="border-line bg-paper text-ink hover:bg-cream inline-flex items-center gap-1.5 rounded-lg border px-4 py-2.5 text-sm font-medium"
+            >
+              <DeliveryIcon className="h-3.5 w-3.5" strokeWidth={2} />
+              Order on Grab
             </a>
           )}
         </div>

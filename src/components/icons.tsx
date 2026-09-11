@@ -325,6 +325,25 @@ export function LinkIcon(props: IconProps) {
   );
 }
 
+/**
+ * Generic delivery-order link (Foodpanda/Grab) — a takeout bag, same
+ * fallback role `LinkIcon` plays for an unrecognized socials domain:
+ * neither platform has a real brand mark in lucide/this house style, so
+ * one shared, non-brand shape stands in for both, distinguished only by
+ * each link's own label/aria-label, same as `LinkIcon` already does for
+ * "some other platform." The dot is the bag's own sticker/label, grounded
+ * on its front panel.
+ */
+export function DeliveryIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M6 9h12l-1 10.5a1.5 1.5 0 0 1-1.5 1.5h-8a1.5 1.5 0 0 1-1.5-1.5Z" />
+      <path d="M9 9V7a3 3 0 0 1 6 0v2" />
+      <circle cx="12" cy="13.5" r="1" fill="currentColor" stroke="none" />
+    </Svg>
+  );
+}
+
 // ---------------------------------------------------------------------
 // Food-category icons — the doc's grouping table. 18 cuisine tags don't
 // each need their own glyph; several share one, grouped by what the food
