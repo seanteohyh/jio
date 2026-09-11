@@ -15,6 +15,14 @@ import type { Repo } from "./data";
  * succeeding. A dead subscription (the browser revoked it, the user
  * uninstalled) is expected background noise, not an error worth surfacing
  * to whoever's request triggered the send.
+ *
+ * Still reports back exactly who was actually reached (`succeededUserIds`)
+ * — every existing call site is fire-and-forget and can go on ignoring it,
+ * but the one call site where the push itself *is* the entire point (the
+ * reminder cron, which one-shot-claims a reminder before this ever runs)
+ * needs to know whether a "sent" reminder actually landed anywhere, so a
+ * failed send can be un-claimed and retried on the next scan instead of
+ * silently lost forever.
  */
 
 export interface PushPayload {
@@ -42,25 +50,33 @@ function ensureConfigured(): boolean {
   return true;
 }
 
+export interface PushSendResult {
+  /** A user counts as reached once at least one of their devices actually
+   *  got the push — someone with two subscriptions, one dead and one live,
+   *  is still reached. */
+  succeededUserIds: string[];
+}
+
 /** Sends to every subscribed device belonging to `userIds`. Safe to call
  *  with an empty array or with ids that have no subscriptions at all. */
 export async function sendPushToUsers(
   repo: Repo,
   userIds: string[],
   payload: PushPayload
-): Promise<void> {
-  if (userIds.length === 0) return;
+): Promise<PushSendResult> {
+  if (userIds.length === 0) return { succeededUserIds: [] };
   if (!ensureConfigured()) {
     console.log(
       `[push] VAPID not configured — skipping "${payload.title}" to ${userIds.length} user(s)`
     );
-    return;
+    return { succeededUserIds: [] };
   }
 
   const targets = await repo.getPushTargets(userIds);
-  if (targets.length === 0) return;
+  if (targets.length === 0) return { succeededUserIds: [] };
 
   const body = JSON.stringify(payload);
+  const succeeded = new Set<string>();
 
   await Promise.all(
     targets.map(async (target) => {
@@ -72,6 +88,7 @@ export async function sendPushToUsers(
           },
           body
         );
+        succeeded.add(target.userId);
       } catch (error) {
         // A dead endpoint (410 Gone / 404) is routine, not a bug — the
         // subscription is left in place rather than deleted here, since
@@ -86,4 +103,6 @@ export async function sendPushToUsers(
       }
     })
   );
+
+  return { succeededUserIds: [...succeeded] };
 }

@@ -46,9 +46,10 @@ function RecoveryLinkButton({ userId }: { userId: string }) {
           : result.url
       );
     } catch {
-      // Surfaced via the button staying put — the page-level error banner
-      // covers merge failures; a link-issue failure is low-stakes enough
-      // to just let the admin try again.
+      // Surfaced via the button staying put, not its own error message —
+      // a link-issue failure is low-stakes enough to just let the admin
+      // try again, unlike Preview/Confirm merge below, which get their
+      // own inline error per group.
     } finally {
       setBusy(false);
     }
@@ -115,7 +116,13 @@ export default function AccountsPage() {
     Record<string, AccountMergePreview[]>
   >({});
   const [busyGroup, setBusyGroup] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  // Per-group, not a single page-level banner — a page-top `<ErrorNote>`
+  // is easy to miss entirely once an admin has scrolled down to a group
+  // lower on the page (a long duplicate list, or just a small phone
+  // screen), which makes a genuine Preview/Confirm-merge failure read as
+  // "I pressed the button and nothing happened" rather than a visible
+  // error. Rendered right next to that group's own buttons instead.
+  const [errorByGroup, setErrorByGroup] = useState<Record<string, string>>({});
   const [search, setSearch] = useState("");
 
   const { data: searchData } = useSWR<{ users: TeamUser[] }>(
@@ -177,9 +184,16 @@ export default function AccountsPage() {
     });
   };
 
+  const clearGroupError = (group: DuplicateProfileGroup) =>
+    setErrorByGroup((prev) => {
+      const next = { ...prev };
+      delete next[group.normalized_name];
+      return next;
+    });
+
   const preview = async (group: DuplicateProfileGroup) => {
     setBusyGroup(group.normalized_name);
-    setError(null);
+    clearGroupError(group);
     try {
       const keep = keepFor(group);
       const mergeIds = Array.from(mergeSetFor(group));
@@ -193,7 +207,11 @@ export default function AccountsPage() {
         [group.normalized_name]: body.previews,
       }));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not load a preview");
+      setErrorByGroup((prev) => ({
+        ...prev,
+        [group.normalized_name]:
+          err instanceof Error ? err.message : "Could not load a preview",
+      }));
     } finally {
       setBusyGroup(null);
     }
@@ -205,7 +223,7 @@ export default function AccountsPage() {
     if (mergeIds.length === 0) return;
 
     setBusyGroup(group.normalized_name);
-    setError(null);
+    clearGroupError(group);
     try {
       await mutateJson("/api/admin/merge-accounts", "POST", {
         keep_user_id: keep,
@@ -218,7 +236,11 @@ export default function AccountsPage() {
       });
       mutate();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not merge those accounts");
+      setErrorByGroup((prev) => ({
+        ...prev,
+        [group.normalized_name]:
+          err instanceof Error ? err.message : "Could not merge those accounts",
+      }));
     } finally {
       setBusyGroup(null);
     }
@@ -235,8 +257,6 @@ export default function AccountsPage() {
           one person who hit the identity-loss bug more than once.
         </p>
       </header>
-
-      {error && <ErrorNote>{error}</ErrorNote>}
 
       <Card className="space-y-3">
         <SectionHeading>Issue a recovery link</SectionHeading>
@@ -351,7 +371,7 @@ export default function AccountsPage() {
                     </div>
                   )}
 
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <Button
                       size="sm"
                       variant="secondary"
@@ -368,7 +388,23 @@ export default function AccountsPage() {
                     >
                       {busy ? "Merging…" : "Confirm merge"}
                     </Button>
+                    {/* Confirm merge stays disabled until Preview has
+                        actually loaded — a merge is irreversible, so this
+                        forces a look at what's about to move before it can
+                        run. A disabled button gives no feedback of its own
+                        (no onClick fires, nothing explains why), which read
+                        as "I pressed merge and nothing happened" rather
+                        than "load a preview first." */}
+                    {!groupPreviews && mergeSet.size > 0 && !busy && (
+                      <span className="text-stone text-xs">
+                        Tap Preview first to unlock Confirm merge.
+                      </span>
+                    )}
                   </div>
+
+                  {errorByGroup[group.normalized_name] && (
+                    <ErrorNote>{errorByGroup[group.normalized_name]}</ErrorNote>
+                  )}
                 </Card>
               </li>
             );

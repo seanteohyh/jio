@@ -2017,6 +2017,18 @@ export const demoRepo: Repo = {
     return results;
   },
 
+  async unclaimReminders(pairs) {
+    const s = store();
+    for (const { eventId, userId } of pairs) {
+      const index = s.eventReminders.findIndex(
+        (r) => r.event_id === eventId && r.user_id === userId
+      );
+      if (index !== -1) {
+        s.eventReminders[index] = { ...s.eventReminders[index], sent_at: null };
+      }
+    }
+  },
+
   async cancelEvent(eventId, hostId) {
     const s = store();
     const index = s.events.findIndex((e) => e.id === eventId);

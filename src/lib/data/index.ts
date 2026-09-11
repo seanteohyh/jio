@@ -492,6 +492,17 @@ export interface Repo {
     }>
   >;
   /**
+   * Reverts a claim `listAndClaimDueReminders` made — clears `sent_at` back
+   * to `null` for exactly these (event, user) pairs — so the cron route can
+   * call this for anyone the push actually failed to reach, rather than the
+   * one-shot claim permanently burning a reminder nobody ever received. Only
+   * ever called with pairs this same request just claimed, so there's no
+   * risk of unclaiming one another request already sent.
+   */
+  unclaimReminders(
+    pairs: Array<{ eventId: string; userId: string }>
+  ): Promise<void>;
+  /**
    * Calls off an open Jio — a new terminal state, not a reuse of `closed`
    * (CHANGES_20260801.md §9). Host only, and only from `open`; see
    * 030_cancel_event.sql for why this goes through a dedicated function
@@ -1154,6 +1165,7 @@ export const REPO_METHODS = [
   "getEventReminderOverride",
   "setEventReminderOverride",
   "listAndClaimDueReminders",
+  "unclaimReminders",
   "cancelEvent",
   "rescheduleEvent",
   "editEventWinner",
