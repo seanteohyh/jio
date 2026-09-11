@@ -595,6 +595,13 @@ export interface Lobang {
   to_user_id?: string;
   /** Derived. Null until that recipient has seen it. */
   seen_at?: string | null;
+  /** Derived, same "received row, or single-recipient sent row" scope as
+   *  seen_at. Null until that recipient hearts it. */
+  liked_at?: string | null;
+  /** Derived, same scope as liked_at — the recipient's freeform reply, if
+   *  they've sent one back. */
+  reply?: string | null;
+  reply_created_at?: string | null;
 
   /** Derived. */
   from_display_name?: string;

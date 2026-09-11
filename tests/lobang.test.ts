@@ -201,6 +201,85 @@ describe("lobangs", () => {
     ).rejects.toThrow(/recipient/i);
   });
 
+  describe("reactions", () => {
+    it("toggles the recipient's heart on and off", async () => {
+      const lobang = await demoRepo.sendLobang(
+        DEMO_TEAMMATE_A,
+        toOne(DEMO_USER_ID),
+        "demo-place-12"
+      );
+
+      const liked = await demoRepo.toggleLobangLike(DEMO_USER_ID, lobang.id);
+      expect(liked.liked).toBe(true);
+      expect(liked.from_user_id).toBe(DEMO_TEAMMATE_A);
+      let [row] = await demoRepo.listLobangsReceived(DEMO_USER_ID);
+      expect(row.liked_at).not.toBeNull();
+
+      const unliked = await demoRepo.toggleLobangLike(DEMO_USER_ID, lobang.id);
+      expect(unliked.liked).toBe(false);
+      [row] = await demoRepo.listLobangsReceived(DEMO_USER_ID);
+      expect(row.liked_at).toBeNull();
+    });
+
+    it("refuses a like from someone who isn't a recipient", async () => {
+      const lobang = await demoRepo.sendLobang(
+        DEMO_TEAMMATE_A,
+        toOne(DEMO_USER_ID),
+        "demo-place-12"
+      );
+
+      await expect(
+        demoRepo.toggleLobangLike(DEMO_TEAMMATE_B, lobang.id)
+      ).rejects.toThrow(/recipient/i);
+    });
+
+    it("records the recipient's freeform reply, visible to the sender", async () => {
+      const lobang = await demoRepo.sendLobang(
+        DEMO_TEAMMATE_A,
+        toOne(DEMO_USER_ID),
+        "demo-place-12"
+      );
+
+      const result = await demoRepo.replyToLobang(
+        DEMO_USER_ID,
+        lobang.id,
+        "Went there, so good!"
+      );
+      expect(result.from_user_id).toBe(DEMO_TEAMMATE_A);
+
+      const [received] = await demoRepo.listLobangsReceived(DEMO_USER_ID);
+      expect(received.reply).toBe("Went there, so good!");
+
+      const sent = await demoRepo.listLobangsSent(DEMO_TEAMMATE_A);
+      const sentLobang = sent.find((l) => l.id === lobang.id);
+      expect(sentLobang?.reply).toBe("Went there, so good!");
+    });
+
+    it("refuses an empty reply", async () => {
+      const lobang = await demoRepo.sendLobang(
+        DEMO_TEAMMATE_A,
+        toOne(DEMO_USER_ID),
+        "demo-place-12"
+      );
+
+      await expect(
+        demoRepo.replyToLobang(DEMO_USER_ID, lobang.id, "   ")
+      ).rejects.toThrow(/empty/i);
+    });
+
+    it("refuses a reply from someone who isn't a recipient", async () => {
+      const lobang = await demoRepo.sendLobang(
+        DEMO_TEAMMATE_A,
+        toOne(DEMO_USER_ID),
+        "demo-place-12"
+      );
+
+      await expect(
+        demoRepo.replyToLobang(DEMO_TEAMMATE_B, lobang.id, "Nice one")
+      ).rejects.toThrow(/recipient/i);
+    });
+  });
+
   it("dismissing a group send only removes the dismisser's own copy", async () => {
     const lobang = await demoRepo.sendLobang(
       DEMO_USER_ID,

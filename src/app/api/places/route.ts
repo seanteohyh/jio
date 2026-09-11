@@ -60,6 +60,10 @@ export async function GET(request: NextRequest) {
 
     const sortBy = params.get("sortBy");
     const kakiFavouritesOnly = params.get("kakiFavouritesOnly") === "true";
+    // Same "narrows the list" shape as kakiFavouritesOnly (CHANGES §5) — a
+    // place with no delivery link at all just fails these, no in-between.
+    const hasFoodpanda = params.get("hasFoodpanda") === "true";
+    const hasGrab = params.get("hasGrab") === "true";
 
     // §12f / CHANGES_20260807c.md §2 — anything Kaki-rating-related needs the
     // requesting user's Kaki membership, which the repo's listPlaces has no
@@ -105,13 +109,15 @@ export async function GET(request: NextRequest) {
     // A real sort or a real filter over kaki_rating both need the full
     // matching set scored before slicing — neither can use the repo's own
     // pagination.
-    if (sortBy === "kaki_rating" || kakiFavouritesOnly) {
+    if (sortBy === "kaki_rating" || kakiFavouritesOnly || hasFoodpanda || hasGrab) {
       const { places: allPlaces } = await repo.listPlaces(baseFilters);
       let scored = allPlaces.map(attachKakiRating);
 
       if (kakiFavouritesOnly) {
         scored = scored.filter((p) => typeof p.kaki_rating === "number");
       }
+      if (hasFoodpanda) scored = scored.filter((p) => !!p.foodpanda_url);
+      if (hasGrab) scored = scored.filter((p) => !!p.grab_url);
       if (sortBy === "kaki_rating") {
         scored = [...scored].sort((a, b) => {
           const aR = typeof a.kaki_rating === "number" ? a.kaki_rating : -Infinity;

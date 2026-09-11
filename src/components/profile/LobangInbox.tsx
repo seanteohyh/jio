@@ -1,13 +1,162 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import useSWR from "swr";
 import { AlertIcon } from "@/components/icons";
 import { Avatar, Button, Card, SectionHeading } from "../ui";
 import { fetcher, mutateJson } from "@/lib/fetcher";
-import { relativeDayLabel } from "@/lib/utils";
+import { cn, relativeDayLabel } from "@/lib/utils";
 import type { Lobang } from "@/types";
+
+/**
+ * One received lobang, with its reactions — CHANGES §3: heart it, reply with
+ * a freeform note, or jump straight into starting a Jio at that place.
+ * Kept as its own component so the reply textarea's open/closed state is
+ * per-card rather than a keyed map living in the parent.
+ */
+function ReceivedLobangCard({
+  lobang,
+  onChanged,
+  onDismiss,
+}: {
+  lobang: Lobang;
+  onChanged: () => void;
+  onDismiss: (id: string) => void;
+}) {
+  const [replying, setReplying] = useState(false);
+  const [replyText, setReplyText] = useState(lobang.reply ?? "");
+  const [busy, setBusy] = useState(false);
+
+  const toggleLike = async () => {
+    setBusy(true);
+    try {
+      await mutateJson(`/api/lobangs/${lobang.id}/like`, "POST");
+      onChanged();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const sendReply = async () => {
+    if (!replyText.trim()) return;
+    setBusy(true);
+    try {
+      await mutateJson(`/api/lobangs/${lobang.id}/reply`, "POST", {
+        text: replyText.trim(),
+      });
+      setReplying(false);
+      onChanged();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <li>
+      <Card className="flex items-start gap-2.5">
+        <Avatar name={lobang.from_display_name ?? "Teammate"} id={lobang.from_user_id} />
+        <div className="min-w-0 flex-1">
+          <p className="text-sm">
+            <span className="font-medium">
+              {lobang.from_display_name ?? "A teammate"}
+            </span>
+            <span className="text-stone"> recommends </span>
+            {lobang.place ? (
+              <Link
+                href={`/places/${lobang.place_id}`}
+                className="text-ember font-medium hover:underline"
+              >
+                {lobang.place.name}
+              </Link>
+            ) : (
+              <span className="font-medium">a place</span>
+            )}
+            <span className="text-stone"> for you</span>
+            {!lobang.seen_at && (
+              <span className="bg-ember ml-2 rounded-full px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                New
+              </span>
+            )}
+          </p>
+
+          {lobang.note && (
+            <p className="text-stone mt-1 text-sm whitespace-pre-wrap italic">
+              “{lobang.note}”
+            </p>
+          )}
+
+          <p className="text-stone mt-1 text-xs">
+            {lobang.event_title && `From ${lobang.event_title} · `}
+            {lobang.created_at && relativeDayLabel(lobang.created_at)}
+          </p>
+
+          <div className="mt-2 flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={toggleLike}
+              disabled={busy}
+              aria-pressed={!!lobang.liked_at}
+              aria-label={lobang.liked_at ? "Unlike this lobang" : "Like this lobang"}
+              className={cn(
+                "flex items-center gap-1 text-xs font-medium",
+                lobang.liked_at ? "text-ember" : "text-stone hover:text-ink"
+              )}
+            >
+              <span aria-hidden="true">{lobang.liked_at ? "♥" : "♡"}</span>
+              {lobang.liked_at ? "Liked" : "Like"}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setReplying((v) => !v)}
+              className="text-stone hover:text-ember text-xs underline"
+            >
+              {lobang.reply ? "Edit reply" : "Reply"}
+            </button>
+
+            {lobang.place && (
+              <Link
+                href={`/events/new?placeId=${lobang.place_id}`}
+                className="text-stone hover:text-ember text-xs underline"
+              >
+                Start a Jio here
+              </Link>
+            )}
+
+            <button
+              type="button"
+              onClick={() => onDismiss(lobang.id)}
+              className="text-stone hover:text-ink ml-auto text-xs underline"
+            >
+              Dismiss
+            </button>
+          </div>
+
+          {!replying && lobang.reply && (
+            <p className="text-stone mt-1.5 text-xs">
+              You replied: <span className="text-ink italic">“{lobang.reply}”</span>
+            </p>
+          )}
+
+          {replying && (
+            <div className="mt-2 flex items-center gap-2">
+              <input
+                value={replyText}
+                onChange={(e) => setReplyText(e.target.value)}
+                placeholder="Send a reply…"
+                className="border-line bg-paper w-full min-w-0 rounded-lg border px-2.5 py-1.5 text-xs"
+              />
+              <Button size="sm" onClick={sendReply} disabled={busy || !replyText.trim()}>
+                Send
+              </Button>
+            </div>
+          )}
+        </div>
+      </Card>
+    </li>
+  );
+}
 
 /**
  * Lobangs sent to you, plus a short history of ones you've sent. Always
@@ -89,56 +238,12 @@ export default function LobangInbox() {
           </SectionHeading>
           <ul className="space-y-2">
             {inbox.map((l) => (
-              <li key={l.id}>
-                <Card className="flex items-start gap-2.5">
-                  <Avatar
-                    name={l.from_display_name ?? "Teammate"}
-                    id={l.from_user_id}
-                  />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm">
-                      <span className="font-medium">
-                        {l.from_display_name ?? "A teammate"}
-                      </span>
-                      <span className="text-stone"> recommends </span>
-                      {l.place ? (
-                        <Link
-                          href={`/places/${l.place_id}`}
-                          className="text-ember font-medium hover:underline"
-                        >
-                          {l.place.name}
-                        </Link>
-                      ) : (
-                        <span className="font-medium">a place</span>
-                      )}
-                      <span className="text-stone"> for you</span>
-                      {!l.seen_at && (
-                        <span className="bg-ember ml-2 rounded-full px-1.5 py-0.5 text-[10px] font-semibold text-white">
-                          New
-                        </span>
-                      )}
-                    </p>
-
-                    {l.note && (
-                      <p className="text-stone mt-1 text-sm whitespace-pre-wrap italic">
-                        “{l.note}”
-                      </p>
-                    )}
-
-                    <p className="text-stone mt-1 text-xs">
-                      {l.event_title && `From ${l.event_title} · `}
-                      {l.created_at && relativeDayLabel(l.created_at)}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => dismiss(l.id)}
-                    className="text-stone hover:text-ink shrink-0 text-xs underline"
-                  >
-                    Dismiss
-                  </button>
-                </Card>
-              </li>
+              <ReceivedLobangCard
+                key={l.id}
+                lobang={l}
+                onChanged={() => mutateReceived()}
+                onDismiss={dismiss}
+              />
             ))}
           </ul>
         </div>
@@ -168,6 +273,8 @@ export default function LobangInbox() {
                   <span className="text-ink">
                     {l.place?.name ?? "a place"}
                   </span>
+                  {l.liked_at && <span className="text-ember"> · liked</span>}
+                  {l.reply && <span className="text-ember"> · replied</span>}
                 </span>
                 <span className="shrink-0">
                   {l.created_at && relativeDayLabel(l.created_at)}

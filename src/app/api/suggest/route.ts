@@ -32,6 +32,12 @@ export async function GET(request: NextRequest) {
     // "0 means something" default would.
     const budgetMax = numberParam(params, "budgetMax", 6) as BudgetTier;
     const excludeVisited = params.get("excludeVisited") === "true";
+    // Same "on Foodpanda"/"on Grab" presence filters as /api/places
+    // (CHANGES §5) — applied here as a pre-filter on the candidate pool
+    // rather than threaded through the ranking functions, since delivery-app
+    // presence has nothing to do with how a place scores.
+    const hasFoodpanda = params.get("hasFoodpanda") === "true";
+    const hasGrab = params.get("hasGrab") === "true";
 
     // Suggest Area Filter spec §4 — an ad-hoc reference point for one
     // request, resolved client-side (from a chosen station or a dropped
@@ -77,7 +83,18 @@ export async function GET(request: NextRequest) {
       : (params.get("officeId") ??
         (isEnabled("offices") ? prefs?.default_office_id : null) ??
         DEFAULT_OFFICE.id);
-    const { places } = await repo.listPlaces({ status: "active", officeId });
+    const { places: allPlaces } = await repo.listPlaces({
+      status: "active",
+      officeId,
+    });
+    const places =
+      hasFoodpanda || hasGrab
+        ? allPlaces.filter(
+            (p) =>
+              (!hasFoodpanda || !!p.foodpanda_url) &&
+              (!hasGrab || !!p.grab_url)
+          )
+        : allPlaces;
 
     const office: { lat: number; lng: number } = hasArea
       ? { lat: areaLat, lng: areaLng }

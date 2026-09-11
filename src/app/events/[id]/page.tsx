@@ -32,6 +32,11 @@ import { useToast } from "@/components/Toast";
 import ShareLink from "@/components/ShareLink";
 import ShareResultCard from "@/components/ShareResultCard";
 import InvitePicker, { type InviteSelection } from "@/components/InvitePicker";
+import SuggestFilterControls, {
+  DEFAULT_SUGGEST_FILTERS,
+  suggestFilterParams,
+  type SuggestFilters,
+} from "@/components/events/SuggestFilterControls";
 import SocialsIcon from "@/components/SocialsIcon";
 import { FoodpandaIcon, GrabIcon } from "@/components/DeliveryIcons";
 import { InfoIcon } from "@/components/icons";
@@ -55,7 +60,7 @@ import {
   sgtTimeOfDay,
   socialsLabel,
 } from "@/lib/utils";
-import type { EventDetail, Place, RsvpResponse } from "@/types";
+import type { EventDetail, Place, RsvpResponse, ScoredPlace } from "@/types";
 
 interface EventResponse {
   event: EventDetail;
@@ -98,8 +103,12 @@ export default function EventDetailPage({
   const [showWheel, setShowWheel] = useState(false);
   const [addQuery, setAddQuery] = useState("");
   const [ballotTouched, setBallotTouched] = useState(false);
-  const [suggesting, setSuggesting] = useState(false);
-  const [suggestedThisSession, setSuggestedThisSession] = useState<string[]>([]);
+  // CHANGES §1/§4 — the post-creation "Find a place" panel, unified with
+  // the same /api/suggest engine JioForm uses instead of the old
+  // always-unfiltered, auto-inserting "Suggest 3."
+  const [suggestFilters, setSuggestFilters] = useState<SuggestFilters>(
+    DEFAULT_SUGGEST_FILTERS
+  );
   const [newCandidateDate, setNewCandidateDate] = useState("");
   const [justConfirmedDate, setJustConfirmedDate] = useState<string | null>(null);
   // "Vote first, prompt after" (CHANGES_20260801.md §8): once a free-text
@@ -267,6 +276,22 @@ export default function EventDetailPage({
       : null,
     fetcher
   );
+
+  // Same engine, same filters (area/budget/cuisine/new-to-you/Foodpanda/
+  // Grab) JioForm uses at creation time — CHANGES §1's "both host and users
+  // should have this after the Jio's created too" plus §4/§5's filters.
+  // Group-scoped whenever this Jio itself came from a Kaki.
+  const groupScoped = features.kakis && !!data?.event.kaki_id;
+  const suggestFilterQS = suggestFilterParams(suggestFilters);
+  const suggestQuery = data?.viewer.canAddOptions
+    ? groupScoped
+      ? `/api/suggest?mode=group&kakiId=${data?.event.kaki_id}&limit=8${suggestFilterQS}`
+      : `/api/suggest?limit=8${suggestFilterQS}`
+    : null;
+  const { data: suggestData, mutate: rerollSuggest } = useSWR<{
+    suggestions: ScoredPlace[];
+    surprise: ScoredPlace | null;
+  }>(suggestQuery, fetcher);
 
   if (isLoading) return <SkeletonJioDetail />;
   if (error) return <ErrorNote>{error.message}</ErrorNote>;
@@ -469,25 +494,6 @@ export default function EventDetailPage({
       );
     });
 
-  const suggestOptions = () =>
-    run(async () => {
-      setSuggesting(true);
-      try {
-        const result = await mutateJson<{ added: { place_id: string }[] }>(
-          `/api/events/${id}/suggest-options`,
-          "POST",
-          { exclude_place_ids: suggestedThisSession }
-        );
-        setSuggestedThisSession((prev) => [
-          ...prev,
-          ...result.added.map((o) => o.place_id),
-        ]);
-        setBallotTouched(false);
-      } finally {
-        setSuggesting(false);
-      }
-    });
-
   const toggleAvailability = (date: string) =>
     run(async () => {
       const next = myAvailability.has(date)
@@ -641,6 +647,15 @@ export default function EventDetailPage({
       addQuery ? p.name.toLowerCase().includes(addQuery.toLowerCase()) : false
     )
     .slice(0, 6);
+
+  const suggestedCandidates = (suggestData?.suggestions ?? [])
+    .map((s) => s.place)
+    .filter((p) => !event.options.some((o) => o.place_id === p.id));
+  const surprisePlace =
+    suggestData?.surprise &&
+    !event.options.some((o) => o.place_id === suggestData.surprise!.place.id)
+      ? suggestData.surprise.place
+      : null;
 
   // CHANGES_20260819c.md §2 — not restricted to `event.options`, since the
   // whole point is correcting to wherever the group actually ended up.
@@ -1504,24 +1519,56 @@ export default function EventDetailPage({
         <Card>
           <SectionHeading>Add a place</SectionHeading>
 
-          <div className="mb-3">
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={suggestOptions}
-              disabled={suggesting}
-            >
-              {suggesting
-                ? "Thinking…"
-                : suggestedThisSession.length > 0
-                  ? "Re-roll"
-                  : "Can't decide? Suggest 3"}
-            </Button>
-            {suggestedThisSession.length > 0 && (
-              <p className="text-stone mt-1.5 text-xs">
-                Re-rolling swaps out whatever nobody&apos;s voted on yet —
-                anything with a vote already stays put.
-              </p>
+          <div className="mb-3 space-y-2">
+            <SuggestFilterControls
+              value={suggestFilters}
+              onChange={setSuggestFilters}
+            />
+
+            {surprisePlace && (
+              <div className="border-line flex items-center justify-between gap-2 rounded-lg border border-dashed px-3 py-2">
+                <button
+                  type="button"
+                  onClick={() => addOption(surprisePlace.id)}
+                  disabled={busy}
+                  className="min-w-0 truncate text-left text-sm"
+                >
+                  <span className="text-stone">Feeling lucky? </span>
+                  <span className="font-medium">{surprisePlace.name}</span>
+                </button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => rerollSuggest()}
+                >
+                  Randomize
+                </Button>
+              </div>
+            )}
+
+            {suggestedCandidates.length > 0 && (
+              <div>
+                <p className="text-stone text-xs">
+                  {groupScoped ? "Suggested for the group" : "Suggested for you"}
+                </p>
+                <div className="mt-1 flex flex-wrap gap-1.5">
+                  {suggestedCandidates.map((place) => (
+                    <button
+                      key={place.id}
+                      type="button"
+                      onClick={() => addOption(place.id)}
+                      disabled={busy}
+                      className="border-line text-stone hover:border-ember rounded-full border px-2.5 py-1 text-xs"
+                    >
+                      {place.name}
+                      {typeof place.walk_minutes === "number" && (
+                        <span className="opacity-70"> · {place.walk_minutes}m</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
             )}
           </div>
 

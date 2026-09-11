@@ -6,7 +6,7 @@ import useSWR from "swr";
 import JioForm from "@/components/events/JioForm";
 import { Skeleton, SkeletonDetail, Spinner } from "@/components/ui";
 import { fetcher } from "@/lib/fetcher";
-import type { EventDetail } from "@/types";
+import type { EventDetail, Place } from "@/types";
 
 /**
  * The full-page way to start a Jio.
@@ -25,13 +25,20 @@ function NewEventBody() {
   // else. Ignored if repeatFrom is also present; repeating an old Jio
   // already carries its own invitee list.
   const inviteUserId = params.get("invite");
+  // "Start a Jio from here" — a lobang's heart/reply/start-a-Jio row
+  // (CHANGES §3). Ignored alongside repeatFrom's own place list, same
+  // "repeating an old Jio already carries its own" precedent.
+  const placeId = params.get("placeId");
 
   const { data, isLoading } = useSWR<{ event: EventDetail }>(
     repeatFrom ? `/api/events/${repeatFrom}` : null,
     fetcher
   );
+  const { data: placeData, isLoading: placeLoading } = useSWR<{
+    place: Place;
+  }>(placeId && !repeatFrom ? `/api/places/${placeId}` : null, fetcher);
 
-  if (repeatFrom && isLoading) {
+  if ((repeatFrom && isLoading) || (placeId && !repeatFrom && placeLoading)) {
     return (
       <div className="space-y-5">
         <header>
@@ -44,9 +51,11 @@ function NewEventBody() {
   }
 
   const source = data?.event;
-  const initialPlaceIds = source?.options
-    .filter((o) => !o.label)
-    .map((o) => o.place_id);
+  const initialPlaceIds = source
+    ? source.options.filter((o) => !o.label).map((o) => o.place_id)
+    : placeData?.place
+      ? [placeData.place.id]
+      : undefined;
   const initialInvite = source
     ? {
         userIds: source.invitees.map((i) => i.user_id),
@@ -63,12 +72,14 @@ function NewEventBody() {
         <p className="text-stone mt-1 text-sm">
           {source
             ? `Prefilled from "${source.title}" — change anything before it's real.`
-            : "Pick a few options. Everyone ranks them, and the Borda count settles it."}
+            : placeData?.place
+              ? `Prefilled with ${placeData.place.name} — change anything before it's real.`
+              : "Pick a few options. Everyone ranks them, and the Borda count settles it."}
         </p>
       </header>
 
       <JioForm
-        key={repeatFrom ?? ""}
+        key={repeatFrom ?? placeId ?? ""}
         variant="page"
         initialTitle={source?.title}
         initialPlaceIds={initialPlaceIds}
