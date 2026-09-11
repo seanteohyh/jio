@@ -33,7 +33,8 @@ import ShareLink from "@/components/ShareLink";
 import ShareResultCard from "@/components/ShareResultCard";
 import InvitePicker, { type InviteSelection } from "@/components/InvitePicker";
 import SocialsIcon from "@/components/SocialsIcon";
-import { DeliveryIcon, InfoIcon } from "@/components/icons";
+import { FoodpandaIcon, GrabIcon } from "@/components/DeliveryIcons";
+import { InfoIcon } from "@/components/icons";
 import {
   LEAD_TIME_OPTIONS,
   leadTimeLabel,
@@ -1298,7 +1299,7 @@ export default function EventDetailPage({
                         aria-label={`Order ${option.place.name} on Foodpanda`}
                         className="text-stone hover:text-ember ml-1.5 inline-block align-middle"
                       >
-                        <DeliveryIcon className="h-3.5 w-3.5" strokeWidth={2} />
+                        <FoodpandaIcon className="h-3.5 w-3.5" />
                       </a>
                     )}
                     {option.place?.grab_url && (
@@ -1309,7 +1310,7 @@ export default function EventDetailPage({
                         aria-label={`Order ${option.place.name} on Grab`}
                         className="text-stone hover:text-ember ml-1.5 inline-block align-middle"
                       >
-                        <DeliveryIcon className="h-3.5 w-3.5" strokeWidth={2} />
+                        <GrabIcon className="h-3.5 w-3.5" />
                       </a>
                     )}
                     {/*
@@ -1446,7 +1447,7 @@ export default function EventDetailPage({
                           aria-label={`Order ${option.place.name} on Foodpanda`}
                           className="text-stone hover:text-ember shrink-0"
                         >
-                          <DeliveryIcon className="h-3.5 w-3.5" strokeWidth={2} />
+                          <FoodpandaIcon className="h-3.5 w-3.5" />
                         </a>
                       )}
                       {option?.place?.grab_url && (
@@ -1457,7 +1458,7 @@ export default function EventDetailPage({
                           aria-label={`Order ${option.place.name} on Grab`}
                           className="text-stone hover:text-ember shrink-0"
                         >
-                          <DeliveryIcon className="h-3.5 w-3.5" strokeWidth={2} />
+                          <GrabIcon className="h-3.5 w-3.5" />
                         </a>
                       )}
                     </span>

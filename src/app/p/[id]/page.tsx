@@ -4,7 +4,7 @@ import { getRepoAsync } from "@/lib/data/repo";
 import { BudgetBadge, Card, Chip, LinkButton, SectionHeading, Stars } from "@/components/ui";
 import ShareLink from "@/components/ShareLink";
 import SocialsIcon from "@/components/SocialsIcon";
-import { DeliveryIcon } from "@/components/icons";
+import { FoodpandaIcon, GrabIcon } from "@/components/DeliveryIcons";
 import { placeShareUrl } from "@/lib/shareUrl";
 import { config } from "@/lib/config";
 import { formatCuisine, googleMapsPlaceUrl, socialsLabel } from "@/lib/utils";
@@ -107,7 +107,7 @@ export default async function PublicPlacePage({
               rel="noopener noreferrer"
               className="border-line bg-paper text-ink hover:bg-cream inline-flex items-center gap-1.5 rounded-lg border px-4 py-2.5 text-sm font-medium"
             >
-              <DeliveryIcon className="h-3.5 w-3.5" strokeWidth={2} />
+              <FoodpandaIcon className="h-3.5 w-3.5" />
               Order on Foodpanda
             </a>
           )}
@@ -118,7 +118,7 @@ export default async function PublicPlacePage({
               rel="noopener noreferrer"
               className="border-line bg-paper text-ink hover:bg-cream inline-flex items-center gap-1.5 rounded-lg border px-4 py-2.5 text-sm font-medium"
             >
-              <DeliveryIcon className="h-3.5 w-3.5" strokeWidth={2} />
+              <GrabIcon className="h-3.5 w-3.5" />
               Order on Grab
             </a>
           )}
