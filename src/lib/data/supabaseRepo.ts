@@ -33,6 +33,7 @@ import type {
   EventOption,
   EventRsvp,
   EventVote,
+  FavouriteEntry,
   Filters,
   FoodIdentityCard,
   GeneralReport,
@@ -155,6 +156,37 @@ async function walkTimes(
   }
 
   return map;
+}
+
+/** Joins a set of place ids into full, walk-time-enriched `Place` records —
+ *  the same "small personal list, place joined on" shape `listWishlist`,
+ *  `listFavourites` and `listTried` all need. */
+async function hydratePlacesById(
+  client: SupabaseClient,
+  placeIds: string[]
+): Promise<Map<string, Place>> {
+  if (placeIds.length === 0) return new Map();
+
+  const { data: placeRows } = await client
+    .from("places")
+    .select("*")
+    .in("id", placeIds);
+
+  const places = (placeRows ?? []) as Place[];
+  const walks = await walkTimes(client, DEFAULT_OFFICE.id, places);
+  return new Map(
+    places.map((p) => {
+      const walk = walks.get(p.id);
+      return [
+        p.id,
+        {
+          ...p,
+          walk_minutes: walk?.walk_minutes ?? null,
+          distance_m: walk?.distance_m ?? null,
+        } as Place,
+      ];
+    })
+  );
 }
 
 async function displayNameMap(
@@ -3011,7 +3043,7 @@ export const supabaseRepo: Repo = {
     return generated;
   },
 
-  // ---- Wishlist ----
+  // ---- Wishlist ("Want to try") ----
 
   async listWishlist(userId) {
     const client = await db();
@@ -3026,30 +3058,10 @@ export const supabaseRepo: Repo = {
     const entries = (data ?? []) as WishlistEntry[];
     if (entries.length === 0) return [];
 
-    const { data: placeRows } = await client
-      .from("places")
-      .select("*")
-      .in(
-        "id",
-        entries.map((e) => e.place_id)
-      );
-
-    const places = (placeRows ?? []) as Place[];
-    const walks = await walkTimes(client, DEFAULT_OFFICE.id, places);
-    const placeById = new Map(
-      places.map((p) => {
-        const walk = walks.get(p.id);
-        return [
-          p.id,
-          {
-            ...p,
-            walk_minutes: walk?.walk_minutes ?? null,
-            distance_m: walk?.distance_m ?? null,
-          } as Place,
-        ];
-      })
+    const placeById = await hydratePlacesById(
+      client,
+      entries.map((e) => e.place_id)
     );
-
     return entries.map((e) => ({ ...e, place: placeById.get(e.place_id) }));
   },
 
@@ -3078,6 +3090,148 @@ export const supabaseRepo: Repo = {
       .insert({ user_id: userId, place_id: placeId });
     if (error) fail("Could not update your wishlist", error);
     return { added: true };
+  },
+
+  async updateWishlistNote(userId, placeId, note) {
+    const client = await db();
+
+    const { data: existing } = await client
+      .from("wishlist")
+      .select("place_id")
+      .eq("user_id", userId)
+      .eq("place_id", placeId)
+      .maybeSingle();
+    if (!existing) throw new Error("Save this place before adding a note");
+
+    const { error } = await client
+      .from("wishlist")
+      .update({ note })
+      .eq("user_id", userId)
+      .eq("place_id", placeId);
+    if (error) fail("Could not update that note", error);
+  },
+
+  // ---- Favourites (independent of the wishlist) ----
+
+  async listFavourites(userId) {
+    const client = await db();
+    const { data, error } = await client
+      .from("favourites")
+      .select("*")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false });
+
+    if (error) fail("Could not load your favourites", error);
+
+    const entries = (data ?? []) as FavouriteEntry[];
+    if (entries.length === 0) return [];
+
+    const placeById = await hydratePlacesById(
+      client,
+      entries.map((e) => e.place_id)
+    );
+    return entries.map((e) => ({ ...e, place: placeById.get(e.place_id) }));
+  },
+
+  async toggleFavourite(userId, placeId) {
+    const client = await db();
+
+    const { data: existing } = await client
+      .from("favourites")
+      .select("place_id")
+      .eq("user_id", userId)
+      .eq("place_id", placeId)
+      .maybeSingle();
+
+    if (existing) {
+      const { error } = await client
+        .from("favourites")
+        .delete()
+        .eq("user_id", userId)
+        .eq("place_id", placeId);
+      if (error) fail("Could not update your favourites", error);
+      return { added: false };
+    }
+
+    const { error } = await client
+      .from("favourites")
+      .insert({ user_id: userId, place_id: placeId });
+    if (error) fail("Could not update your favourites", error);
+    return { added: true };
+  },
+
+  // ---- Tried (derived, never user-toggled) ----
+
+  async listTriedPlaceIds(userId) {
+    const client = await db();
+
+    const [visitRes, yesRsvpRes, hostedRes] = await Promise.all([
+      client.from("visits").select("place_id").eq("user_id", userId),
+      client
+        .from("event_rsvps")
+        .select("event_id")
+        .eq("user_id", userId)
+        .eq("response", "yes"),
+      client
+        .from("lunch_events")
+        .select("winner_place_id")
+        .eq("host_id", userId)
+        .eq("status", "closed")
+        .not("winner_place_id", "is", null),
+    ]);
+
+    const placeIds = new Set<string>();
+    for (const v of (visitRes.data ?? []) as { place_id: string }[]) {
+      placeIds.add(v.place_id);
+    }
+    for (const e of (hostedRes.data ?? []) as {
+      winner_place_id: string | null;
+    }[]) {
+      if (e.winner_place_id) placeIds.add(e.winner_place_id);
+    }
+
+    const attendedEventIds = ((yesRsvpRes.data ?? []) as { event_id: string }[]).map(
+      (r) => r.event_id
+    );
+    if (attendedEventIds.length > 0) {
+      const { data: attendedEvents } = await client
+        .from("lunch_events")
+        .select("winner_place_id")
+        .in("id", attendedEventIds)
+        .eq("status", "closed")
+        .not("winner_place_id", "is", null);
+      for (const e of (attendedEvents ?? []) as {
+        winner_place_id: string | null;
+      }[]) {
+        if (e.winner_place_id) placeIds.add(e.winner_place_id);
+      }
+    }
+
+    return Array.from(placeIds);
+  },
+
+  async listTried(userId) {
+    const client = await db();
+    const ids = await supabaseRepo.listTriedPlaceIds(userId);
+    if (ids.length === 0) return [];
+
+    const { data: placeRows, error } = await client
+      .from("places")
+      .select("*")
+      .in("id", ids)
+      .eq("status", "active");
+    if (error) fail("Could not load your tried places", error);
+
+    const places = (placeRows ?? []) as Place[];
+    const walks = await walkTimes(client, DEFAULT_OFFICE.id, places);
+    return places.map((p) => {
+      const walk = walks.get(p.id);
+      return {
+        ...p,
+        walk_minutes: walk?.walk_minutes ?? null,
+        distance_m: walk?.distance_m ?? null,
+      };
+    });
   },
 
   // ---- Kakis ----

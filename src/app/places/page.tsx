@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import useSWR from "swr";
 import PlaceCard from "@/components/PlaceCard";
 import SaveButton from "@/components/SaveButton";
+import FavouriteButton from "@/components/FavouriteButton";
 import SuggestionRails from "@/components/places/SuggestionRails";
 import FilterBar, {
   DEFAULT_FILTERS,
@@ -24,28 +25,58 @@ import HintCard from "@/components/HintCard";
 import { NoPlacesMotif } from "@/components/brand/motifs";
 import { fetcher, mutateJson } from "@/lib/fetcher";
 import { features } from "@/lib/config";
-import type { Lobang, Place, WishlistEntry } from "@/types";
+import type { FavouriteEntry, Lobang, Place, WishlistEntry } from "@/types";
 
 const PAGE_SIZE = 15;
 
-type Tab = "all" | "saved" | "lobangs";
+type Tab = "all" | "want_to_try" | "tried" | "favourites" | "lobangs";
+
+/** Both toggles, everywhere a place card shows an action — a place can be
+ *  saved to either list, both, or neither, from wherever it happens to be
+ *  seen. */
+function SaveActions({ placeId }: { placeId: string }) {
+  return (
+    <span className="flex shrink-0 items-center gap-1">
+      <FavouriteButton placeId={placeId} />
+      <SaveButton placeId={placeId} />
+    </span>
+  );
+}
 
 export default function PlacesPage() {
   const [tab, setTab] = useState<Tab>("all");
 
-  // Saved entries come back with their place joined on, so this tab needs no
-  // second request and no pagination — a wishlist is small by nature.
-  const { data: wishlistData, isLoading: wishlistLoading } = useSWR<{
+  // Want to try / Favourites entries come back with their place joined on,
+  // so neither tab needs a second request or pagination — both are small
+  // lists by nature.
+  const {
+    data: wishlistData,
+    isLoading: wishlistLoading,
+    mutate: mutateWishlist,
+  } = useSWR<{
     wishlist: WishlistEntry[];
   }>(features.wishlist ? "/api/wishlist" : null, fetcher);
+  const wantToTryEntries = (wishlistData?.wishlist ?? []).filter(
+    (entry): entry is WishlistEntry & { place: Place } => Boolean(entry.place)
+  );
 
-  const savedPlaces = (wishlistData?.wishlist ?? [])
+  const { data: favouritesData, isLoading: favouritesLoading } = useSWR<{
+    favourites: FavouriteEntry[];
+  }>(features.favourites ? "/api/favourites" : null, fetcher);
+  const favouritePlaces = (favouritesData?.favourites ?? [])
     .map((entry) => entry.place)
     .filter((place): place is Place => Boolean(place));
 
+  // Never user-toggled — a place lands here on its own once you've logged a
+  // review for it or actually attended a Jio decided there.
+  const { data: triedData, isLoading: triedLoading } = useSWR<{
+    places: Place[];
+  }>("/api/tried", fetcher);
+  const triedPlaces = triedData?.places ?? [];
+
   // CHANGES_20260819e.md §2 — fetched here (not just inside the tab's own
   // content) so the tab label can show a count without waiting for the
-  // viewer to click into it, same as Saved's own count.
+  // viewer to click into it, same as every other tab's own count.
   const {
     data: lobangData,
     isLoading: lobangsLoading,
@@ -54,10 +85,10 @@ export default function PlacesPage() {
     lobangs: Lobang[];
   }>(features.lobangs ? "/api/lobangs?direction=received" : null, fetcher);
   const receivedLobangs = lobangData?.lobangs ?? [];
-  // The tab badge is an "acknowledge me" count, not a running total — Saved's
-  // count stays total-forever because a save has no seen/unseen state, but a
-  // lobang does, and a number that never goes away even after you've looked
-  // stops meaning anything.
+  // The tab badge is an "acknowledge me" count, not a running total — Want
+  // to try/Favourites/Tried's counts stay total-forever because none of
+  // them have a seen/unseen state, but a lobang does, and a number that
+  // never goes away even after you've looked stops meaning anything.
   const unseenLobangCount = receivedLobangs.filter((l) => !l.seen_at).length;
 
   const tabs = [
@@ -65,8 +96,20 @@ export default function PlacesPage() {
     ...(features.wishlist
       ? [
           [
-            "saved",
-            `Saved${savedPlaces.length ? ` (${savedPlaces.length})` : ""}`,
+            "want_to_try",
+            `Want to try${wantToTryEntries.length ? ` (${wantToTryEntries.length})` : ""}`,
+          ] as [Tab, string],
+        ]
+      : []),
+    [
+      "tried",
+      `Tried${triedPlaces.length ? ` (${triedPlaces.length})` : ""}`,
+    ] as [Tab, string],
+    ...(features.favourites
+      ? [
+          [
+            "favourites",
+            `Favourites${favouritePlaces.length ? ` (${favouritePlaces.length})` : ""}`,
           ] as [Tab, string],
         ]
       : []),
@@ -96,11 +139,11 @@ export default function PlacesPage() {
 
       <HintCard page="places" icon="🔖">
         Filter by cuisine, budget, or walk time to narrow things down, and
-        bookmark anywhere you want to find again fast.
+        save anywhere you want to try or already love.
       </HintCard>
 
       {tabs.length > 1 && (
-        <div className="border-line flex gap-1 rounded-full border p-1 text-sm">
+        <div className="border-line no-scrollbar flex gap-1 overflow-x-auto rounded-full border p-1 text-sm">
           {tabs.map(([key, label]) => (
             <button
               key={key}
@@ -108,7 +151,7 @@ export default function PlacesPage() {
               onClick={() => setTab(key)}
               aria-pressed={tab === key}
               className={
-                "flex-1 rounded-full px-3 py-1.5 transition-colors " +
+                "shrink-0 rounded-full px-3 py-1.5 transition-colors " +
                 (tab === key
                   ? "bg-ember font-medium text-white"
                   : "text-stone hover:text-ink")
@@ -120,10 +163,19 @@ export default function PlacesPage() {
         </div>
       )}
 
-      {tab === "saved" ? (
-        <SavedList
-          places={savedPlaces}
+      {tab === "want_to_try" ? (
+        <WantToTryList
+          entries={wantToTryEntries}
           loading={wishlistLoading}
+          onBrowse={() => setTab("all")}
+          onChanged={() => mutateWishlist()}
+        />
+      ) : tab === "tried" ? (
+        <TriedList places={triedPlaces} loading={triedLoading} onBrowse={() => setTab("all")} />
+      ) : tab === "favourites" ? (
+        <FavouritesList
+          places={favouritePlaces}
+          loading={favouritesLoading}
           onBrowse={() => setTab("all")}
         />
       ) : tab === "lobangs" ? (
@@ -142,7 +194,109 @@ export default function PlacesPage() {
   );
 }
 
-function SavedList({
+/**
+ * A saved place, plus its own freeform reminder of what to actually try
+ * there — "the laksa," "ask for the corner table." The reminder reuses
+ * `PlaceCard`'s existing `why` slot to display (same ember arrow-line
+ * treatment as a recommender's reasoning) and a small text link beneath the
+ * card to add or edit it, rather than a persistent input on every row.
+ */
+function WantToTryRow({
+  entry,
+  onChanged,
+}: {
+  entry: WishlistEntry & { place: Place };
+  onChanged: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [noteText, setNoteText] = useState(entry.note ?? "");
+  const [busy, setBusy] = useState(false);
+
+  const saveNote = async () => {
+    setBusy(true);
+    try {
+      await mutateJson("/api/wishlist", "PATCH", {
+        place_id: entry.place_id,
+        note: noteText.trim() || null,
+      });
+      setEditing(false);
+      onChanged();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <li>
+      <PlaceCard
+        place={entry.place}
+        why={!editing && entry.note ? `Reminder: ${entry.note}` : undefined}
+        action={<SaveActions placeId={entry.place_id} />}
+      />
+      {!editing ? (
+        <button
+          type="button"
+          onClick={() => setEditing(true)}
+          className="text-stone hover:text-ember tap-target-text mt-0.5 ml-1 text-xs underline"
+        >
+          {entry.note ? "Edit reminder" : "Add a reminder — what to try here"}
+        </button>
+      ) : (
+        <div className="mt-1.5 flex items-center gap-2 px-1">
+          <input
+            value={noteText}
+            onChange={(e) => setNoteText(e.target.value)}
+            placeholder="e.g. the laksa"
+            autoFocus
+            className="border-line bg-paper w-full min-w-0 rounded-lg border px-2.5 py-1.5 text-xs"
+          />
+          <Button size="sm" onClick={saveNote} disabled={busy}>
+            Save
+          </Button>
+        </div>
+      )}
+    </li>
+  );
+}
+
+function WantToTryList({
+  entries,
+  loading,
+  onBrowse,
+  onChanged,
+}: {
+  entries: (WishlistEntry & { place: Place })[];
+  loading: boolean;
+  onBrowse: () => void;
+  onChanged: () => void;
+}) {
+  if (loading) return <SkeletonRows count={3} rowClassName="h-28 w-full" />;
+
+  if (entries.length === 0) {
+    return (
+      <EmptyState
+        icon={<NoPlacesMotif />}
+        title="Nothing saved yet"
+        description="Tap the bookmark on any place to keep it here, with a spot to remind yourself what to try. Saving also nudges a place up your suggestions."
+        action={
+          <Button variant="secondary" onClick={onBrowse}>
+            Browse places
+          </Button>
+        }
+      />
+    );
+  }
+
+  return (
+    <ul className="space-y-2">
+      {entries.map((entry) => (
+        <WantToTryRow key={entry.place_id} entry={entry} onChanged={onChanged} />
+      ))}
+    </ul>
+  );
+}
+
+function FavouritesList({
   places,
   loading,
   onBrowse,
@@ -157,8 +311,8 @@ function SavedList({
     return (
       <EmptyState
         icon={<NoPlacesMotif />}
-        title="Nothing saved yet"
-        description="Tap the bookmark on any place to keep it here. Saving also nudges a place up your suggestions."
+        title="No favourites yet"
+        description="Tap the heart on any place you love to keep it here — independent of Want to try, so a place can be both."
         action={
           <Button variant="secondary" onClick={onBrowse}>
             Browse places
@@ -172,7 +326,51 @@ function SavedList({
     <ul className="space-y-2">
       {places.map((place) => (
         <li key={place.id}>
-          <PlaceCard place={place} action={<SaveButton placeId={place.id} />} />
+          <PlaceCard place={place} action={<SaveActions placeId={place.id} />} />
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/**
+ * Never user-toggled, unlike Want to try/Favourites — a place lands here on
+ * its own once you've logged a review for it, or actually attended a Jio
+ * that was decided there (RSVP'd yes, or hosted). Distinct from Places'
+ * "New to try" rail on the browse tab, which is the opposite idea — top
+ * picks you've *never* been to.
+ */
+function TriedList({
+  places,
+  loading,
+  onBrowse,
+}: {
+  places: Place[];
+  loading: boolean;
+  onBrowse: () => void;
+}) {
+  if (loading) return <SkeletonRows count={3} rowClassName="h-28 w-full" />;
+
+  if (places.length === 0) {
+    return (
+      <EmptyState
+        icon={<NoPlacesMotif />}
+        title="Nothing tried yet"
+        description="Log a review after eating somewhere, or attend a Jio that gets decided — either way, it'll show up here on its own."
+        action={
+          <Button variant="secondary" onClick={onBrowse}>
+            Browse places
+          </Button>
+        }
+      />
+    );
+  }
+
+  return (
+    <ul className="space-y-2">
+      {places.map((place) => (
+        <li key={place.id}>
+          <PlaceCard place={place} action={<SaveActions placeId={place.id} />} />
         </li>
       ))}
     </ul>
@@ -259,8 +457,8 @@ function LobangsList({
                 place={l.place}
                 why={`${l.from_display_name ?? "A teammate"} recommends this${l.note ? `: "${l.note}"` : ""}`}
                 action={
-                  <span className="flex shrink-0 items-center gap-2">
-                    <SaveButton placeId={l.place.id} />
+                  <span className="flex shrink-0 items-center gap-1">
+                    <SaveActions placeId={l.place.id} />
                     <button
                       type="button"
                       onClick={() => remove(l.id)}
@@ -437,7 +635,7 @@ function BrowseList() {
               <li key={place.id}>
                 <PlaceCard
                   place={place}
-                  action={<SaveButton placeId={place.id} />}
+                  action={<SaveActions placeId={place.id} />}
                 />
               </li>
             ))}

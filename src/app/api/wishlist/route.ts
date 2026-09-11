@@ -43,3 +43,29 @@ export async function POST(request: NextRequest) {
     return errorResponse(error);
   }
 }
+
+/** Sets or clears a saved place's reminder note — "the laksa," "ask for the
+ *  corner table." `note: null` (or an empty string) clears it. */
+export async function PATCH(request: NextRequest) {
+  const blocked = featureGate("wishlist");
+  if (blocked) return blocked as NextResponse;
+
+  try {
+    const user = await requireUser();
+    const repo = await getRepoAsync();
+    const body = await readJson<{ place_id?: string; note?: string | null }>(
+      request
+    );
+
+    if (!body?.place_id) return badRequest("Which place?");
+
+    await repo.updateWishlistNote(
+      user.id,
+      body.place_id,
+      body.note?.trim() || null
+    );
+    return json({ ok: true });
+  } catch (error) {
+    return errorResponse(error);
+  }
+}

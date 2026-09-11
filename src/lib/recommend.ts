@@ -246,12 +246,16 @@ export function rankPlaces(
     maxWalkMinutes,
     budgetMax,
     excludeVisited,
+    additionalExcludedPlaceIds,
   } = options;
 
   const learned = learnCuisineAffinity(visits, places);
   const wishlist = new Set(wishlistPlaceIds);
   const visitedPlaceIds = excludeVisited
-    ? new Set(visits.map((v) => v.place_id))
+    ? new Set([
+        ...visits.map((v) => v.place_id),
+        ...(additionalExcludedPlaceIds ?? []),
+      ])
     : null;
 
   const scored: ScoredPlace[] = [];
@@ -318,13 +322,14 @@ export function groupRecommend(
   if (membersData.length === 0) return rankPlaces(places, [], null, [], options);
 
   const perMember = membersData.map((member) =>
-    rankPlaces(
-      places,
-      member.visits,
-      member.prefs,
-      member.wishlistPlaceIds,
-      options
-    )
+    rankPlaces(places, member.visits, member.prefs, member.wishlistPlaceIds, {
+      ...options,
+      // Each member's own "Tried" set, not one shared list applied to
+      // everyone — same "one person's already-been rules it out for the
+      // group" reasoning `visits` itself already gets.
+      additionalExcludedPlaceIds:
+        member.triedPlaceIds ?? options.additionalExcludedPlaceIds,
+    })
   );
 
   // A place must survive every member's exclusions to be group-eligible.
