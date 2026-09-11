@@ -38,11 +38,26 @@ export async function POST(request: NextRequest) {
       return badRequest("Cannot merge the kept account into itself");
     }
 
+    // A `deleteWarning` means the data move genuinely succeeded but the
+    // old account's own retirement (the one step needing the service
+    // role) didn't — real, worth the admin's attention, but not a reason
+    // to report the whole request as failed when every other account in
+    // this same batch merged cleanly.
+    const warnings: string[] = [];
     for (const mergeUserId of mergeUserIds) {
-      await repo.mergeUserAccounts(user.id, keepUserId, mergeUserId);
+      const { deleteWarning } = await repo.mergeUserAccounts(
+        user.id,
+        keepUserId,
+        mergeUserId
+      );
+      if (deleteWarning) warnings.push(deleteWarning);
     }
 
-    return json({ ok: true, merged: mergeUserIds.length });
+    return json({
+      ok: true,
+      merged: mergeUserIds.length,
+      warnings: warnings.length > 0 ? warnings : undefined,
+    });
   } catch (error) {
     return errorResponse(error);
   }

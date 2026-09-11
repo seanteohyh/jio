@@ -44,13 +44,13 @@ describe("mergeUserAccounts — authorization", () => {
   it("lets a user merge another account into their own", async () => {
     await expect(
       demoRepo.mergeUserAccounts(DEMO_TEAMMATE_A, DEMO_TEAMMATE_A, DEMO_TEAMMATE_B)
-    ).resolves.toBeUndefined();
+    ).resolves.toEqual({});
   });
 
   it("lets an admin merge two accounts that are neither their own", async () => {
     await expect(
       demoRepo.mergeUserAccounts(DEMO_USER_ID, DEMO_TEAMMATE_A, DEMO_TEAMMATE_B)
-    ).resolves.toBeUndefined();
+    ).resolves.toEqual({});
   });
 
   it("stops a non-admin merging into someone else's account", async () => {

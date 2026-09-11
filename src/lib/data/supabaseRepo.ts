@@ -4164,10 +4164,19 @@ export const supabaseRepo: Repo = {
       // The data has already moved — a failed cleanup here is a stray
       // empty account left behind, not a lost-data problem, so this is
       // reported but not thrown as a hard failure of the merge itself.
+      // Still surfaced to the caller (not just the server log) — a
+      // duplicate-accounts admin clicking "Confirm merge" and seeing the
+      // exact same duplicate sitting there afterward, with no error
+      // anywhere, is indistinguishable from the merge having silently done
+      // nothing at all.
+      const message = `Moved everything off the old account, but could not delete it: ${deleteError.message}`;
       console.error(
         `[account merge] moved data from ${mergeUserId} to ${keepUserId} but could not delete the old account: ${deleteError.message}`
       );
+      return { deleteWarning: message };
     }
+
+    return {};
   },
 
   // `callerId` isn't passed to the RPC — generate_recovery_token checks
