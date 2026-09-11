@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { demoRepo, resetDemoStore } from "@/lib/data/demoRepo";
 import { DEFAULT_OFFICE, DEMO_USER_ID } from "@/lib/constants";
 import { DEMO_TEAMMATE_A, DEMO_TEAMMATE_B } from "@/lib/data/demoData";
+import { sgtDateKey } from "@/lib/utils";
 
 /**
  * CHANGES_20260807.md §4/§5 — the shared account-reassignment operation
@@ -161,6 +162,33 @@ describe("mergeUserAccounts — reassignment", () => {
 
     const wishlist = await demoRepo.listWishlist(DEMO_TEAMMATE_A);
     expect(wishlist.map((w) => w.place_id)).toContain("demo-place-01");
+  });
+
+  it("merges daily-visit counts on same-day collision, moves the rest, and carries action events", async () => {
+    // Migration 086 / demoRepo parity: the real app_daily_visits/
+    // action_events tables didn't exist when merge_user_accounts was last
+    // written, and their real-schema `user_id` has a hard FK to
+    // auth.users with no cascade — an untouched row there was what
+    // actually blocked a real merged-in account's deletion in production.
+    const today = sgtDateKey(new Date());
+    const yesterday = sgtDateKey(new Date(Date.now() - 24 * 60 * 60 * 1000));
+    await demoRepo.trackDailyVisit(DEMO_TEAMMATE_A, today);
+    await demoRepo.trackDailyVisit(DEMO_TEAMMATE_B, today);
+    await demoRepo.trackDailyVisit(DEMO_TEAMMATE_B, today);
+    await demoRepo.trackDailyVisit(DEMO_TEAMMATE_B, yesterday);
+    await demoRepo.logAction(DEMO_TEAMMATE_B, "cast_ballot");
+
+    await demoRepo.mergeUserAccounts(DEMO_TEAMMATE_A, DEMO_TEAMMATE_A, DEMO_TEAMMATE_B);
+
+    const survivor = await demoRepo.getAdminUserDetail(DEMO_TEAMMATE_A);
+    const todayEntry = survivor?.dailyActivity.find((d) => d.date === today);
+    const yesterdayEntry = survivor?.dailyActivity.find((d) => d.date === yesterday);
+    expect(todayEntry?.pageViews).toBe(3);
+    expect(yesterdayEntry?.pageViews).toBe(1);
+    expect(todayEntry?.actions.map((a) => a.action)).toContain("cast_ballot");
+
+    // The merged-away account no longer resolves at all (profile retired).
+    expect(await demoRepo.getAdminUserDetail(DEMO_TEAMMATE_B)).toBeNull();
   });
 
   it("keeps the surviving account's own prefs over the merged-in account's", async () => {

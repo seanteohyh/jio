@@ -3926,6 +3926,35 @@ export const demoRepo: Repo = {
       if (p.user_id === mergeUserId) p.user_id = keepUserId;
     }
 
+    // dailyVisits — mirrors app_daily_visits' real (user_id, visit_date)
+    // PK: where both accounts visited the same day, merge the counts
+    // rather than dropping one side's history (migration 086 — this table
+    // was the actual cause of a real-account merge's old row surviving:
+    // its real-schema counterpart has a hard FK to auth.users with no
+    // cascade, which blocked the old account's deletion outright).
+    for (const dv of s.dailyVisits) {
+      if (dv.user_id !== mergeUserId) continue;
+      const keepRow = s.dailyVisits.find(
+        (k) => k.user_id === keepUserId && k.visit_date === dv.visit_date
+      );
+      if (keepRow) {
+        keepRow.page_view_count += dv.page_view_count;
+        if (dv.first_seen_at < keepRow.first_seen_at) {
+          keepRow.first_seen_at = dv.first_seen_at;
+        }
+        if (dv.last_seen_at > keepRow.last_seen_at) {
+          keepRow.last_seen_at = dv.last_seen_at;
+        }
+      } else {
+        dv.user_id = keepUserId;
+      }
+    }
+    s.dailyVisits = s.dailyVisits.filter((dv) => dv.user_id !== mergeUserId);
+
+    for (const ae of s.actionEvents) {
+      if (ae.user_id === mergeUserId) ae.user_id = keepUserId;
+    }
+
     if (s.prefs.some((p) => p.user_id === keepUserId)) {
       s.prefs = s.prefs.filter((p) => p.user_id !== mergeUserId);
     } else {
