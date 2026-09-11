@@ -1,14 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import useSWR from "swr";
 import { Chip, inputClass } from "./ui";
 import { BUDGET_TIERS } from "@/lib/constants";
-import { formatCuisine } from "@/lib/utils";
-import { fetcher } from "@/lib/fetcher";
+import { cn } from "@/lib/utils";
 import { features } from "@/lib/config";
 import { SearchIcon } from "@/components/icons";
-import type { BudgetTier, CuisineOption } from "@/types";
+import CuisinePicker from "@/components/CuisinePicker";
+import type { BudgetTier, Place } from "@/types";
 
 export interface FilterState {
   search: string;
@@ -49,16 +48,80 @@ export const DEFAULT_FILTERS: FilterState = {
 export const MAX_WALK_MINUTES = 45;
 
 /**
- * Cuisine / budget / walk-time filters.
+ * The same narrowing `/api/places` applies server-side (`applyFilters` in
+ * demoRepo.ts / the equivalent Supabase query), reimplemented as a pure
+ * client-side predicate so the same `FilterState` can also narrow the
+ * already-fetched, unpaginated Want to try / Tried / Favourites lists —
+ * those never round-trip through the API on a filter change, so filtering
+ * them needs to happen in the browser instead. `kakiFavouritesOnly` and
+ * `sortBy: "kaki_rating"` are deliberately not reproduced here: both need
+ * a Kaki-scoped rating computed specially for the sorted browse list, never
+ * populated on a place object fetched any other way, so they stay specific
+ * to the "All" tab's own server-backed list.
+ */
+export function filterPlaces(
+  places: Place[],
+  filters: FilterState,
+  options?: {
+    /** The walk-time slider defaults to 30 min — right for a plain browse,
+     *  where that's a bias toward what's nearby, but wrong for a saved list
+     *  that's never been walk-filtered at all (a Want-to-try place saved
+     *  from across town would otherwise vanish the instant this filter
+     *  starts applying to it, with no cue why). Off by default; the caller
+     *  passes `true` once the walk slider has actually been touched this
+     *  session, same "touched, not value-equals-default" flag `FilterBar`
+     *  already tracks for its own Clear link. */
+    applyMaxWalk?: boolean;
+  }
+): Place[] {
+  let result = places;
+
+  if (filters.cuisines.length > 0) {
+    result = result.filter((p) => p.cuisine.some((c) => filters.cuisines.includes(c)));
+  }
+  if (filters.budgetMax < 6) {
+    result = result.filter((p) => p.budget_tier <= filters.budgetMax);
+  }
+  if (options?.applyMaxWalk && filters.maxWalk < MAX_WALK_MINUTES) {
+    result = result.filter(
+      (p) => typeof p.walk_minutes !== "number" || p.walk_minutes <= filters.maxWalk
+    );
+  }
+  if (filters.hasFoodpanda) result = result.filter((p) => !!p.foodpanda_url);
+  if (filters.hasGrab) result = result.filter((p) => !!p.grab_url);
+  if (filters.search.trim()) {
+    const needle = filters.search.trim().toLowerCase();
+    result = result.filter(
+      (p) =>
+        p.name.toLowerCase().includes(needle) ||
+        (p.address || "").toLowerCase().includes(needle) ||
+        p.best_dishes.some((d) => d.toLowerCase().includes(needle)) ||
+        p.cuisine.some((c) => c.toLowerCase().includes(needle))
+    );
+  }
+
+  return result;
+}
+
+/**
+ * Cuisine / budget / walk-time filters, shared above every tab on Places
+ * (and Map's own equivalent) rather than owned by any one list — the same
+ * search, cuisine, budget, walk-time and Foodpanda/Grab narrowing now
+ * applies to Want to try / Tried / Favourites too, not just the plain
+ * browse ("All") tab.
  *
- * The cuisine strip scrolls horizontally rather than wrapping into a wall of
- * seventeen chips — on a phone that wall pushes the actual results off screen.
+ * Cuisine is a multi-select dropdown (`CuisinePicker`), not a horizontally
+ * scrolling chip strip — that either overflowed illegibly or wrapped into
+ * several rows depending on how many cuisines existed, where a fixed-size
+ * dropdown button holds its size regardless.
  */
 export default function FilterBar({
   value,
   onChange,
   showSearch = true,
   showSort = false,
+  showKakiFilter = true,
+  onTouchedChange,
 }: {
   value: FilterState;
   onChange: (next: FilterState) => void;
@@ -67,13 +130,17 @@ export default function FilterBar({
    *  order, so the control would be there but do nothing. (/suggest, which
    *  sorted by recommendation score, is retired — UX review log #6.) */
   showSort?: boolean;
+  /** "Kaki favourites only" needs a Kaki-scoped rating only ever computed
+   *  for the sorted, server-backed browse list (see `filterPlaces` above) —
+   *  hidden on any tab whose places didn't come from that same fetch, since
+   *  it would silently do nothing there. */
+  showKakiFilter?: boolean;
+  /** Mirrors this bar's own "has anything been touched this session" flag
+   *  out to the parent — used to decide whether the walk-time filter
+   *  should actually narrow a tab that was never walk-filtered to begin
+   *  with (see `filterPlaces`'s `applyMaxWalk` option). */
+  onTouchedChange?: (touched: boolean) => void;
 }) {
-  const { data: cuisinesData } = useSWR<{ cuisines: CuisineOption[] }>(
-    "/api/cuisines",
-    fetcher
-  );
-  const cuisines = cuisinesData?.cuisines ?? [];
-
   // Whether anything has been touched this session, not whether every field
   // currently equals DEFAULT_FILTERS — a value-equality check made "Clear"
   // flicker away mid-drag the instant the walk slider crossed back over its
@@ -84,19 +151,14 @@ export default function FilterBar({
 
   const update = (next: FilterState) => {
     setTouched(true);
+    onTouchedChange?.(true);
     onChange(next);
   };
 
   const clear = () => {
     setTouched(false);
+    onTouchedChange?.(false);
     onChange(DEFAULT_FILTERS);
-  };
-
-  const toggleCuisine = (cuisine: string) => {
-    const next = value.cuisines.includes(cuisine)
-      ? value.cuisines.filter((c) => c !== cuisine)
-      : [...value.cuisines, cuisine];
-    update({ ...value, cuisines: next });
   };
 
   return (
@@ -118,20 +180,29 @@ export default function FilterBar({
         </div>
       )}
 
-      <div className="no-scrollbar -mx-4 flex gap-1.5 overflow-x-auto px-4">
-        {cuisines.map((cuisine) => (
-          <Chip
-            key={cuisine.slug}
-            active={value.cuisines.includes(cuisine.slug)}
-            onClick={() => toggleCuisine(cuisine.slug)}
-            pressed={value.cuisines.includes(cuisine.slug)}
-          >
-            {formatCuisine(cuisine.slug)}
-          </Chip>
-        ))}
-      </div>
-
       <div className="flex flex-wrap items-center gap-4">
+        <CuisinePicker
+          selected={value.cuisines}
+          onChange={(cuisines) => update({ ...value, cuisines })}
+          trigger={({ onClick, open, label }) => (
+            <button
+              type="button"
+              onClick={onClick}
+              aria-haspopup="true"
+              aria-expanded={open}
+              aria-pressed={value.cuisines.length > 0}
+              className={cn(
+                "inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-3.5 text-xs transition-[color,background-color,transform] duration-150 active:scale-[0.97]",
+                value.cuisines.length > 0
+                  ? "bg-ember text-white"
+                  : "border-line bg-paper text-stone hover:border-ember hover:text-ink border"
+              )}
+            >
+              {label}
+            </button>
+          )}
+        />
+
         {showSort && (
           <label className="flex items-center gap-2 text-xs">
             <span className="text-stone">Sort</span>
@@ -149,14 +220,14 @@ export default function FilterBar({
               <option value="walk">Nearest</option>
               <option value="rating">Highest rated</option>
               <option value="newly_rated">Newly rated</option>
-              {features.kakis && (
+              {features.kakis && showKakiFilter && (
                 <option value="kaki_rating">Rated by your Kaki group</option>
               )}
             </select>
           </label>
         )}
 
-        {features.kakis && (
+        {features.kakis && showKakiFilter && (
           <Chip
             active={value.kakiFavouritesOnly}
             onClick={() =>
