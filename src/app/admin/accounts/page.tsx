@@ -351,7 +351,7 @@ export default function AccountsPage() {
                     </div>
                   )}
 
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <Button
                       size="sm"
                       variant="secondary"
@@ -368,6 +368,18 @@ export default function AccountsPage() {
                     >
                       {busy ? "Merging…" : "Confirm merge"}
                     </Button>
+                    {/* Confirm merge stays disabled until Preview has
+                        actually loaded — a merge is irreversible, so this
+                        forces a look at what's about to move before it can
+                        run. A disabled button gives no feedback of its own
+                        (no onClick fires, nothing explains why), which read
+                        as "I pressed merge and nothing happened" rather
+                        than "load a preview first." */}
+                    {!groupPreviews && mergeSet.size > 0 && !busy && (
+                      <span className="text-stone text-xs">
+                        Tap Preview first to unlock Confirm merge.
+                      </span>
+                    )}
                   </div>
                 </Card>
               </li>
