@@ -20,7 +20,11 @@ export default function AppVisitTracker() {
   const pathname = usePathname();
 
   useEffect(() => {
-    fetch("/api/activity/ping", { method: "POST" }).catch(() => {
+    fetch("/api/activity/ping", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pathname }),
+    }).catch(() => {
       // Best-effort — a failed beacon must never affect navigation.
     });
   }, [pathname]);

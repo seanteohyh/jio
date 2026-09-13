@@ -365,6 +365,40 @@ export function sgtDateKey(input: string | Date): string {
   return new Date(d.getTime() + SGT_OFFSET_MS).toISOString().slice(0, 10);
 }
 
+/**
+ * Buckets a pathname into the same six sections `BottomNav` shows, plus
+ * "Admin" and a catch-all "Other" for everything else (auth, onboarding,
+ * a signed-out public preview page, etc.) — the traffic-by-page/tab report
+ * on `/admin/analytics` groups every page view into one of these rather
+ * than tracking raw, unbounded route strings (an event/place/Kaki detail
+ * page's own id would otherwise make every row unique). Matches
+ * `BottomNav`'s own `href`s exactly, so a page reachable from the bar
+ * always lands in that same tab here.
+ */
+export const PAGE_VIEW_TABS = [
+  "Home",
+  "Jios",
+  "Kakis",
+  "Places",
+  "Map",
+  "You",
+  "Admin",
+  "Other",
+] as const;
+
+export type PageViewTab = (typeof PAGE_VIEW_TABS)[number];
+
+export function tabForPath(pathname: string): PageViewTab {
+  if (pathname === "/") return "Home";
+  if (pathname.startsWith("/events")) return "Jios";
+  if (pathname.startsWith("/kakis")) return "Kakis";
+  if (pathname.startsWith("/places")) return "Places";
+  if (pathname.startsWith("/map")) return "Map";
+  if (pathname.startsWith("/profile")) return "You";
+  if (pathname.startsWith("/admin")) return "Admin";
+  return "Other";
+}
+
 /** "HH:MM" for the Asia/Singapore wall-clock time a timestamp falls on —
  *  the read-side counterpart of the `${date}T${time}+08:00` construction
  *  used wherever a wall-clock time gets turned into a real instant

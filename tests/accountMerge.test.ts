@@ -191,6 +191,27 @@ describe("mergeUserAccounts — reassignment", () => {
     expect(await demoRepo.getAdminUserDetail(DEMO_TEAMMATE_B)).toBeNull();
   });
 
+  it("merges page-view-by-tab counts on same (day, tab) collision, moves the rest", async () => {
+    // Migration 087 / demoRepo parity — same reasoning as the daily-visit
+    // merge test above, one level more specific (per tab, not just per day).
+    const today = sgtDateKey(new Date());
+    await demoRepo.trackPageView(DEMO_TEAMMATE_A, today, "Places");
+    await demoRepo.trackPageView(DEMO_TEAMMATE_B, today, "Places");
+    await demoRepo.trackPageView(DEMO_TEAMMATE_B, today, "Places");
+    await demoRepo.trackPageView(DEMO_TEAMMATE_B, today, "Home");
+
+    await demoRepo.mergeUserAccounts(DEMO_TEAMMATE_A, DEMO_TEAMMATE_A, DEMO_TEAMMATE_B);
+
+    const analytics = await demoRepo.getAdminAnalytics(90);
+    const day = analytics.pageViewsByTab.find((d) => d.date === today);
+    expect(day?.tabs).toEqual(
+      expect.arrayContaining([
+        { tab: "Places", pv: 3, uv: 1 },
+        { tab: "Home", pv: 1, uv: 1 },
+      ])
+    );
+  });
+
   it("keeps the surviving account's own prefs over the merged-in account's", async () => {
     await demoRepo.upsertUserPrefs({
       user_id: DEMO_TEAMMATE_A,

@@ -2,7 +2,10 @@
 
 import useSWR from "swr";
 import { ErrorNote, SkeletonDetail } from "@/components/ui";
-import { PerformanceSection } from "@/components/admin/AdminAnalyticsCharts";
+import {
+  PageViewsByTabSection,
+  PerformanceSection,
+} from "@/components/admin/AdminAnalyticsCharts";
 import { useAnalyticsDays } from "@/components/admin/AdminDateRangePicker";
 import { fetcher } from "@/lib/fetcher";
 import type { AdminAnalytics } from "@/types";
@@ -19,9 +22,12 @@ export default function AdminAnalyticsPerformancePage() {
   if (!data?.analytics) return null;
 
   return (
-    <PerformanceSection
-      performance={data.analytics.performance}
-      windowDays={data.analytics.windowDays}
-    />
+    <>
+      <PerformanceSection
+        performance={data.analytics.performance}
+        windowDays={data.analytics.windowDays}
+      />
+      <PageViewsByTabSection pageViewsByTab={data.analytics.pageViewsByTab ?? []} />
+    </>
   );
 }

@@ -10,6 +10,7 @@ import {
   sgtToday,
   socialsHost,
   socialsLabel,
+  tabForPath,
 } from "@/lib/utils";
 
 /**
@@ -138,5 +139,33 @@ describe("grabFoodSearchUrl", () => {
     expect(grabFoodSearchUrl("Ministry Of Food")).toBe(
       "https://food.grab.com/sg/en/restaurants?search=Ministry%20Of%20Food"
     );
+  });
+});
+
+describe("tabForPath", () => {
+  it("maps the root path to Home, exact match only", () => {
+    expect(tabForPath("/")).toBe("Home");
+  });
+
+  it("maps each BottomNav prefix to its own tab, including a nested detail page", () => {
+    expect(tabForPath("/events")).toBe("Jios");
+    expect(tabForPath("/events/abc-123")).toBe("Jios");
+    expect(tabForPath("/kakis")).toBe("Kakis");
+    expect(tabForPath("/kakis/abc-123")).toBe("Kakis");
+    expect(tabForPath("/places")).toBe("Places");
+    expect(tabForPath("/places/abc-123")).toBe("Places");
+    expect(tabForPath("/map")).toBe("Map");
+    expect(tabForPath("/profile")).toBe("You");
+  });
+
+  it("maps any /admin path to Admin", () => {
+    expect(tabForPath("/admin/analytics")).toBe("Admin");
+  });
+
+  it("falls back to Other for anything outside BottomNav", () => {
+    expect(tabForPath("/login")).toBe("Other");
+    expect(tabForPath("/welcome")).toBe("Other");
+    expect(tabForPath("/e/some-token")).toBe("Other");
+    expect(tabForPath("")).toBe("Other");
   });
 });

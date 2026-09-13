@@ -4542,6 +4542,15 @@ export const supabaseRepo: Repo = {
     if (error) fail("Could not record that visit", error);
   },
 
+  async trackPageView(_userId, visitDate, tab) {
+    const client = await db();
+    const { error } = await client.rpc("track_page_view", {
+      p_visit_date: visitDate,
+      p_tab: tab,
+    });
+    if (error) fail("Could not record that page view", error);
+  },
+
   async logAction(_userId, action, metadata = null) {
     const client = await db();
     const { error } = await client.rpc("log_action", {
