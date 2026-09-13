@@ -191,6 +191,17 @@ interface DemoStore {
     metadata: Record<string, unknown> | null;
     created_at: string;
   }[];
+  /** Traffic-by-page breakdown. Mirrors `page_views_by_tab` — same
+   *  increment-on-conflict shape as `dailyVisits` above, one row per
+   *  (user, day, tab) instead of per (user, day). */
+  pageViewsByTab: {
+    user_id: string;
+    visit_date: string;
+    tab: string;
+    page_view_count: number;
+    first_seen_at: string;
+    last_seen_at: string;
+  }[];
 }
 
 const globalStore = globalThis as typeof globalThis & {
@@ -248,6 +259,7 @@ function seed(): DemoStore {
     kakiFoodIdentitySnapshots: [],
     dailyVisits: [],
     actionEvents: [],
+    pageViewsByTab: [],
   };
 }
 
@@ -3132,6 +3144,32 @@ export const demoRepo: Repo = {
         }))
         .sort((a, b) => b.date.localeCompare(a.date));
     })();
+    // Traffic by page — always the trailing 14 days, independent of
+    // `days`/`segment`, same "today/this stretch, not the window"
+    // reasoning as `recentEntrants` above. PV sums page_view_count per
+    // (day, tab); UV is the count of distinct users with any row for
+    // that (day, tab).
+    const pageViewsByTab = (() => {
+      const cutoffKey = sgtDateKey(new Date(now.getTime() - 13 * 24 * 60 * 60 * 1000));
+      const byDay = new Map<string, Map<string, { pv: number; users: Set<string> }>>();
+      for (const v of s.pageViewsByTab) {
+        if (v.visit_date < cutoffKey) continue;
+        const tabs = byDay.get(v.visit_date) ?? new Map();
+        const entry = tabs.get(v.tab) ?? { pv: 0, users: new Set<string>() };
+        entry.pv += v.page_view_count;
+        entry.users.add(v.user_id);
+        tabs.set(v.tab, entry);
+        byDay.set(v.visit_date, tabs);
+      }
+      return Array.from(byDay.entries())
+        .map(([date, tabs]) => ({
+          date,
+          tabs: Array.from(tabs.entries())
+            .map(([tab, { pv, users }]) => ({ tab, pv, uv: users.size }))
+            .sort((a, b) => b.pv - a.pv),
+        }))
+        .sort((a, b) => b.date.localeCompare(a.date));
+    })();
     const placesAddedPerDay = bucketByDay(
       s.places.filter((p) => inWindow(p.created_at)).map((p) => p.created_at!)
     );
@@ -3314,6 +3352,7 @@ export const demoRepo: Repo = {
         kakiGroupsCumulative: s.kakis.length,
       },
       recentEntrants,
+      pageViewsByTab,
       jioOutcomes: {
         decided,
         closedNoWinner,
@@ -3965,6 +4004,31 @@ export const demoRepo: Repo = {
       if (ae.user_id === mergeUserId) ae.user_id = keepUserId;
     }
 
+    // pageViewsByTab — same "merge same-day counts, carry the rest
+    // forward" shape as dailyVisits above, keyed on (user_id, visit_date,
+    // tab) instead of just (user_id, visit_date).
+    for (const pv of s.pageViewsByTab) {
+      if (pv.user_id !== mergeUserId) continue;
+      const keepRow = s.pageViewsByTab.find(
+        (k) =>
+          k.user_id === keepUserId &&
+          k.visit_date === pv.visit_date &&
+          k.tab === pv.tab
+      );
+      if (keepRow) {
+        keepRow.page_view_count += pv.page_view_count;
+        if (pv.first_seen_at < keepRow.first_seen_at) {
+          keepRow.first_seen_at = pv.first_seen_at;
+        }
+        if (pv.last_seen_at > keepRow.last_seen_at) {
+          keepRow.last_seen_at = pv.last_seen_at;
+        }
+      } else {
+        pv.user_id = keepUserId;
+      }
+    }
+    s.pageViewsByTab = s.pageViewsByTab.filter((pv) => pv.user_id !== mergeUserId);
+
     if (s.prefs.some((p) => p.user_id === keepUserId)) {
       s.prefs = s.prefs.filter((p) => p.user_id !== mergeUserId);
     } else {
@@ -4225,6 +4289,27 @@ export const demoRepo: Repo = {
       s.dailyVisits.push({
         user_id: userId,
         visit_date: visitDate,
+        page_view_count: 1,
+        first_seen_at: now,
+        last_seen_at: now,
+      });
+    }
+  },
+
+  async trackPageView(userId, visitDate, tab) {
+    const s = store();
+    const now = new Date().toISOString();
+    const existing = s.pageViewsByTab.find(
+      (v) => v.user_id === userId && v.visit_date === visitDate && v.tab === tab
+    );
+    if (existing) {
+      existing.page_view_count += 1;
+      existing.last_seen_at = now;
+    } else {
+      s.pageViewsByTab.push({
+        user_id: userId,
+        visit_date: visitDate,
+        tab,
         page_view_count: 1,
         first_seen_at: now,
         last_seen_at: now,

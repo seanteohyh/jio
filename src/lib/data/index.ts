@@ -1098,6 +1098,16 @@ export interface Repo {
    */
   trackDailyVisit(userId: string, visitDate: string): Promise<void>;
   /**
+   * Traffic-by-page breakdown behind `/admin/analytics`' "Page views by
+   * tab" table — same call site and same (userId, visitDate) upsert shape
+   * as `trackDailyVisit` (a separate row per `tab` rather than a column
+   * on that same table, since a single page view belongs to exactly one
+   * tab). `tab` is caller-computed (`tabForPath`, from `AppVisitTracker`'s
+   * pathname via the ping route) rather than derived here, same reasoning
+   * as `visitDate` above.
+   */
+  trackPageView(userId: string, visitDate: string, tab: string): Promise<void>;
+  /**
    * Fire-and-forget action-log write behind `lib/actions.ts`'s `logAction`
    * helper, which is what actually swallows failures — this method itself
    * is a plain write, same division of labor as `sendPushToUsers` vs.
@@ -1248,6 +1258,7 @@ export const REPO_METHODS = [
   "saveKakiFoodIdentitySnapshot",
   "listKakiFoodIdentitySnapshots",
   "trackDailyVisit",
+  "trackPageView",
   "logAction",
   "hasMatchingKakiForParticipants",
   "hasDismissedKakiBridgeSuggestion",

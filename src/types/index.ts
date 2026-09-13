@@ -1050,6 +1050,21 @@ export interface AdminAnalytics {
     users: { id: string; name: string; pageViews: number }[];
   }[];
 
+  /**
+   * Traffic by page — one of `BottomNav`'s own sections (plus "Admin" and
+   * a catch-all "Other"), per Asia/Singapore calendar day, from
+   * `page_views_by_tab`. Always the trailing 14 days regardless of
+   * `windowDays`/`appliedSegment`, same "today/this stretch, not the
+   * window" reasoning as `recentEntrants` above. PV is total page views
+   * that day for that tab; UV is distinct signed-in visitors. Sparse: a
+   * day with no visits to a given tab simply omits that tab, and a day
+   * with no visits at all has no entry. Newest day first.
+   */
+  pageViewsByTab: {
+    date: string;
+    tabs: { tab: string; pv: number; uv: number }[];
+  }[];
+
   jioOutcomes: {
     decided: number;
     closedNoWinner: number;

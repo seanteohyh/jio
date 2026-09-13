@@ -88,6 +88,61 @@ describe("getAdminAnalytics recentEntrants", () => {
   });
 });
 
+describe("trackPageView", () => {
+  it("starts a fresh row with pv 1, uv 1 on first view", async () => {
+    await demoRepo.upsertProfile(USER_A, "Ada");
+    const today = new Date().toISOString().slice(0, 10);
+    await demoRepo.trackPageView(USER_A, today, "Places");
+
+    const analytics = await demoRepo.getAdminAnalytics(90);
+    const day = analytics.pageViewsByTab.find((d) => d.date === today);
+    expect(day?.tabs).toEqual([{ tab: "Places", pv: 1, uv: 1 }]);
+  });
+
+  it("increments pv but not uv on a repeat view from the same user", async () => {
+    await demoRepo.upsertProfile(USER_A, "Ada");
+    const today = new Date().toISOString().slice(0, 10);
+    await demoRepo.trackPageView(USER_A, today, "Places");
+    await demoRepo.trackPageView(USER_A, today, "Places");
+    await demoRepo.trackPageView(USER_A, today, "Places");
+
+    const analytics = await demoRepo.getAdminAnalytics(90);
+    const day = analytics.pageViewsByTab.find((d) => d.date === today);
+    expect(day?.tabs).toEqual([{ tab: "Places", pv: 3, uv: 1 }]);
+  });
+
+  it("keeps separate rows per tab on the same day", async () => {
+    await demoRepo.upsertProfile(USER_A, "Ada");
+    await demoRepo.upsertProfile(USER_B, "Bea");
+    const today = new Date().toISOString().slice(0, 10);
+    await demoRepo.trackPageView(USER_A, today, "Places");
+    await demoRepo.trackPageView(USER_A, today, "Home");
+    await demoRepo.trackPageView(USER_B, today, "Places");
+
+    const analytics = await demoRepo.getAdminAnalytics(90);
+    const day = analytics.pageViewsByTab.find((d) => d.date === today);
+    expect(day?.tabs).toEqual(
+      expect.arrayContaining([
+        { tab: "Places", pv: 2, uv: 2 },
+        { tab: "Home", pv: 1, uv: 1 },
+      ])
+    );
+  });
+
+  it("excludes a view older than 14 days", async () => {
+    await demoRepo.upsertProfile(USER_A, "Ada");
+    await demoRepo.trackPageView(USER_A, "2020-01-01", "Places");
+
+    const analytics = await demoRepo.getAdminAnalytics(90);
+    expect(analytics.pageViewsByTab.find((d) => d.date === "2020-01-01")).toBeUndefined();
+  });
+
+  it("is empty when nobody has viewed anything", async () => {
+    const analytics = await demoRepo.getAdminAnalytics(90);
+    expect(analytics.pageViewsByTab).toEqual([]);
+  });
+});
+
 describe("getAdminUserDetail dailyActivity", () => {
   it("shows a visit day with an empty actions array when nothing was logged", async () => {
     await demoRepo.upsertProfile(USER_A, "Ada");

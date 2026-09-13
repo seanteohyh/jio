@@ -618,6 +618,80 @@ export function RecentEntrantsSection({
   );
 }
 
+/**
+ * Traffic by page — PV (page views) and UV (unique visitors) per
+ * `BottomNav` section, one table per day, over the trailing 14 days
+ * (independent of the date-range picker, same "today/this stretch, not
+ * the window" reasoning `RecentEntrantsSection` above already uses).
+ * Newest day open by default, the rest behind a `<details>` disclosure —
+ * same pattern `GrowthSection`'s "Who joined" uses — so 14 days of tables
+ * don't all sit expanded on the page at once.
+ */
+export function PageViewsByTabSection({
+  pageViewsByTab,
+}: {
+  pageViewsByTab: AdminAnalytics["pageViewsByTab"];
+}) {
+  const totalPv = pageViewsByTab.reduce(
+    (sum, day) => sum + day.tabs.reduce((s, t) => s + t.pv, 0),
+    0
+  );
+  const csvRows: (string | number)[][] = pageViewsByTab.flatMap((day) =>
+    day.tabs.map((t) => [day.date, t.tab, t.pv, t.uv])
+  );
+
+  return (
+    <Card className="space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <SectionHeading>Page views by tab</SectionHeading>
+        {csvRows.length > 0 && (
+          <ExportCsvButton
+            filename="page-views-by-tab.csv"
+            headers={["date", "tab", "pv", "uv"]}
+            rows={csvRows}
+          />
+        )}
+      </div>
+      <p className="text-stone text-sm">
+        {totalPv} page view{totalPv === 1 ? "" : "s"} across the last 14 days
+      </p>
+      {pageViewsByTab.length === 0 ? (
+        <p className="text-stone text-sm">No page views recorded in the last 14 days.</p>
+      ) : (
+        <div className="space-y-1">
+          {pageViewsByTab.map((day, index) => (
+            <details key={day.date} open={index === 0}>
+              <summary className="text-ink cursor-pointer py-1 text-sm font-medium">
+                {shortDate(day.date)}
+              </summary>
+              <div className="mt-1 overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead>
+                    <tr className="text-stone text-xs">
+                      <th className="py-1 pr-4 font-medium">Tab</th>
+                      <th className="py-1 pr-4 font-medium">PV</th>
+                      <th className="py-1 font-medium">UV</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {day.tabs.map((t) => (
+                      <tr key={t.tab} className="border-line border-t">
+                        <td className="py-1 pr-4">{t.tab}</td>
+                        <td className="py-1 pr-4 tabular-nums">{t.pv}</td>
+                        <td className="py-1 tabular-nums">{t.uv}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </details>
+          ))}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 export function JioOutcomesSection({
   outcomes,
   appliedSegmentLabel,
@@ -870,11 +944,10 @@ export function PerformanceSection({
 
       <div className="border-line border-t pt-3">
         <p className="text-stone text-xs">
-          Page views, unique visitors, and Core Web Vitals live in Vercel's
-          own dashboard instead — free-tier metering (Supabase egress/DB
-          size, Vercel Active CPU) is platform data this app's own database
-          can't query either, so both link out rather than trying to
-          replicate them.
+          Page views and unique visitors by page are broken out below. Core
+          Web Vitals and free-tier metering (Supabase egress/DB size, Vercel
+          Active CPU) are platform data this app's own database can't query,
+          so those still link out rather than trying to replicate them.
         </p>
         <div className="mt-2 flex flex-wrap gap-3 text-sm">
           <a
