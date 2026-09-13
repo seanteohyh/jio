@@ -144,6 +144,29 @@ describe("generateDueOccurrences", () => {
     expect(second).toBe(0);
   });
 
+  it("does not create a duplicate occurrence from two overlapping calls (a second tab, an SWR refetch)", async () => {
+    // Real bug: GET /api/events calls this on every load. Two overlapping
+    // requests for the same host — a second tab, or an SWR refetch racing
+    // the first load — could both read `last_generated_date` before either
+    // had written it, both pass the "not yet generated" check, and both
+    // create their own copy of the same week's Jio. The occurrence must be
+    // claimed before anything else in the loop iteration awaits, so only
+    // one of two overlapping calls can win.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-05T09:00:00"));
+
+    await demoRepo.createRecurringSeries(seriesInput());
+    const [first, second] = await Promise.all([
+      demoRepo.generateDueOccurrences(DEMO_USER_ID),
+      demoRepo.generateDueOccurrences(DEMO_USER_ID),
+    ]);
+
+    expect(first + second).toBe(1);
+
+    const events = await demoRepo.listEvents(DEMO_USER_ID);
+    expect(events.filter((e) => e.recurring_series_id)).toHaveLength(1);
+  });
+
   it("does not generate for a cancelled series", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-05T09:00:00"));
