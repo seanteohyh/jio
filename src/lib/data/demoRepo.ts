@@ -2341,6 +2341,17 @@ export const demoRepo: Repo = {
         continue;
       }
 
+      // Claim this occurrence *before* the first `await` below, not after
+      // `createEvent` returns — two overlapping calls to this same host's
+      // `generateDueOccurrences` (a second tab, an SWR refetch racing the
+      // initial load) both read `last_generated_date` before either used to
+      // write it, so both passed the check above and both created their own
+      // duplicate Jio for the same week. Nothing else in this loop iteration
+      // awaits before this write, so no other invocation can interleave
+      // between the check and the claim — the same "claim before acting"
+      // shape `listAndClaimDueReminders` already uses for reminders.
+      series.last_generated_date = nextKey;
+
       // Expanded fresh each time, not snapshotted on the series — see the
       // header comment on 031_recurring_series.sql for why.
       const inviteeSet = new Set(series.invitee_ids);
@@ -2375,7 +2386,6 @@ export const demoRepo: Repo = {
       );
       created.recurring_series_id = series.id;
 
-      series.last_generated_date = nextKey;
       generated += 1;
     }
 

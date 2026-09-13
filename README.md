@@ -839,6 +839,26 @@ does not trigger it on the host's behalf — the same one-cron-a-day
 constraint that shaped the discovery cron (see Free-tier realities) is
 what kept this lazy rather than reaching for a service-role write path.
 
+**A recurring series' occurrence gets claimed atomically, not checked then
+written two steps later.** Confirmed bug: because `generateDueOccurrences`
+runs on every `GET /api/events`, two overlapping requests from the same
+host — a second tab, an SWR refetch racing the initial page load — could
+both read a series' `last_generated_date` before either had written it,
+both pass the "not yet generated this week" check, and both go on to
+create their own copy of the same week's Jio (reported as a recurring
+"Wed Lunches" appearing twice, same date/time, in both the calendar and
+list views). The occurrence is now claimed as one step, before anything
+else in that pass awaits: the real backend does it as a single conditional
+`UPDATE ... WHERE last_generated_date IS NULL OR < this week's date`, the
+same "claim before acting" shape `listAndClaimDueReminders` already uses
+for reminders, so a losing, overlapping request sees zero rows affected
+and skips instead of creating a duplicate; demoRepo's in-memory version
+gets the equivalent fix — writing the claim before its own first `await`,
+since that's the only place another interleaved call could slip in on a
+single-threaded store. Existing duplicates already created by the old
+code aren't cleaned up automatically — a host needs to cancel the extra
+copy by hand.
+
 **A hidden-vote Jio's blindness is enforced at the API response layer, not
 the database.** `hide_votes` (migration 034) is a plain host-write-only
 column — RLS on `event_votes` still lets a participant read their own
@@ -1283,7 +1303,7 @@ does the reassignment, not the authorization check.
 ## Tests
 
 ```bash
-npm test          # 799 tests across 68 files
+npm test          # 800 tests across 68 files
 npm run typecheck
 npm run lint
 ```

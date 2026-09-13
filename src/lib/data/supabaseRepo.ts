@@ -3016,6 +3016,26 @@ export const supabaseRepo: Repo = {
         continue;
       }
 
+      // Atomic claim, *before* creating anything — same "claim before
+      // acting" shape `listAndClaimDueReminders` already uses for
+      // reminders. This route runs on every `GET /api/events`, so two
+      // overlapping requests for the same host (a second tab, an SWR
+      // refetch racing the initial load) could both pass the plain check
+      // above while `last_generated_date` still held last week's date,
+      // and both go on to create their own duplicate Jio for the same
+      // week — which is exactly the "Wed Lunches" showing up twice bug.
+      // The `.or()` condition below only lets the row update once per
+      // occurrence; a losing, overlapping call gets zero rows back from
+      // `.select("id")` and skips instead of creating a duplicate.
+      const { data: claimed, error: claimError } = await client
+        .from("recurring_series")
+        .update({ last_generated_date: nextKey })
+        .eq("id", series.id)
+        .or(`last_generated_date.is.null,last_generated_date.lt.${nextKey}`)
+        .select("id");
+      if (claimError) fail("Could not check recurring Jios", claimError);
+      if (!claimed || claimed.length === 0) continue;
+
       const inviteeSet = new Set(series.invitee_ids);
       if (series.kaki_id) {
         const { data: members } = await client
@@ -3055,11 +3075,6 @@ export const supabaseRepo: Repo = {
         .from("lunch_events")
         .update({ recurring_series_id: series.id })
         .eq("id", created.id);
-
-      await client
-        .from("recurring_series")
-        .update({ last_generated_date: nextKey })
-        .eq("id", series.id);
 
       generated += 1;
     }
