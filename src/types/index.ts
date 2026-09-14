@@ -930,6 +930,12 @@ export interface UserMetrics {
   avgBudgetLabel: string;
   mostActiveMonth: string | null;
   currentVariety: number;
+  /** Count of rated visits by star (1-5) — the "Average rating" stat
+   *  tile's detail view. Missing keys mean zero, not unrated. */
+  ratingHistogram: Record<number, number>;
+  /** Count of visits by the place's `budget_tier` (1-6) — the "Usual
+   *  spend" stat tile's detail view. Missing keys mean zero. */
+  budgetBreakdown: Record<number, number>;
 }
 
 export interface KakiMetrics {

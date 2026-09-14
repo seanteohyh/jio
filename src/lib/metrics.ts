@@ -24,6 +24,8 @@ function emptyUserMetrics(): UserMetrics {
     avgBudgetLabel: "—",
     mostActiveMonth: null,
     currentVariety: 0,
+    ratingHistogram: {},
+    budgetBreakdown: {},
   };
 }
 
@@ -46,6 +48,8 @@ export function computeUserMetrics(
   let budgetCount = 0;
   const cuisineShares: Record<string, number> = {};
   const monthCounts = new Map<string, number>();
+  const ratingHistogram: Record<number, number> = {};
+  const budgetBreakdown: Record<number, number> = {};
 
   for (const visit of visits) {
     const entry = perPlace.get(visit.place_id) || {
@@ -59,6 +63,7 @@ export function computeUserMetrics(
       entry.ratingCount += 1;
       ratingSum += visit.rating;
       ratingCount += 1;
+      ratingHistogram[visit.rating] = (ratingHistogram[visit.rating] || 0) + 1;
     }
     perPlace.set(visit.place_id, entry);
 
@@ -66,6 +71,8 @@ export function computeUserMetrics(
     if (place) {
       budgetSum += place.budget_tier;
       budgetCount += 1;
+      budgetBreakdown[place.budget_tier] =
+        (budgetBreakdown[place.budget_tier] || 0) + 1;
 
       // Each visit contributes one whole "vote" split across its cuisines, so
       // the shares always sum to 1 regardless of how many tags a place carries.
@@ -135,6 +142,8 @@ export function computeUserMetrics(
     avgBudgetLabel: budgetCount > 0 ? budgetLabel(avgBudgetTier) : "—",
     mostActiveMonth,
     currentVariety: recentPlaces.size,
+    ratingHistogram,
+    budgetBreakdown,
   };
 }
 

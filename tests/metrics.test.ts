@@ -170,6 +170,34 @@ describe("computeUserMetrics", () => {
 
     expect(computeUserMetrics(visits, places).avgRatingGiven).toBeCloseTo(4);
   });
+
+  it("buckets ratings into a histogram by star", () => {
+    const places = [place("a", ["local"])];
+    const visits = [
+      visit("a", 5, "2026-07-01"),
+      visit("a", 5, "2026-07-02"),
+      visit("a", 3, "2026-07-03"),
+    ];
+
+    expect(computeUserMetrics(visits, places).ratingHistogram).toEqual({
+      5: 2,
+      3: 1,
+    });
+  });
+
+  it("buckets visits into a budget-tier breakdown", () => {
+    const places = [place("cheap", ["local"], 1), place("posh", ["western"], 4)];
+    const visits = [
+      visit("cheap", 4, "2026-07-01"),
+      visit("cheap", 4, "2026-07-02"),
+      visit("posh", 4, "2026-07-03"),
+    ];
+
+    expect(computeUserMetrics(visits, places).budgetBreakdown).toEqual({
+      1: 2,
+      4: 1,
+    });
+  });
 });
 
 describe("computeKakiMetrics", () => {

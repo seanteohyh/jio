@@ -1,7 +1,9 @@
 "use client";
 
+import { useState } from "react";
+import Link from "next/link";
 import { formatCuisine, formatMonthKey } from "@/lib/utils";
-import { StarIcon } from "@/components/icons";
+import { ArrowRightIcon, StarIcon } from "@/components/icons";
 import CountUp from "@/components/CountUp";
 import CuisinePlate from "@/components/kakis/CuisinePlate";
 import FavouritesStampCard from "@/components/kakis/FavouritesStampCard";
@@ -28,6 +30,8 @@ const BAR_COLORS = [
   "#427a70",
 ];
 
+const CUISINE_PREVIEW_COUNT = 7;
+
 function CuisineBars({
   breakdown,
   title,
@@ -35,13 +39,14 @@ function CuisineBars({
   breakdown: Record<string, number>;
   title: string;
 }) {
-  const entries = Object.entries(breakdown)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 7);
+  const [showAll, setShowAll] = useState(false);
+  const sorted = Object.entries(breakdown).sort((a, b) => b[1] - a[1]);
 
-  if (entries.length === 0) return null;
+  if (sorted.length === 0) return null;
 
-  const max = entries[0][1] || 1;
+  const entries = showAll ? sorted : sorted.slice(0, CUISINE_PREVIEW_COUNT);
+  const max = sorted[0][1] || 1;
+  const hiddenCount = sorted.length - CUISINE_PREVIEW_COUNT;
 
   return (
     <Card>
@@ -67,6 +72,15 @@ function CuisineBars({
           </li>
         ))}
       </ul>
+      {hiddenCount > 0 && (
+        <button
+          type="button"
+          onClick={() => setShowAll((prev) => !prev)}
+          className="text-ember mt-2 text-xs font-semibold"
+        >
+          {showAll ? "Show less" : `Show all ${sorted.length} cuisines`}
+        </button>
+      )}
     </Card>
   );
 }
@@ -75,13 +89,19 @@ function StatTile({
   label,
   value,
   sub,
+  href,
 }: {
   label: string;
   value: string | number;
   sub?: string;
+  /** Makes the tile a link to its own detail view — CHANGES: "You" page
+   *  redesign. Only ever passed from `UserMetricsCharts` (personal
+   *  stats); the Kaki version has no per-tile drill-down to send anyone
+   *  to, so its tiles stay plain. */
+  href?: string;
 }) {
-  return (
-    <div className="border-line bg-cream/60 rounded-xl border p-3">
+  const body = (
+    <>
       <p className="text-ink text-xl font-semibold tabular-nums">
         {/* UX review log #21 — a whole-number count animates up to its
             value; a rating or budget label (already formatted text) just
@@ -90,7 +110,27 @@ function StatTile({
       </p>
       <p className="text-stone mt-0.5 text-xs">{label}</p>
       {sub && <p className="text-stone mt-0.5 text-[11px]">{sub}</p>}
-    </div>
+    </>
+  );
+
+  if (href) {
+    return (
+      <Link
+        href={href}
+        className="border-line bg-cream/60 active:bg-cream relative block rounded-xl border p-3"
+      >
+        <ArrowRightIcon
+          className="text-stone absolute top-3 right-2.5 h-3 w-3 -rotate-45 opacity-60"
+          strokeWidth={2}
+          aria-hidden="true"
+        />
+        {body}
+      </Link>
+    );
+  }
+
+  return (
+    <div className="border-line bg-cream/60 rounded-xl border p-3">{body}</div>
   );
 }
 
@@ -108,17 +148,27 @@ export function UserMetricsCharts({ metrics }: { metrics: UserMetrics }) {
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <StatTile label="Visits logged" value={metrics.totalVisits} />
-        <StatTile label="Different places" value={metrics.distinctPlaces} />
+        <StatTile
+          label="Visits logged"
+          value={metrics.totalVisits}
+          href="/profile/visits"
+        />
+        <StatTile
+          label="Different places"
+          value={metrics.distinctPlaces}
+          href="/profile/visits?view=places"
+        />
         <StatTile
           label="Average rating"
           value={metrics.avgRatingGiven.toFixed(1)}
           sub="that you gave"
+          href="/profile/visits?view=ratings"
         />
         <StatTile
           label="Usual spend"
           value={metrics.avgBudgetLabel}
           sub={`${metrics.currentVariety} places in 30 days`}
+          href="/profile/visits?view=spend"
         />
       </div>
 

@@ -35,13 +35,12 @@ import HintCard from "@/components/HintCard";
 import { fetcher, mutateJson } from "@/lib/fetcher";
 import { config, features } from "@/lib/config";
 import { BUDGET_TIERS } from "@/lib/constants";
-import {
-  cycleCuisinePreference,
-  formatCuisine,
-  formatDate,
-  formatMonthKey,
-  groupBy,
-} from "@/lib/utils";
+import { cycleCuisinePreference, formatCuisine, formatDate } from "@/lib/utils";
+
+/** Peek row count for the "Want to try" / "History" sections — the rest
+ *  lives behind their own "See all" pages (`/profile/wishlist`,
+ *  `/profile/visits`), same split as `PastJios`'s own preview cap. */
+const PEEK_COUNT = 3;
 import type {
   AuthUser,
   BudgetTier,
@@ -182,8 +181,6 @@ export default function ProfilePage() {
   const personalInvite = usePersonalInviteLink();
 
   const visits = visitsData?.visits ?? [];
-  const byMonth = groupBy(visits, (v) => v.visited_at.slice(0, 7));
-  const months = Array.from(byMonth.keys()).sort((a, b) => b.localeCompare(a));
 
   const hasActivity =
     (features.metrics && !!metricsData?.user) ||
@@ -406,7 +403,7 @@ export default function ProfilePage() {
               <section>
                 <SectionHeading>Want to try</SectionHeading>
                 <ul className="space-y-1.5">
-                  {wishlistData.wishlist.map((entry) => (
+                  {wishlistData.wishlist.slice(0, PEEK_COUNT).map((entry) => (
                     <li key={entry.place_id}>
                       <Link
                         href={`/places/${entry.place_id}`}
@@ -424,56 +421,49 @@ export default function ProfilePage() {
                     </li>
                   ))}
                 </ul>
+                {wishlistData.wishlist.length > PEEK_COUNT && (
+                  <Link
+                    href="/profile/wishlist"
+                    className="text-ember mt-2 block text-xs font-semibold"
+                  >
+                    See all {wishlistData.wishlist.length} →
+                  </Link>
+                )}
               </section>
             )}
 
           {visits.length > 0 && (
             <section>
               <SectionHeading>History</SectionHeading>
-              <div className="space-y-4">
-                {months.slice(0, 6).map((month) => (
-                  <div key={month}>
-                    <p className="text-stone mb-1.5 text-xs font-medium">
-                      {formatMonthKey(month)}
-                    </p>
-                    <ul className="space-y-1">
-                      {(byMonth.get(month) ?? []).map((visit) => (
-                        <li
-                          key={visit.id}
-                          className="flex items-center justify-between gap-3 text-sm"
-                        >
-                          <Link
-                            href={`/places/${visit.place_id}`}
-                            className="truncate hover:underline"
-                          >
-                            {visit.place_name ?? "A place"}
-                          </Link>
-                          <span className="flex shrink-0 items-center gap-2">
-                            <Stars rating={visit.rating} />
-                            <span className="text-stone text-xs">
-                              {formatDate(visit.visited_at)}
-                            </span>
-                            {/* CHANGES_20260818.md §1 — the only place a
-                                private (not shared) visit is reachable at
-                                all, so this is the one entry point that
-                                actually covers every review, not just
-                                shared ones. Reuses the place page's own
-                                "How was it?" form rather than building a
-                                second copy — the query param tells that
-                                page which visit to pre-fill and PATCH. */}
-                            <Link
-                              href={`/places/${visit.place_id}?editVisit=${visit.id}`}
-                              className="text-ember text-xs underline"
-                            >
-                              Edit
-                            </Link>
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
+              <ul className="space-y-1">
+                {visits.slice(0, PEEK_COUNT).map((visit) => (
+                  <li
+                    key={visit.id}
+                    className="flex items-center justify-between gap-3 text-sm"
+                  >
+                    <Link
+                      href={`/places/${visit.place_id}`}
+                      className="truncate hover:underline"
+                    >
+                      {visit.place_name ?? "A place"}
+                    </Link>
+                    <span className="flex shrink-0 items-center gap-2">
+                      <Stars rating={visit.rating} />
+                      <span className="text-stone text-xs">
+                        {formatDate(visit.visited_at)}
+                      </span>
+                    </span>
+                  </li>
                 ))}
-              </div>
+              </ul>
+              {visits.length > PEEK_COUNT && (
+                <Link
+                  href="/profile/visits"
+                  className="text-ember mt-2 block text-xs font-semibold"
+                >
+                  See all {visits.length} →
+                </Link>
+              )}
             </section>
           )}
 

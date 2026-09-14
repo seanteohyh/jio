@@ -5,11 +5,11 @@ import Link from "next/link";
 import useSWR from "swr";
 import { Button, Card, EmptyState, SectionHeading } from "../ui";
 import { AlertIcon } from "@/components/icons";
-import SendLobangPanel from "./SendLobangPanel";
+import PastJioCard from "./PastJioCard";
 import { fetcher } from "@/lib/fetcher";
-import { features } from "@/lib/config";
-import { formatDate } from "@/lib/utils";
 import type { LunchEvent } from "@/types";
+
+const PREVIEW_COUNT = 3;
 
 /**
  * Closed Jios you were part of, newest first. Each one is where the "send a
@@ -47,10 +47,10 @@ export default function PastJios({ selfId }: { selfId: string }) {
     );
   }
 
-  const past = (data?.events ?? [])
+  const all = (data?.events ?? [])
     .filter((e) => e.status === "closed")
-    .sort((a, b) => b.scheduled_at.localeCompare(a.scheduled_at))
-    .slice(0, 8);
+    .sort((a, b) => b.scheduled_at.localeCompare(a.scheduled_at));
+  const past = all.slice(0, PREVIEW_COUNT);
 
   return (
     <section>
@@ -66,76 +66,33 @@ export default function PastJios({ selfId }: { selfId: string }) {
       {past.length > 0 && (
         <ul className="space-y-2">
           {past.map((event) => (
-            <li key={event.id}>
-              <Card className="space-y-2">
-                <div className="flex items-baseline justify-between gap-2">
-                  <Link
-                    href={`/events/${event.id}`}
-                    className="truncate font-medium hover:underline"
-                  >
-                    {event.title}
-                  </Link>
-                  <span className="text-stone shrink-0 text-xs">
-                    {formatDate(event.scheduled_at)}
-                  </span>
-                </div>
-
-                <p className="text-stone text-xs">
-                  {event.winner_place_name ? (
-                    <>
-                      Decided:{" "}
-                      <span className="text-ink">
-                        {event.winner_place_name}
-                      </span>
-                    </>
-                  ) : (
-                    "Closed, no winner recorded"
-                  )}
-                  {event.host_name && ` · hosted by ${event.host_name}`}
-                </p>
-
-                {features.lobangs && (
-                  <>
-                    {justSent === event.id ? (
-                      <p className="text-sage text-xs">
-                        Lobang sent.
-                      </p>
-                    ) : (
-                      composerFor !== event.id && (
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          onClick={() => {
-                            setComposerFor(event.id);
-                            setJustSent(null);
-                          }}
-                        >
-                          Send lobang
-                        </Button>
-                      )
-                    )}
-                  </>
-                )}
-              </Card>
-
-              {composerFor === event.id && (
-                <div className="mt-2">
-                  <SendLobangPanel
-                    selfId={selfId}
-                    eventId={event.id}
-                    defaultPlaceId={event.winner_place_id}
-                    defaultPlaceName={event.winner_place_name}
-                    onSent={() => {
-                      setComposerFor(null);
-                      setJustSent(event.id);
-                    }}
-                    onCancel={() => setComposerFor(null)}
-                  />
-                </div>
-              )}
-            </li>
+            <PastJioCard
+              key={event.id}
+              event={event}
+              selfId={selfId}
+              composerOpen={composerFor === event.id}
+              justSent={justSent === event.id}
+              onOpenComposer={() => {
+                setComposerFor(event.id);
+                setJustSent(null);
+              }}
+              onSent={() => {
+                setComposerFor(null);
+                setJustSent(event.id);
+              }}
+              onCancelComposer={() => setComposerFor(null)}
+            />
           ))}
         </ul>
+      )}
+
+      {all.length > PREVIEW_COUNT && (
+        <Link
+          href="/profile/jios"
+          className="text-ember mt-2 block text-xs font-semibold"
+        >
+          See all {all.length} →
+        </Link>
       )}
     </section>
   );
