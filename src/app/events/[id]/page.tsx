@@ -665,6 +665,17 @@ export default function EventDetailPage({
   // anyone sees the result, same "DECIDED" moment as any other Jio.
   const hideStanding = isOpen && Boolean(event.hide_votes);
 
+  // The Final count list matched the share card's numbers but not its
+  // order — options print in add order while open (so the list doesn't
+  // reshuffle under someone mid-vote), but once closed there's no more
+  // reason to keep that order, and the mismatch against the share card's
+  // points-sorted rows above read as if the two disagreed on the scores.
+  const standingOptions = isOpen
+    ? event.options
+    : [...event.options].sort(
+        (a, b) => (tally[b.place_id] ?? 0) - (tally[a.place_id] ?? 0)
+      );
+
   const orderedBallot = ballot.filter((placeId) =>
     event.options.some((o) => o.place_id === placeId)
   );
@@ -1302,7 +1313,7 @@ export default function EventDetailPage({
         )}
 
         <ul className="space-y-2">
-          {event.options.map((option) => {
+          {standingOptions.map((option) => {
             const points = tally[option.place_id] ?? 0;
             const isWinner = event.winner_place_id === option.place_id;
             return (
