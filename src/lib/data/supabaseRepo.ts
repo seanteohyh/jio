@@ -1,4 +1,5 @@
 import { DEFAULT_OFFICE, RECURRING_LOOKAHEAD_DAYS } from "@/lib/constants";
+import { computeVoteEndAt } from "@/lib/events";
 import {
   dateKey,
   estimateWalkMinutes,
@@ -1312,7 +1313,8 @@ export const supabaseRepo: Repo = {
     kakiId,
     inviteeIds,
     hideVotes,
-    notes
+    notes,
+    voteDeadlineOffsetMinutes
   ) {
     const client = await db();
 
@@ -1328,6 +1330,8 @@ export const supabaseRepo: Repo = {
         status: "open",
         hide_votes: hideVotes ?? false,
         notes: notes ?? null,
+        vote_deadline_offset_minutes: voteDeadlineOffsetMinutes ?? null,
+        vote_end_at: computeVoteEndAt(scheduledAt, voteDeadlineOffsetMinutes),
       })
       .select()
       .single();
@@ -1368,7 +1372,8 @@ export const supabaseRepo: Repo = {
     inviteeIds,
     hideVotes,
     timeOfDay,
-    notes
+    notes,
+    voteDeadlineOffsetMinutes
   ) {
     const uniqueDates = Array.from(new Set(candidateDates));
     if (uniqueDates.length < 2) {
@@ -1397,6 +1402,11 @@ export const supabaseRepo: Repo = {
         date_phase: "polling",
         hide_votes: hideVotes ?? false,
         notes: notes ?? null,
+        // vote_end_at deliberately left unset (null) — scheduled_at above
+        // is only the earliest candidate date, not a real commitment yet.
+        // It's computed for real once confirmEventDate resolves an actual
+        // date, from this same stored offset.
+        vote_deadline_offset_minutes: voteDeadlineOffsetMinutes ?? null,
       })
       .select()
       .single();
@@ -2227,7 +2237,7 @@ export const supabaseRepo: Repo = {
 
     const { data: eventRow } = await client
       .from("lunch_events")
-      .select("host_id, date_phase, scheduled_at")
+      .select("host_id, date_phase, scheduled_at, vote_deadline_offset_minutes")
       .eq("id", eventId)
       .maybeSingle();
     if (!eventRow) throw new Error("Can't find that Jio — the link might be old.");
@@ -2236,6 +2246,7 @@ export const supabaseRepo: Repo = {
       host_id: string;
       date_phase: string | null;
       scheduled_at: string;
+      vote_deadline_offset_minutes: number | null;
     };
     if (event.host_id !== hostId) {
       throw new Error("Only the host can confirm the date");
@@ -2261,7 +2272,14 @@ export const supabaseRepo: Repo = {
 
     const { data, error } = await client
       .from("lunch_events")
-      .update({ scheduled_at: scheduledAt, date_phase: "confirmed" })
+      .update({
+        scheduled_at: scheduledAt,
+        date_phase: "confirmed",
+        vote_end_at: computeVoteEndAt(
+          scheduledAt,
+          event.vote_deadline_offset_minutes
+        ),
+      })
       .eq("id", eventId)
       .select()
       .single();
@@ -2589,17 +2607,32 @@ export const supabaseRepo: Repo = {
 
     const { data: eventRow } = await client
       .from("lunch_events")
-      .select("status, date_phase")
+      .select("status, date_phase, vote_deadline_offset_minutes")
       .eq("id", eventId)
       .maybeSingle();
     if (!eventRow) throw new Error("Can't find that Jio — the link might be old.");
-    const event = eventRow as { status: string; date_phase: string | null };
+    const event = eventRow as {
+      status: string;
+      date_phase: string | null;
+      vote_deadline_offset_minutes: number | null;
+    };
     if (event.status === "cancelled") {
       throw new Error("A cancelled Jio has nothing to reschedule");
     }
 
-    const updates: { scheduled_at: string; date_phase?: string } = {
+    const updates: {
+      scheduled_at: string;
+      date_phase?: string;
+      vote_end_at: string | null;
+    } = {
       scheduled_at: newScheduledAt,
+      // Always freshly derived from the *current* offset and the new time
+      // — never a manually shifted delta — so a reschedule can't leave a
+      // stale deadline behind.
+      vote_end_at: computeVoteEndAt(
+        newScheduledAt,
+        event.vote_deadline_offset_minutes
+      ),
     };
     // Typing a date/time directly finalizes a still-polling Flexi Jio the
     // same way confirming a candidate does — just not restricted to the
@@ -2679,6 +2712,55 @@ export const supabaseRepo: Repo = {
 
     const detail = await supabaseRepo.getEvent(eventId);
     if (!detail) throw new Error("That Jio vanished while changing hide_votes");
+    return detail;
+  },
+
+  async setVoteDeadlineOffset(eventId, hostId, minutes) {
+    const client = await db();
+
+    const { data: eventRow } = await client
+      .from("lunch_events")
+      .select("status, scheduled_at, vote_end_at, vote_deadline_reminder_sent_at")
+      .eq("id", eventId)
+      .maybeSingle();
+    if (!eventRow) throw new Error("Can't find that Jio — the link might be old.");
+    const event = eventRow as {
+      status: string;
+      scheduled_at: string;
+      vote_deadline_reminder_sent_at: string | null;
+    };
+    if (event.status !== "open") {
+      throw new Error("There's nothing to change once this Jio isn't open");
+    }
+
+    const voteEndAt = computeVoteEndAt(event.scheduled_at, minutes);
+    const updates: {
+      vote_deadline_offset_minutes: number | null;
+      vote_end_at: string | null;
+      vote_deadline_reminder_sent_at?: null;
+    } = {
+      vote_deadline_offset_minutes: minutes,
+      vote_end_at: voteEndAt,
+    };
+    // A deadline pushed back out into the future should still get its own
+    // "closes soon" nudge, even if an earlier one already fired for the
+    // old time.
+    if (voteEndAt && new Date(voteEndAt).getTime() > Date.now()) {
+      updates.vote_deadline_reminder_sent_at = null;
+    }
+
+    const { error, count } = await client
+      .from("lunch_events")
+      .update(updates)
+      .eq("id", eventId)
+      .eq("host_id", hostId);
+    if (error) fail("Could not change when voting closes", error);
+    if (count === 0) {
+      throw new Error("Only the host can change when voting closes");
+    }
+
+    const detail = await supabaseRepo.getEvent(eventId);
+    if (!detail) throw new Error("That Jio vanished while changing the deadline");
     return detail;
   },
 
@@ -2763,6 +2845,34 @@ export const supabaseRepo: Repo = {
     );
     const winner = computeWinner(votes, optionIds).winnerId;
 
+    // Re-verify immediately before writing, against a fresh read rather
+    // than reusing the one from above — this is what actually caused a
+    // real "closed before two genuinely-invited people ever got a chance
+    // to respond" report: an "invite more people" request landing on a
+    // different connection, between the read above and the write below,
+    // wasn't visible to the check that had already run. This doesn't
+    // eliminate that race outright (that would need the whole gate
+    // re-evaluated inside the same statement as the write), but shrinks
+    // the window from "however long this whole function takes" down to
+    // the gap between this read and the write immediately after it.
+    const [freshParticipants, { data: freshRsvpRows }] = await Promise.all([
+      resolveEventParticipants(client, {
+        id: eventId,
+        host_id: event.host_id,
+        kaki_id: event.kaki_id,
+      }),
+      client.from("event_rsvps").select("user_id, response").eq("event_id", eventId),
+    ]);
+    const freshRsvpByUser = new Map(
+      ((freshRsvpRows ?? []) as { user_id: string; response: string }[]).map(
+        (r) => [r.user_id, r.response]
+      )
+    );
+    for (const userId of freshParticipants) {
+      const response = freshRsvpByUser.get(userId);
+      if (response !== "yes" && response !== "no") return null;
+    }
+
     const { createServiceRoleClient } = await import(
       "@/lib/supabase/serviceClient"
     );
@@ -2782,6 +2892,123 @@ export const supabaseRepo: Repo = {
     return supabaseRepo.getEvent(eventId);
   },
 
+  async closeEventsPastVoteDeadline() {
+    const { createServiceRoleClient } = await import(
+      "@/lib/supabase/serviceClient"
+    );
+    const admin = createServiceRoleClient();
+
+    const nowIso = new Date().toISOString();
+    const { data: eventRows, error } = await admin
+      .from("lunch_events")
+      .select("id")
+      .eq("status", "open")
+      .neq("date_phase", "polling")
+      .not("vote_end_at", "is", null)
+      .lte("vote_end_at", nowIso);
+    if (error) fail("Could not scan for expired vote deadlines", error);
+
+    const events = (eventRows ?? []) as { id: string }[];
+    let closed = 0;
+
+    for (const { id: eventId } of events) {
+      const [{ data: voteRows }, { data: optionRows }] = await Promise.all([
+        admin.from("event_votes").select("*").eq("event_id", eventId),
+        admin.from("event_options").select("place_id").eq("event_id", eventId),
+      ]);
+      const votes = (voteRows ?? []) as EventVote[];
+      const optionIds = ((optionRows ?? []) as { place_id: string }[]).map(
+        (o) => o.place_id
+      );
+      const winner = computeWinner(votes, optionIds).winnerId;
+
+      const { error: closeError, count } = await admin
+        .from("lunch_events")
+        .update({
+          status: "closed",
+          winner_place_id: winner,
+          closed_at: new Date().toISOString(),
+        })
+        .eq("id", eventId)
+        .eq("status", "open"); // Guards a race with a manual close/cancel/auto-close in flight.
+      if (closeError) {
+        console.log(
+          `[vote-deadline] could not close event ${eventId}:`,
+          closeError.message
+        );
+        continue;
+      }
+      if ((count ?? 0) > 0) closed += 1;
+    }
+
+    return closed;
+  },
+
+  async listAndClaimVoteDeadlineReminders(leadMinutes) {
+    const { createServiceRoleClient } = await import(
+      "@/lib/supabase/serviceClient"
+    );
+    const admin = createServiceRoleClient();
+
+    const now = new Date();
+    const cutoff = new Date(now.getTime() + leadMinutes * 60000).toISOString();
+    const { data: eventRows, error } = await admin
+      .from("lunch_events")
+      .select("id, title, host_id, kaki_id")
+      .eq("status", "open")
+      .neq("date_phase", "polling")
+      .is("vote_deadline_reminder_sent_at", null)
+      .not("vote_end_at", "is", null)
+      .gt("vote_end_at", now.toISOString())
+      .lte("vote_end_at", cutoff);
+    if (error) fail("Could not scan for vote-deadline reminders", error);
+
+    const events = (eventRows ?? []) as {
+      id: string;
+      title: string;
+      host_id: string;
+      kaki_id: string | null;
+    }[];
+    const due: { eventId: string; title: string; pendingUserIds: string[] }[] = [];
+
+    for (const event of events) {
+      // Atomic claim — same "claim before acting" shape
+      // `listAndClaimDueReminders` uses, applied here as a single
+      // event-level flag rather than a per-user table, since this
+      // reminder is a one-shot courtesy per Jio, not per recipient.
+      const { data: claimed } = await admin
+        .from("lunch_events")
+        .update({ vote_deadline_reminder_sent_at: new Date().toISOString() })
+        .eq("id", event.id)
+        .is("vote_deadline_reminder_sent_at", null)
+        .select("id");
+      if (!claimed || claimed.length === 0) continue;
+
+      const [participants, { data: rsvpRows }, { data: voteRows }] =
+        await Promise.all([
+          resolveEventParticipants(admin, event),
+          admin.from("event_rsvps").select("user_id, response").eq("event_id", event.id),
+          admin.from("event_votes").select("user_id").eq("event_id", event.id),
+        ]);
+      const rsvpByUser = new Map(
+        ((rsvpRows ?? []) as { user_id: string; response: string }[]).map(
+          (r) => [r.user_id, r.response]
+        )
+      );
+      const votedUserIds = new Set(
+        ((voteRows ?? []) as { user_id: string }[]).map((v) => v.user_id)
+      );
+      const pendingUserIds = participants.filter(
+        (userId) =>
+          !votedUserIds.has(userId) && rsvpByUser.get(userId) !== "no"
+      );
+
+      due.push({ eventId: event.id, title: event.title, pendingUserIds });
+    }
+
+    return due;
+  },
+
   // ---- Recurring series ----
 
   async createRecurringSeries(data) {
@@ -2799,6 +3026,7 @@ export const supabaseRepo: Repo = {
         mode: data.mode,
         fixed_place_id: data.fixed_place_id ?? null,
         option_place_ids: data.option_place_ids,
+        vote_deadline_offset_minutes: data.vote_deadline_offset_minutes ?? null,
       })
       .select()
       .single();
@@ -2889,6 +3117,10 @@ export const supabaseRepo: Repo = {
       invitee_ids: updates.invitee_ids ?? existing.invitee_ids,
       kaki_id:
         updates.kaki_id !== undefined ? updates.kaki_id : existing.kaki_id,
+      vote_deadline_offset_minutes:
+        updates.vote_deadline_offset_minutes !== undefined
+          ? updates.vote_deadline_offset_minutes
+          : existing.vote_deadline_offset_minutes,
     };
 
     const { error: updateError } = await client
@@ -2914,14 +3146,31 @@ export const supabaseRepo: Repo = {
     }[]) {
       // Time-of-day always propagates; the weekday never moves an
       // occurrence that's already generated — its calendar date is fixed.
+      let effectiveScheduledAt = occurrence.scheduled_at;
       if (updates.time_of_day !== undefined) {
         const existingDateKey = dateKey(new Date(occurrence.scheduled_at));
-        const newScheduledAt = new Date(
+        effectiveScheduledAt = new Date(
           `${existingDateKey}T${series.time_of_day}+08:00`
         ).toISOString();
         await client
           .from("lunch_events")
-          .update({ scheduled_at: newScheduledAt })
+          .update({ scheduled_at: effectiveScheduledAt })
+          .eq("id", occurrence.id);
+      }
+
+      // Also unconditional, same reasoning as time_of_day above — moving a
+      // vote deadline doesn't invalidate anyone's existing vote/RSVP the
+      // way changing the place options or invitees would.
+      if (updates.vote_deadline_offset_minutes !== undefined) {
+        await client
+          .from("lunch_events")
+          .update({
+            vote_deadline_offset_minutes: series.vote_deadline_offset_minutes,
+            vote_end_at: computeVoteEndAt(
+              effectiveScheduledAt,
+              series.vote_deadline_offset_minutes
+            ),
+          })
           .eq("id", occurrence.id);
       }
 
@@ -3068,7 +3317,10 @@ export const supabaseRepo: Repo = {
         series.office_id ?? DEFAULT_OFFICE.id,
         placeIds,
         series.kaki_id ?? null,
-        [...inviteeSet]
+        [...inviteeSet],
+        undefined,
+        undefined,
+        series.vote_deadline_offset_minutes
       );
 
       await client

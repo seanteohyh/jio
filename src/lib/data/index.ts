@@ -274,7 +274,8 @@ export interface Repo {
     kakiId?: string | null,
     inviteeIds?: string[],
     hideVotes?: boolean,
-    notes?: string | null
+    notes?: string | null,
+    voteDeadlineOffsetMinutes?: number | null
   ): Promise<LunchEvent>;
   /**
    * A Flexi Jio: date_phase starts 'polling' rather than skipping straight
@@ -295,7 +296,8 @@ export interface Repo {
     inviteeIds?: string[],
     hideVotes?: boolean,
     timeOfDay?: string,
-    notes?: string | null
+    notes?: string | null,
+    voteDeadlineOffsetMinutes?: number | null
   ): Promise<LunchEvent>;
   getEvent(idOrToken: string): Promise<EventDetail | null>;
   /**
@@ -571,6 +573,21 @@ export interface Repo {
     hideVotes: boolean
   ): Promise<EventDetail>;
   /**
+   * Host-only, open-only (mirrors `setHideVotes`'s exact gating) — changes
+   * how long before `scheduled_at` voting force-closes, `null` to turn the
+   * deadline off entirely. Recomputes `vote_end_at` from the event's
+   * *current* `scheduled_at`, never a stored delta, so this can never go
+   * stale after a reschedule. If the new deadline lands in the future,
+   * also clears `vote_deadline_reminder_sent_at` — a host who pushes the
+   * deadline back out shouldn't lose the "closes soon" nudge just because
+   * an earlier one already fired for the old time.
+   */
+  setVoteDeadlineOffset(
+    eventId: string,
+    hostId: string,
+    minutes: number | null
+  ): Promise<EventDetail>;
+  /**
    * CHANGES_20260821_combined.md Part 2 — closes this Jio itself, no host
    * action required, once every participant (`resolveEventParticipants`:
    * host, kaki members, invitees) has RSVP'd `yes` or `no` — `maybe` does
@@ -585,6 +602,29 @@ export interface Repo {
    * winner logic, not a second implementation of it.
    */
   maybeAutoCloseEvent(eventId: string): Promise<EventDetail | null>;
+  /**
+   * The other half of the vote-deadline feature — a cron sweep
+   * (`/api/cron/vote-deadline`), not write-triggered like
+   * `maybeAutoCloseEvent` above. Closes every `open`, non-polling event
+   * whose `vote_end_at` has passed, regardless of who's still pending —
+   * the whole point being to bound how long a Jio can sit unresolved once
+   * its host set a deadline. Computes the Borda winner from whatever votes
+   * exist at that point (`null` if nobody voted at all, same as any other
+   * close). Returns how many were closed.
+   */
+  closeEventsPastVoteDeadline(): Promise<number>;
+  /**
+   * Claims (atomically, same "claim before acting" shape
+   * `listAndClaimDueReminders` uses) every `open`, non-polling event whose
+   * `vote_end_at` falls within `leadMinutes` from now and hasn't already
+   * had its one-shot "closes soon" reminder sent, and resolves which of
+   * its participants are still pending (haven't voted, haven't RSVP'd
+   * "no" — i.e. exactly who the deadline would otherwise decide for).
+   * Called from the same cron sweep as `closeEventsPastVoteDeadline`.
+   */
+  listAndClaimVoteDeadlineReminders(
+    leadMinutes: number
+  ): Promise<{ eventId: string; title: string; pendingUserIds: string[] }[]>;
 
   // ---- Recurring series ("Recurring Jios", CHANGES_20260801.md §10) ----
   createRecurringSeries(
@@ -1188,7 +1228,10 @@ export const REPO_METHODS = [
   "editEventWinner",
   "reopenEvent",
   "setHideVotes",
+  "setVoteDeadlineOffset",
   "maybeAutoCloseEvent",
+  "closeEventsPastVoteDeadline",
+  "listAndClaimVoteDeadlineReminders",
   "createRecurringSeries",
   "listRecurringSeries",
   "cancelRecurringSeries",

@@ -4,6 +4,7 @@ import {
   DEMO_USER_ID,
   RECURRING_LOOKAHEAD_DAYS,
 } from "@/lib/constants";
+import { computeVoteEndAt } from "@/lib/events";
 import {
   dateKey,
   estimateWalkMinutes,
@@ -1206,7 +1207,8 @@ export const demoRepo: Repo = {
     kakiId,
     inviteeIds,
     hideVotes,
-    notes
+    notes,
+    voteDeadlineOffsetMinutes
   ) {
     const s = store();
     const event: LunchEvent = {
@@ -1221,6 +1223,8 @@ export const demoRepo: Repo = {
       kaki_id: kakiId ?? null,
       hide_votes: hideVotes ?? false,
       notes: notes ?? null,
+      vote_deadline_offset_minutes: voteDeadlineOffsetMinutes ?? null,
+      vote_end_at: computeVoteEndAt(scheduledAt, voteDeadlineOffsetMinutes),
       created_at: new Date().toISOString(),
     };
     s.events.push(event);
@@ -1251,7 +1255,8 @@ export const demoRepo: Repo = {
     inviteeIds,
     hideVotes,
     timeOfDay,
-    notes
+    notes,
+    voteDeadlineOffsetMinutes
   ) {
     const uniqueDates = Array.from(new Set(candidateDates));
     if (uniqueDates.length < 2) {
@@ -1278,6 +1283,12 @@ export const demoRepo: Repo = {
       kaki_id: kakiId ?? null,
       hide_votes: hideVotes ?? false,
       notes: notes ?? null,
+      // `vote_end_at` deliberately stays null here — `scheduled_at` above
+      // is only the earliest candidate date, not a real commitment yet.
+      // It's computed for real once `confirmEventDate` resolves an actual
+      // date, from this same stored offset.
+      vote_deadline_offset_minutes: voteDeadlineOffsetMinutes ?? null,
+      vote_end_at: null,
       date_phase: "polling",
       created_at: new Date().toISOString(),
     };
@@ -1405,6 +1416,7 @@ export const demoRepo: Repo = {
       goingCount,
       placeOptions,
       winnerPlaceName,
+      voteEndAt: event.vote_end_at ?? null,
     };
   },
 
@@ -1830,10 +1842,15 @@ export const demoRepo: Repo = {
     // +08:00 offset construction as createFlexiEvent, not a bare date
     // string (which parses as UTC midnight, 8am once shown in SGT).
     const timeOfDay = sgtTimeOfDay(event.scheduled_at);
+    const scheduledAt = new Date(`${date}T${timeOfDay}+08:00`).toISOString();
     s.events[index] = {
       ...event,
-      scheduled_at: new Date(`${date}T${timeOfDay}+08:00`).toISOString(),
+      scheduled_at: scheduledAt,
       date_phase: "confirmed",
+      vote_end_at: computeVoteEndAt(
+        scheduledAt,
+        event.vote_deadline_offset_minutes
+      ),
     };
 
     return s.events[index];
@@ -2085,6 +2102,13 @@ export const demoRepo: Repo = {
       // the pre-listed candidates.
       date_phase:
         event.date_phase === "polling" ? "confirmed" : event.date_phase,
+      // Always freshly derived from the *current* offset and the new time
+      // — never a manually shifted delta — so a reschedule can't leave a
+      // stale deadline behind.
+      vote_end_at: computeVoteEndAt(
+        newScheduledAt,
+        event.vote_deadline_offset_minutes
+      ),
     };
 
     const detail = await demoRepo.getEvent(eventId);
@@ -2132,6 +2156,38 @@ export const demoRepo: Repo = {
 
     const detail = await demoRepo.getEvent(eventId);
     if (!detail) throw new Error("That Jio vanished while changing hide_votes");
+    return detail;
+  },
+
+  async setVoteDeadlineOffset(eventId, hostId, minutes) {
+    const s = store();
+    const index = s.events.findIndex((e) => e.id === eventId);
+    if (index === -1) throw new Error("Can't find that Jio — the link might be old.");
+    const event = s.events[index];
+
+    if (event.host_id !== hostId) {
+      throw new Error("Only the host can change when voting closes");
+    }
+    if (event.status !== "open") {
+      throw new Error("There's nothing to change once this Jio isn't open");
+    }
+
+    const voteEndAt = computeVoteEndAt(event.scheduled_at, minutes);
+    s.events[index] = {
+      ...event,
+      vote_deadline_offset_minutes: minutes,
+      vote_end_at: voteEndAt,
+      // A deadline pushed back out into the future should still get its
+      // own "closes soon" nudge, even if an earlier one already fired for
+      // the old time.
+      vote_deadline_reminder_sent_at:
+        voteEndAt && new Date(voteEndAt).getTime() > Date.now()
+          ? null
+          : event.vote_deadline_reminder_sent_at,
+    };
+
+    const detail = await demoRepo.getEvent(eventId);
+    if (!detail) throw new Error("That Jio vanished while changing the deadline");
     return detail;
   },
 
@@ -2213,6 +2269,75 @@ export const demoRepo: Repo = {
     return demoRepo.getEvent(eventId);
   },
 
+  async closeEventsPastVoteDeadline() {
+    const s = store();
+    const now = Date.now();
+    let closed = 0;
+
+    for (const event of s.events) {
+      if (event.status !== "open") continue;
+      if (event.date_phase === "polling") continue;
+      if (!event.vote_end_at) continue;
+      if (new Date(event.vote_end_at).getTime() > now) continue;
+
+      const optionIds = s.options
+        .filter((o) => o.event_id === event.id)
+        .map((o) => o.place_id);
+      const votes = s.votes.filter((v) => v.event_id === event.id);
+      const winner = computeWinner(votes, optionIds).winnerId;
+
+      const index = s.events.findIndex((e) => e.id === event.id);
+      s.events[index] = {
+        ...event,
+        status: "closed",
+        winner_place_id: winner,
+        closed_at: new Date().toISOString(),
+      };
+      closed += 1;
+    }
+
+    return closed;
+  },
+
+  async listAndClaimVoteDeadlineReminders(leadMinutes) {
+    const s = store();
+    const now = Date.now();
+    const cutoff = now + leadMinutes * 60000;
+    const due: { eventId: string; title: string; pendingUserIds: string[] }[] = [];
+
+    for (const event of s.events) {
+      if (event.status !== "open") continue;
+      if (event.date_phase === "polling") continue;
+      if (!event.vote_end_at) continue;
+      if (event.vote_deadline_reminder_sent_at) continue;
+      const voteEndMs = new Date(event.vote_end_at).getTime();
+      if (voteEndMs > cutoff || voteEndMs <= now) continue;
+
+      const participants = resolveEventParticipants(event);
+      const rsvpByUser = new Map(
+        s.rsvps
+          .filter((r) => r.event_id === event.id)
+          .map((r) => [r.user_id, r.response])
+      );
+      const votedUserIds = new Set(
+        s.votes.filter((v) => v.event_id === event.id).map((v) => v.user_id)
+      );
+      const pendingUserIds = participants.filter(
+        (userId) =>
+          !votedUserIds.has(userId) && rsvpByUser.get(userId) !== "no"
+      );
+
+      const index = s.events.findIndex((e) => e.id === event.id);
+      s.events[index] = {
+        ...event,
+        vote_deadline_reminder_sent_at: new Date().toISOString(),
+      };
+      due.push({ eventId: event.id, title: event.title, pendingUserIds });
+    }
+
+    return due;
+  },
+
   // ---- Recurring series ----
 
   async createRecurringSeries(data) {
@@ -2275,6 +2400,10 @@ export const demoRepo: Repo = {
       invitee_ids: updates.invitee_ids ?? series.invitee_ids,
       kaki_id:
         updates.kaki_id !== undefined ? updates.kaki_id : series.kaki_id,
+      vote_deadline_offset_minutes:
+        updates.vote_deadline_offset_minutes !== undefined
+          ? updates.vote_deadline_offset_minutes
+          : series.vote_deadline_offset_minutes,
     });
 
     // Propagate onto any already-generated occurrence that's still `open`
@@ -2290,6 +2419,18 @@ export const demoRepo: Repo = {
         occurrence.scheduled_at = new Date(
           `${existingDateKey}T${series.time_of_day}+08:00`
         ).toISOString();
+      }
+
+      // Also unconditional, same reasoning as time_of_day above — moving a
+      // vote deadline doesn't invalidate anyone's existing vote/RSVP the
+      // way changing the place options or invitees would.
+      if (updates.vote_deadline_offset_minutes !== undefined) {
+        occurrence.vote_deadline_offset_minutes =
+          series.vote_deadline_offset_minutes;
+        occurrence.vote_end_at = computeVoteEndAt(
+          occurrence.scheduled_at,
+          series.vote_deadline_offset_minutes
+        );
       }
 
       const hasResponses =
@@ -2394,7 +2535,10 @@ export const demoRepo: Repo = {
         series.office_id ?? DEFAULT_OFFICE.id,
         placeIds,
         series.kaki_id ?? null,
-        [...inviteeSet]
+        [...inviteeSet],
+        undefined,
+        undefined,
+        series.vote_deadline_offset_minutes
       );
       created.recurring_series_id = series.id;
 

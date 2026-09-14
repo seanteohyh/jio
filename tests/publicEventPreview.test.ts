@@ -49,6 +49,32 @@ describe("getPublicEventPreview", () => {
     );
   });
 
+  it("surfaces the vote deadline pre-signup too", async () => {
+    const event = await demoRepo.createEvent(
+      DEMO_USER_ID,
+      "Test lunch",
+      TOMORROW,
+      DEFAULT_OFFICE.id,
+      ["demo-place-01"],
+      null,
+      [],
+      false,
+      null,
+      180
+    );
+
+    const preview = await demoRepo.getPublicEventPreview(event.invite_token);
+    expect(preview?.voteEndAt).toBe(
+      new Date(new Date(TOMORROW).getTime() - 180 * 60000).toISOString()
+    );
+  });
+
+  it("has no vote deadline when none is set", async () => {
+    const event = await makeEvent();
+    const preview = await demoRepo.getPublicEventPreview(event.invite_token);
+    expect(preview?.voteEndAt).toBeNull();
+  });
+
   it("only counts confirmed 'yes' RSVPs toward goingCount", async () => {
     const event = await makeEvent([DEMO_TEAMMATE_A, DEMO_TEAMMATE_B]);
     await demoRepo.rsvp(event.id, DEMO_USER_ID, "yes");

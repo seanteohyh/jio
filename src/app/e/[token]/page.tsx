@@ -5,7 +5,7 @@ import { Card, Chip, LinkButton } from "@/components/ui";
 import ShareLink from "@/components/ShareLink";
 import { eventInviteUrl } from "@/lib/shareUrl";
 import { config } from "@/lib/config";
-import { formatDateTime } from "@/lib/utils";
+import { formatCountdown, formatDateTime } from "@/lib/utils";
 
 /**
  * Event invite landing page.
@@ -88,6 +88,12 @@ export default async function EventInvitePage({
                   ? `${preview.goingCount} going so far`
                   : "Nobody's confirmed yet"}
               </p>
+
+              {preview.voteEndAt && (
+                <p className="text-stone mt-1 text-xs">
+                  Voting: {formatCountdown(preview.voteEndAt)}
+                </p>
+              )}
 
               {preview.placeOptions.length > 0 && (
                 <div className="mt-3 flex flex-wrap gap-1.5">

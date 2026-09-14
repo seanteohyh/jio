@@ -50,7 +50,12 @@ import { googleCalendarUrl, canAddToCalendar } from "@/lib/calendar";
 import { subscribeToEventChanges } from "@/lib/realtime";
 import { features } from "@/lib/config";
 import {
+  DEFAULT_VOTE_DEADLINE_OFFSET_MINUTES,
+  VOTE_DEADLINE_OFFSET_OPTIONS,
+} from "@/lib/constants";
+import {
   cn,
+  formatCountdown,
   formatDate,
   formatDateTime,
   formatTime,
@@ -131,6 +136,18 @@ export default function EventDetailPage({
   const [editingWinner, setEditingWinner] = useState(false);
   const [winnerQuery, setWinnerQuery] = useState("");
   const [editingReminder, setEditingReminder] = useState(false);
+  // Vote-deadline countdown card below — ticks independently of any other
+  // fetch/re-render, since "2h 15m left" would otherwise silently freeze
+  // at whatever it read on the last unrelated state change.
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 30000);
+    return () => clearInterval(id);
+  }, []);
+  const [editingVoteDeadline, setEditingVoteDeadline] = useState(false);
+  const [voteDeadlineDraft, setVoteDeadlineDraft] = useState<number | null>(
+    null
+  );
 
   // UX review log #25 — set for the duration of this account's own
   // optimistic vote/RSVP mutation (submitBallot/sendRsvp below) so the
@@ -585,6 +602,17 @@ export default function EventDetailPage({
       return;
     }
     run(() => mutateJson(`/api/events/${id}`, "PATCH", { hide_votes: hide }));
+  };
+
+  // 088_vote_deadline.sql — always recomputed server-side from the
+  // event's *current* scheduled_at, never a stored delta.
+  const saveVoteDeadline = () => {
+    run(async () => {
+      await mutateJson(`/api/events/${id}`, "PATCH", {
+        vote_deadline_offset_minutes: voteDeadlineDraft,
+      });
+      setEditingVoteDeadline(false);
+    });
   };
 
   // Undoes a close. Existing ballots are left as-is — see reopenEvent's
@@ -1233,6 +1261,26 @@ export default function EventDetailPage({
         </Card>
       )}
 
+      {/*
+        Vote-deadline countdown — 088_vote_deadline.sql. Gated the same way
+        the ballot itself is (isOpen && !isDatePolling): a still-polling
+        Flexi Jio has no place-vote deadline yet, and a decided/cancelled
+        Jio has nothing left to count down to.
+      */}
+      {isOpen && !isDatePolling && event.vote_end_at && (
+        <div className="border-line bg-cream flex flex-wrap items-center justify-between gap-2 rounded-xl border p-3">
+          <div>
+            <p className="text-ink text-sm font-medium">
+              Voting: {formatCountdown(event.vote_end_at, now)}
+            </p>
+            <p className="text-stone text-xs">
+              Force-closes {formatDateTime(event.vote_end_at)} if not
+              everyone's answered by then.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* --- Standing --- */}
       {!isDatePolling && (
       <Card>
@@ -1729,6 +1777,62 @@ export default function EventDetailPage({
                     disabled={busy}
                   >
                     Hide votes
+                  </Button>
+                </>
+              )}
+            </div>
+          )}
+
+          {isOpen && !isDatePolling && (
+            <div className="border-line space-y-2 border-t pt-3">
+              {editingVoteDeadline ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  <select
+                    value={voteDeadlineDraft ?? ""}
+                    onChange={(e) =>
+                      setVoteDeadlineDraft(
+                        e.target.value === "" ? null : Number(e.target.value)
+                      )
+                    }
+                    className={`${inputClass} min-w-0`}
+                  >
+                    <option value="">No deadline</option>
+                    {VOTE_DEADLINE_OFFSET_OPTIONS.map((minutes) => (
+                      <option key={minutes} value={minutes}>
+                        {leadTimeLabel(minutes)} before
+                      </option>
+                    ))}
+                  </select>
+                  <Button size="sm" onClick={saveVoteDeadline} disabled={busy}>
+                    Save
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setEditingVoteDeadline(false)}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              ) : (
+                <>
+                  <p className="text-stone text-xs">
+                    {event.vote_deadline_offset_minutes
+                      ? `Voting force-closes ${leadTimeLabel(event.vote_deadline_offset_minutes)} before start, even if not everyone's answered.`
+                      : "No vote deadline set — closes only once everyone's answered."}
+                  </p>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => {
+                      setVoteDeadlineDraft(
+                        event.vote_deadline_offset_minutes ??
+                          DEFAULT_VOTE_DEADLINE_OFFSET_MINUTES
+                      );
+                      setEditingVoteDeadline(true);
+                    }}
+                  >
+                    Change vote deadline
                   </Button>
                 </>
               )}

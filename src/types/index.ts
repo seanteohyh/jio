@@ -362,6 +362,28 @@ export interface LunchEvent {
   /** Set once the "starting soon" reminder has fired — see
    *  039_close_reminder.sql. Not meaningful to read outside `remindDueEvents`. */
   reminder_sent_at?: string | null;
+  /**
+   * The host's choice, in minutes before `scheduled_at` — "close voting
+   * this long before the Jio starts, no matter who's still pending."
+   * `null` = no deadline, today's full-consensus-only auto-close. Editable
+   * any time the Jio is still open (`setVoteDeadlineOffset`); a Flexi Jio
+   * keeps this from creation, applied once its date actually resolves.
+   */
+  vote_deadline_offset_minutes?: number | null;
+  /**
+   * Derived, absolute — `vote_deadline_offset_minutes` before
+   * `scheduled_at`, recomputed any time either changes (creation,
+   * `confirmEventDate`, `rescheduleEvent`, `setVoteDeadlineOffset`). `null`
+   * for a still-polling Flexi Jio (no real `scheduled_at` yet) even with
+   * an offset set, and whenever the offset itself is `null`. The one field
+   * the deadline-close cron sweep (`closeEventsPastVoteDeadline`) actually
+   * queries against.
+   */
+  vote_end_at?: string | null;
+  /** One-shot claim for the "voting closes soon" push — see
+   *  088_vote_deadline.sql. Not meaningful to read outside
+   *  `listAndClaimVoteDeadlineReminders`. */
+  vote_deadline_reminder_sent_at?: string | null;
   created_at?: string;
 
   /** Derived. */
@@ -416,6 +438,14 @@ export interface RecurringSeries {
   fixed_place_id?: string | null;
   /** Set only when `mode` is "vote" — seeded into every occurrence. */
   option_place_ids: string[];
+  /** Applied to every generated occurrence's own `vote_deadline_offset_minutes`
+   *  — see `LunchEvent.vote_deadline_offset_minutes` for what it means.
+   *  Defaults to 180 (3h) at series creation, editable afterward the same
+   *  way `time_of_day` is; propagates onto an already-generated, still-open
+   *  occurrence regardless of whether it's had any responses yet (unlike
+   *  place/mode/invitees, moving a deadline doesn't invalidate anyone's
+   *  existing answer). */
+  vote_deadline_offset_minutes?: number | null;
   status: RecurringSeriesStatus;
   /** ISO date ("YYYY-MM-DD") of the most recently generated occurrence. */
   last_generated_date?: string | null;
@@ -542,6 +572,10 @@ export interface PublicEventPreview {
    *  it has no `places` row behind it). Lets the signed-out preview surface
    *  the actual result rather than staying written for a still-open vote. */
   winnerPlaceName?: string | null;
+  /** See `LunchEvent.vote_end_at` — surfaced pre-signup too, so a shared
+   *  link tells an invitee there's a clock before they sign in to vote.
+   *  `null`/absent once decided or when no deadline is set. */
+  voteEndAt?: string | null;
 }
 
 // ---------------------------------------------------------------------------

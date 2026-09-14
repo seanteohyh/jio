@@ -24,6 +24,11 @@ import HintCard from "@/components/HintCard";
 import { useToast } from "@/components/Toast";
 import { fetcher, mutateJson } from "@/lib/fetcher";
 import { features } from "@/lib/config";
+import {
+  DEFAULT_VOTE_DEADLINE_OFFSET_MINUTES,
+  VOTE_DEADLINE_OFFSET_OPTIONS,
+} from "@/lib/constants";
+import { leadTimeLabel } from "@/components/profile/ReminderSettingsPanel";
 import type { Place, ScoredPlace } from "@/types";
 
 /** Rows of ~2-3 chips each — CHANGES §2's "limit to 5 rows" ask. */
@@ -98,6 +103,9 @@ export default function JioForm({
   );
   const [hideVotes, setHideVotes] = useState(false);
   const [notes, setNotes] = useState("");
+  const [voteDeadlineMinutes, setVoteDeadlineMinutes] = useState<number | null>(
+    DEFAULT_VOTE_DEADLINE_OFFSET_MINUTES
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -194,6 +202,7 @@ export default function JioForm({
       title: title.trim() || "Lunch",
       hide_votes: hideVotes,
       notes: notes.trim() || null,
+      vote_deadline_offset_minutes: voteDeadlineMinutes,
       invitee_ids: invite.userIds,
       // Both, deliberately: the server snapshots every group's members into
       // individual invitees, and keeps the first group as display provenance
@@ -447,6 +456,34 @@ export default function JioForm({
               className={inputClass}
               placeholder="e.g. Meet at the lobby, park at B2"
             />
+          </Field>
+        </Wrapper>
+
+        <Wrapper {...wrapperProps}>
+          <Field
+            label="Voting closes"
+            hint={
+              mode === "flexi"
+                ? "However long before whichever date ends up confirmed. Voting force-closes then even if not everyone's answered."
+                : "Voting force-closes this long before the Jio starts, even if not everyone's answered. Editable later."
+            }
+          >
+            <select
+              value={voteDeadlineMinutes ?? ""}
+              onChange={(e) =>
+                setVoteDeadlineMinutes(
+                  e.target.value === "" ? null : Number(e.target.value)
+                )
+              }
+              className={inputClass}
+            >
+              <option value="">No deadline</option>
+              {VOTE_DEADLINE_OFFSET_OPTIONS.map((minutes) => (
+                <option key={minutes} value={minutes}>
+                  {leadTimeLabel(minutes)} before
+                </option>
+              ))}
+            </select>
           </Field>
         </Wrapper>
 

@@ -105,3 +105,25 @@ export function budgetLabel(tier: number): string {
   const rounded = Math.max(1, Math.min(6, Math.round(tier)));
   return "$".repeat(rounded);
 }
+
+/**
+ * Vote-deadline auto-close — a host-set point after which a Jio closes
+ * itself even if not everyone invited has answered, on top of (not instead
+ * of) today's "closes the moment everyone's responded" behavior. `null`
+ * means no deadline, today's full-consensus-only behavior. Options are
+ * offsets in minutes before the Jio's own `scheduled_at`, matching
+ * `ReminderSettingsPanel.LEAD_TIME_OPTIONS`'s shape (a plain minutes array,
+ * `leadTimeLabel`-formatted) but a distinct list — a vote deadline sensibly
+ * ranges much wider (30 min to a full day) than a pre-lunch nudge does.
+ */
+export const VOTE_DEADLINE_OFFSET_OPTIONS = [30, 60, 120, 180, 360, 720, 1440];
+export const DEFAULT_VOTE_DEADLINE_OFFSET_MINUTES = 180;
+
+/**
+ * How far ahead of a Jio's own `vote_end_at` the "voting closes soon" push
+ * looks — fixed, not a per-user setting like `reminder_lead_minutes` (the
+ * pre-lunch nudge's own configurable lead time), since only the deadline
+ * itself is something a host controls; the "soon" nudge is a single,
+ * uniform courtesy on top of it.
+ */
+export const VOTE_DEADLINE_REMINDER_LOOKAHEAD_MINUTES = 60;
