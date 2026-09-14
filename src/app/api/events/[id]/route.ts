@@ -148,10 +148,12 @@ export async function GET(_request: NextRequest, { params }: Params) {
 /**
  * CHANGES_20260819c.md §1/§2 — host-only corrections, sharing one route since
  * they live on the same page: "Change date & time" (any time except once
- * cancelled), "Where did you actually go?" (once closed only), and toggling
+ * cancelled), "Where did you actually go?" (once closed only), toggling
  * a Jio's hidden-vote setting after the fact (`hide_votes` — see
- * `setHideVotes`'s own doc comment in src/lib/data/index.ts). Any of the
- * three may be sent alone or together.
+ * `setHideVotes`'s own doc comment in src/lib/data/index.ts), and changing
+ * the vote deadline (`vote_deadline_offset_minutes`, open-only — see
+ * `setVoteDeadlineOffset`'s own doc comment). Any of the four may be sent
+ * alone or together.
  */
 export async function PATCH(request: NextRequest, { params }: Params) {
   const blocked = featureGate("events");
@@ -165,12 +167,14 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       scheduled_at?: string;
       winner_place_id?: string;
       hide_votes?: boolean;
+      vote_deadline_offset_minutes?: number | null;
     }>(request);
     if (!body) return badRequest("That didn't save — mind trying again?");
     if (
       !body.scheduled_at &&
       !body.winner_place_id &&
-      typeof body.hide_votes !== "boolean"
+      typeof body.hide_votes !== "boolean" &&
+      body.vote_deadline_offset_minutes === undefined
     ) {
       return badRequest("Nothing to update");
     }
@@ -187,6 +191,20 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     }
     if (typeof body.hide_votes === "boolean") {
       await repo.setHideVotes(id, user.id, body.hide_votes);
+    }
+    if (body.vote_deadline_offset_minutes !== undefined) {
+      if (
+        body.vote_deadline_offset_minutes !== null &&
+        (!Number.isFinite(body.vote_deadline_offset_minutes) ||
+          body.vote_deadline_offset_minutes <= 0)
+      ) {
+        return badRequest("That doesn't look like a valid vote-deadline offset");
+      }
+      await repo.setVoteDeadlineOffset(
+        id,
+        user.id,
+        body.vote_deadline_offset_minutes
+      );
     }
 
     const event = await repo.getEvent(id);

@@ -98,6 +98,103 @@ describe("rescheduleEvent", () => {
     expect(updated.date_phase).toBe("confirmed");
     expect(updated.scheduled_at).toBe(newTime);
   });
+
+  it("recomputes vote_end_at from the current offset and the new time, not a stale delta", async () => {
+    const event = await demoRepo.createEvent(
+      DEMO_USER_ID,
+      "Test lunch",
+      TOMORROW,
+      DEFAULT_OFFICE.id,
+      ["demo-place-01"],
+      null,
+      [],
+      false,
+      null,
+      180 // 3h before
+    );
+    const newTime = new Date(Date.now() + 5 * 86400000).toISOString();
+    const updated = await demoRepo.rescheduleEvent(
+      event.id,
+      DEMO_USER_ID,
+      newTime
+    );
+    expect(updated.vote_end_at).toBe(
+      new Date(new Date(newTime).getTime() - 180 * 60000).toISOString()
+    );
+  });
+
+  it("leaves vote_end_at null after reschedule when no deadline is set", async () => {
+    const event = await demoRepo.createEvent(
+      DEMO_USER_ID,
+      "Test lunch",
+      TOMORROW,
+      DEFAULT_OFFICE.id,
+      ["demo-place-01"],
+      null,
+      [],
+      false,
+      null,
+      null
+    );
+    const updated = await demoRepo.rescheduleEvent(
+      event.id,
+      DEMO_USER_ID,
+      new Date(Date.now() + 5 * 86400000).toISOString()
+    );
+    expect(updated.vote_end_at).toBeNull();
+  });
+});
+
+describe("setVoteDeadlineOffset", () => {
+  it("lets the host set a deadline and computes vote_end_at from it", async () => {
+    const event = await makeEvent();
+    const updated = await demoRepo.setVoteDeadlineOffset(
+      event.id,
+      DEMO_USER_ID,
+      120
+    );
+    expect(updated.vote_deadline_offset_minutes).toBe(120);
+    expect(updated.vote_end_at).toBe(
+      new Date(new Date(TOMORROW).getTime() - 120 * 60000).toISOString()
+    );
+  });
+
+  it("clears the deadline back to null", async () => {
+    const event = await demoRepo.createEvent(
+      DEMO_USER_ID,
+      "Test lunch",
+      TOMORROW,
+      DEFAULT_OFFICE.id,
+      ["demo-place-01"],
+      null,
+      [],
+      false,
+      null,
+      180
+    );
+    const updated = await demoRepo.setVoteDeadlineOffset(
+      event.id,
+      DEMO_USER_ID,
+      null
+    );
+    expect(updated.vote_deadline_offset_minutes).toBeNull();
+    expect(updated.vote_end_at).toBeNull();
+  });
+
+  it("refuses once the Jio isn't open", async () => {
+    const event = await makeEvent();
+    await demoRepo.closeEvent(event.id, DEMO_USER_ID, "demo-place-01");
+    await expect(
+      demoRepo.setVoteDeadlineOffset(event.id, DEMO_USER_ID, 60)
+    ).rejects.toThrow();
+  });
+
+  it("refuses anyone but the host", async () => {
+    const event = await makeEvent();
+    await expect(
+      demoRepo.setVoteDeadlineOffset(event.id, DEMO_TEAMMATE_A, 60)
+    ).rejects.toThrow();
+  });
 });
 
 describe("editEventWinner", () => {

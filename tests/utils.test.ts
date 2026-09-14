@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  formatCountdown,
   formatDate,
   formatTime,
   grabFoodSearchUrl,
@@ -142,8 +143,41 @@ describe("grabFoodSearchUrl", () => {
   });
 });
 
-describe("tabForPath", () => {
-  it("maps the root path to Home, exact match only", () => {
+describe("formatCountdown", () => {
+  const now = new Date("2026-09-11T12:00:00Z");
+
+  it("shows hours and minutes when both are non-zero", () => {
+    expect(formatCountdown(new Date("2026-09-11T14:15:00Z"), now)).toBe(
+      "2h 15m left"
+    );
+  });
+
+  it("omits minutes when exactly on the hour", () => {
+    expect(formatCountdown(new Date("2026-09-11T15:00:00Z"), now)).toBe(
+      "3h left"
+    );
+  });
+
+  it("shows minutes only under an hour", () => {
+    expect(formatCountdown(new Date("2026-09-11T12:45:00Z"), now)).toBe(
+      "45m left"
+    );
+  });
+
+  it("reads as 'Closing soon' under the 5-minute threshold", () => {
+    expect(formatCountdown(new Date("2026-09-11T12:03:00Z"), now)).toBe(
+      "Closing soon"
+    );
+  });
+
+  it("reads as 'Closed' once the deadline has passed", () => {
+    expect(formatCountdown(new Date("2026-09-11T11:00:00Z"), now)).toBe(
+      "Closed"
+    );
+  });
+});
+
+describe("tabForPath", () => {  it("maps the root path to Home, exact match only", () => {
     expect(tabForPath("/")).toBe("Home");
   });
 

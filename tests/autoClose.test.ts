@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { demoRepo, resetDemoStore } from "@/lib/data/demoRepo";
 import { DEFAULT_OFFICE, DEMO_USER_ID } from "@/lib/constants";
 import { DEMO_TEAMMATE_A, DEMO_TEAMMATE_B } from "@/lib/data/demoData";
@@ -136,5 +136,165 @@ describe("maybeAutoCloseEvent", () => {
 
   it("returns null for an event that does not exist", async () => {
     expect(await demoRepo.maybeAutoCloseEvent("no-such-event")).toBeNull();
+  });
+});
+
+/**
+ * 088_vote_deadline.sql — the deadline-based fallback close, additive to
+ * (not a replacement for) `maybeAutoCloseEvent`'s own full-consensus check
+ * above. Runs from a cron sweep, not write-triggered, so these tests
+ * control the clock directly rather than driving it through RSVP/vote
+ * writes the way the suite above does.
+ */
+describe("closeEventsPastVoteDeadline", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("closes an event past its deadline even with unresponded participants", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2027-06-01T00:00:00Z"));
+
+    const event = await demoRepo.createEvent(
+      DEMO_USER_ID,
+      "Test lunch",
+      new Date("2027-06-01T04:00:00Z").toISOString(), // 4h from "now"
+      DEFAULT_OFFICE.id,
+      ["demo-place-01", "demo-place-02"],
+      null,
+      [DEMO_TEAMMATE_A],
+      false,
+      null,
+      180 // 3h before — deadline is 2027-06-01T01:00:00Z
+    );
+    await demoRepo.rsvp(event.id, DEMO_USER_ID, "yes");
+    await demoRepo.castBallot(event.id, DEMO_USER_ID, ["demo-place-01"]);
+    // DEMO_TEAMMATE_A never responds at all — would block the full-consensus
+    // path indefinitely, which is exactly the gap this feature bounds.
+
+    vi.setSystemTime(new Date("2027-06-01T01:00:01Z")); // just past the deadline
+
+    const closed = await demoRepo.closeEventsPastVoteDeadline();
+    expect(closed).toBe(1);
+    const detail = await demoRepo.getEvent(event.id);
+    expect(detail?.status).toBe("closed");
+    expect(detail?.winner_place_id).toBe("demo-place-01");
+  });
+
+  it("does not close an event before its deadline", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2027-06-01T00:00:00Z"));
+
+    const event = await demoRepo.createEvent(
+      DEMO_USER_ID,
+      "Test lunch",
+      new Date("2027-06-01T04:00:00Z").toISOString(),
+      DEFAULT_OFFICE.id,
+      ["demo-place-01"],
+      null,
+      [],
+      false,
+      null,
+      180
+    );
+
+    vi.setSystemTime(new Date("2027-06-01T00:59:00Z")); // 1 min before deadline
+
+    expect(await demoRepo.closeEventsPastVoteDeadline()).toBe(0);
+    expect((await demoRepo.getEvent(event.id))?.status).toBe("open");
+  });
+
+  it("closes with no winner when nobody voted by the deadline", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2027-06-01T00:00:00Z"));
+
+    const event = await demoRepo.createEvent(
+      DEMO_USER_ID,
+      "Test lunch",
+      new Date("2027-06-01T04:00:00Z").toISOString(),
+      DEFAULT_OFFICE.id,
+      ["demo-place-01"],
+      null,
+      [],
+      false,
+      null,
+      180
+    );
+
+    vi.setSystemTime(new Date("2027-06-01T02:00:00Z"));
+
+    await demoRepo.closeEventsPastVoteDeadline();
+    const detail = await demoRepo.getEvent(event.id);
+    expect(detail?.status).toBe("closed");
+    expect(detail?.winner_place_id).toBeNull();
+  });
+
+  it("does not touch an event with no deadline set", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2027-06-01T00:00:00Z"));
+
+    const event = await demoRepo.createEvent(
+      DEMO_USER_ID,
+      "Test lunch",
+      new Date("2027-06-01T04:00:00Z").toISOString(),
+      DEFAULT_OFFICE.id,
+      ["demo-place-01"],
+      null,
+      [],
+      false,
+      null,
+      null
+    );
+
+    vi.setSystemTime(new Date("2027-07-01T00:00:00Z")); // well past
+
+    expect(await demoRepo.closeEventsPastVoteDeadline()).toBe(0);
+    expect((await demoRepo.getEvent(event.id))?.status).toBe("open");
+  });
+
+  it("does not close a still-polling Flexi Jio even with a stored offset", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2027-06-01T00:00:00Z"));
+
+    const event = await demoRepo.createFlexiEvent(
+      DEMO_USER_ID,
+      "Flexi lunch",
+      DEFAULT_OFFICE.id,
+      ["2027-06-05", "2027-06-06"],
+      null,
+      [],
+      false,
+      "12:00",
+      null,
+      180
+    );
+
+    vi.setSystemTime(new Date("2027-07-01T00:00:00Z"));
+
+    expect(await demoRepo.closeEventsPastVoteDeadline()).toBe(0);
+    expect((await demoRepo.getEvent(event.id))?.status).toBe("open");
+  });
+
+  it("does not close an already-closed or cancelled event", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2027-06-01T00:00:00Z"));
+
+    const event = await demoRepo.createEvent(
+      DEMO_USER_ID,
+      "Test lunch",
+      new Date("2027-06-01T04:00:00Z").toISOString(),
+      DEFAULT_OFFICE.id,
+      ["demo-place-01"],
+      null,
+      [],
+      false,
+      null,
+      180
+    );
+    await demoRepo.cancelEvent(event.id, DEMO_USER_ID);
+
+    vi.setSystemTime(new Date("2027-07-01T00:00:00Z"));
+
+    expect(await demoRepo.closeEventsPastVoteDeadline()).toBe(0);
   });
 });

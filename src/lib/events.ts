@@ -1,4 +1,37 @@
 import type { Repo } from "@/lib/data";
+import { formatDateTime } from "@/lib/utils";
+
+/**
+ * Derives a vote deadline from a Jio's own start time and a host-chosen
+ * offset — the single place this arithmetic happens, so `createEvent`,
+ * `confirmEventDate` (a Flexi Jio's date resolving), `rescheduleEvent`, and
+ * `setVoteDeadlineOffset` all agree on what "3 hours before" means. `null`
+ * offset (or a missing `scheduledAt`, for a still-polling Flexi Jio) means
+ * no deadline — today's full-consensus-only auto-close behavior.
+ */
+export function computeVoteEndAt(
+  scheduledAt: string | null | undefined,
+  offsetMinutes: number | null | undefined
+): string | null {
+  if (!scheduledAt || offsetMinutes == null) return null;
+  return new Date(
+    new Date(scheduledAt).getTime() - offsetMinutes * 60000
+  ).toISOString();
+}
+
+/**
+ * The deadline mention appended to invite-push copy — "You're invited to a
+ * Jio" only ever said the title before; a shared/pushed invite otherwise
+ * gave no hint there's a clock. Shared by both invite-push call sites
+ * (creation and "invite more people"), same reasoning as `expandInvitees`
+ * above. Empty string when there's no deadline, so callers can just
+ * concatenate it onto the body they already build.
+ */
+export function formatVoteDeadlineText(
+  voteEndAt: string | null | undefined
+): string {
+  return voteEndAt ? ` — voting closes ${formatDateTime(voteEndAt)}` : "";
+}
 
 /**
  * Turn a picker's selection (people plus groups) into a flat invitee list.

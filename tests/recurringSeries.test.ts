@@ -122,6 +122,25 @@ describe("generateDueOccurrences", () => {
     ]);
   });
 
+  it("gives each generated occurrence the series' own vote-deadline offset", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-05T09:00:00"));
+
+    await demoRepo.createRecurringSeries(
+      seriesInput({ vote_deadline_offset_minutes: 180 })
+    );
+    await demoRepo.generateDueOccurrences(DEMO_USER_ID);
+
+    const events = await demoRepo.listEvents(DEMO_USER_ID);
+    const generated = events.find((e) => e.recurring_series_id);
+    expect(generated?.vote_deadline_offset_minutes).toBe(180);
+    expect(generated?.vote_end_at).toBe(
+      new Date(
+        new Date(generated!.scheduled_at).getTime() - 180 * 60000
+      ).toISOString()
+    );
+  });
+
   it("does not generate when the next occurrence is outside the lookahead window", async () => {
     // A Thursday: next Wednesday is 6 days out, past the 3-day window.
     vi.useFakeTimers();
@@ -283,6 +302,34 @@ describe("updateRecurringSeries", () => {
     const after = await demoRepo.getEvent(before.id);
     // Same calendar date, new time (14:00 SGT = 06:00 UTC).
     expect(after?.scheduled_at).toBe("2026-08-05T06:00:00.000Z");
+  });
+
+  it("propagates a vote-deadline change onto a still-open occurrence, even after someone's voted", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-05T09:00:00Z"));
+
+    const series = await demoRepo.createRecurringSeries(
+      seriesInput({ vote_deadline_offset_minutes: 180 })
+    );
+    await demoRepo.generateDueOccurrences(DEMO_USER_ID);
+    const before = (await demoRepo.listEvents(DEMO_USER_ID)).find(
+      (e) => e.recurring_series_id === series.id
+    )!;
+    // Unlike place/mode/invitees, a vote-deadline change doesn't invalidate
+    // an existing answer, so this propagates even once someone's voted.
+    await demoRepo.castBallot(before.id, DEMO_TEAMMATE_A, ["demo-place-01"]);
+
+    await demoRepo.updateRecurringSeries(series.id, DEMO_USER_ID, {
+      vote_deadline_offset_minutes: 60,
+    });
+
+    const after = await demoRepo.getEvent(before.id);
+    expect(after?.vote_deadline_offset_minutes).toBe(60);
+    expect(after?.vote_end_at).toBe(
+      new Date(
+        new Date(after!.scheduled_at).getTime() - 60 * 60000
+      ).toISOString()
+    );
   });
 
   it("never moves an already-generated occurrence's date when the weekday changes", async () => {

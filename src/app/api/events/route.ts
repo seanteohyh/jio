@@ -3,9 +3,9 @@ import { requireUser } from "@/lib/auth";
 import { getRepoAsync } from "@/lib/data/repo";
 import { badRequest, errorResponse, json, readJson } from "@/lib/api";
 import { featureGate } from "@/lib/config";
-import { DEFAULT_OFFICE } from "@/lib/constants";
+import { DEFAULT_OFFICE, DEFAULT_VOTE_DEADLINE_OFFSET_MINUTES } from "@/lib/constants";
 import { sendPushToUsers } from "@/lib/push";
-import { expandInvitees } from "@/lib/events";
+import { expandInvitees, formatVoteDeadlineText } from "@/lib/events";
 import { logAction } from "@/lib/actions";
 import type { Repo } from "@/lib/data";
 
@@ -14,13 +14,14 @@ async function notifyInvitees(
   repo: Repo,
   invitees: string[],
   eventId: string,
-  title: string
+  title: string,
+  voteEndAt?: string | null
 ): Promise<void> {
   if (invitees.length === 0) return;
   try {
     await sendPushToUsers(repo, invitees, {
       title: "You're invited to a Jio",
-      body: title,
+      body: `${title}${formatVoteDeadlineText(voteEndAt)}`,
       url: `/events/${eventId}`,
     });
   } catch {
@@ -94,6 +95,11 @@ interface CreateEventBody {
   /** Free text for invitees — parking, dress code, whatever doesn't fit a
    *  place name or a date. Set only here, at creation. */
   notes?: string | null;
+  /** Minutes before `scheduled_at` that voting force-closes, regardless of
+   *  who's still pending. `null` = no deadline. Omitted defaults to
+   *  `DEFAULT_VOTE_DEADLINE_OFFSET_MINUTES` (the create form always sends
+   *  one explicitly; this default only matters for a caller that doesn't). */
+  vote_deadline_offset_minutes?: number | null;
 }
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -117,6 +123,18 @@ export async function POST(request: NextRequest) {
       return badRequest("That note is a bit long");
     }
     const notes = trimmedNotes || null;
+
+    if (
+      body.vote_deadline_offset_minutes != null &&
+      (!Number.isFinite(body.vote_deadline_offset_minutes) ||
+        body.vote_deadline_offset_minutes <= 0)
+    ) {
+      return badRequest("That doesn't look like a valid vote-deadline offset");
+    }
+    const voteDeadlineOffsetMinutes =
+      body.vote_deadline_offset_minutes === undefined
+        ? DEFAULT_VOTE_DEADLINE_OFFSET_MINUTES
+        : body.vote_deadline_offset_minutes;
 
     const kakiIds = body.kaki_ids ?? (body.kaki_id ? [body.kaki_id] : []);
     const invitees = await expandInvitees(
@@ -145,9 +163,10 @@ export async function POST(request: NextRequest) {
         invitees,
         body.hide_votes ?? false,
         body.time_of_day,
-        notes
+        notes,
+        voteDeadlineOffsetMinutes
       );
-      await notifyInvitees(repo, invitees, event.id, title);
+      await notifyInvitees(repo, invitees, event.id, title, event.vote_end_at);
       await logAction(repo, user.id, "jio.hosted", { eventId: event.id });
       return json({ event }, 201);
     }
@@ -169,9 +188,10 @@ export async function POST(request: NextRequest) {
       kakiId,
       invitees,
       body.hide_votes ?? false,
-      notes
+      notes,
+      voteDeadlineOffsetMinutes
     );
-    await notifyInvitees(repo, invitees, event.id, title);
+    await notifyInvitees(repo, invitees, event.id, title, event.vote_end_at);
     await logAction(repo, user.id, "jio.hosted", { eventId: event.id });
 
     return json({ event }, 201);

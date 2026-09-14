@@ -5,7 +5,7 @@ import { badRequest, errorResponse, json, readJson } from "@/lib/api";
 import { featureGate } from "@/lib/config";
 import { redactHiddenVotes } from "@/lib/voting";
 import { sendPushToUsers } from "@/lib/push";
-import { expandInvitees } from "@/lib/events";
+import { expandInvitees, formatVoteDeadlineText } from "@/lib/events";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -45,7 +45,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       try {
         await sendPushToUsers(repo, invitees, {
           title: "You're invited to a Jio",
-          body: event.title,
+          body: `${event.title}${formatVoteDeadlineText(event.vote_end_at)}`,
           url: `/events/${id}`,
         });
       } catch {

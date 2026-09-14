@@ -15,6 +15,7 @@ interface UpdateSeriesBody {
   mode?: "vote" | "fixed";
   fixed_place_id?: string | null;
   option_place_ids?: string[];
+  vote_deadline_offset_minutes?: number | null;
 }
 
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -62,6 +63,13 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     if (body.mode === "vote" && (body.option_place_ids?.length ?? 0) === 0) {
       return badRequest("Pick at least one place to vote on each time");
     }
+    if (
+      body.vote_deadline_offset_minutes != null &&
+      (!Number.isFinite(body.vote_deadline_offset_minutes) ||
+        body.vote_deadline_offset_minutes <= 0)
+    ) {
+      return badRequest("That doesn't look like a valid vote-deadline offset");
+    }
 
     const series = await repo.updateRecurringSeries(id, user.id, {
       title: body.title?.trim() || undefined,
@@ -73,6 +81,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       fixed_place_id: body.mode === "fixed" ? body.fixed_place_id : undefined,
       option_place_ids:
         body.mode === "vote" ? body.option_place_ids : undefined,
+      vote_deadline_offset_minutes: body.vote_deadline_offset_minutes,
     });
 
     return json({ series });

@@ -446,6 +446,31 @@ export function relativeDayLabel(input: string | Date, now = new Date()): string
 }
 
 /**
+ * Hour/minute-granularity countdown for a vote deadline — "2h 15m left" /
+ * "45m left" / "Closing soon" once under a 5-minute threshold (a bare "0m
+ * left" reads as already over even though it technically isn't yet) /
+ * "Closed" once past. `relativeDayLabel` above is day-granularity only,
+ * which reads fine for "when is this Jio" but not for "how long until
+ * voting closes," a much shorter window.
+ */
+export function formatCountdown(target: string | Date, now = new Date()): string {
+  const t = typeof target === "string" ? new Date(target) : target;
+  if (Number.isNaN(t.getTime())) return "—";
+
+  const diffMs = t.getTime() - now.getTime();
+  if (diffMs <= 0) return "Closed";
+  if (diffMs < 5 * 60 * 1000) return "Closing soon";
+
+  const totalMinutes = Math.floor(diffMs / 60000);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+
+  if (hours === 0) return `${minutes}m left`;
+  if (minutes === 0) return `${hours}h left`;
+  return `${hours}h ${minutes}m left`;
+}
+
+/**
  * The next date on or after `today` that falls on `weekday`
  * (0 = Sunday .. 6 = Saturday, matching `Date#getDay()`). Returns `today`
  * itself when `today` already matches. Used by recurring series generation —

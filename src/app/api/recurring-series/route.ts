@@ -3,7 +3,7 @@ import { requireUser } from "@/lib/auth";
 import { getRepoAsync } from "@/lib/data/repo";
 import { badRequest, errorResponse, json, readJson } from "@/lib/api";
 import { featureGate } from "@/lib/config";
-import { DEFAULT_OFFICE } from "@/lib/constants";
+import { DEFAULT_OFFICE, DEFAULT_VOTE_DEADLINE_OFFSET_MINUTES } from "@/lib/constants";
 
 export async function GET() {
   const blocked = featureGate("events");
@@ -29,6 +29,7 @@ interface CreateSeriesBody {
   mode?: "vote" | "fixed";
   fixed_place_id?: string | null;
   option_place_ids?: string[];
+  vote_deadline_offset_minutes?: number | null;
 }
 
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -70,6 +71,13 @@ export async function POST(request: NextRequest) {
     if (body.mode === "vote" && (body.option_place_ids?.length ?? 0) === 0) {
       return badRequest("Pick at least one place to vote on each time");
     }
+    if (
+      body.vote_deadline_offset_minutes != null &&
+      (!Number.isFinite(body.vote_deadline_offset_minutes) ||
+        body.vote_deadline_offset_minutes <= 0)
+    ) {
+      return badRequest("That doesn't look like a valid vote-deadline offset");
+    }
 
     const series = await repo.createRecurringSeries({
       host_id: user.id,
@@ -82,6 +90,10 @@ export async function POST(request: NextRequest) {
       mode: body.mode,
       fixed_place_id: body.mode === "fixed" ? body.fixed_place_id : null,
       option_place_ids: body.mode === "vote" ? (body.option_place_ids ?? []) : [],
+      vote_deadline_offset_minutes:
+        body.vote_deadline_offset_minutes === undefined
+          ? DEFAULT_VOTE_DEADLINE_OFFSET_MINUTES
+          : body.vote_deadline_offset_minutes,
     });
 
     return json({ series }, 201);

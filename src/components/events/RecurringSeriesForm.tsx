@@ -8,6 +8,11 @@ import InvitePicker, {
   type InviteSelection,
 } from "@/components/InvitePicker";
 import { fetcher, mutateJson } from "@/lib/fetcher";
+import {
+  DEFAULT_VOTE_DEADLINE_OFFSET_MINUTES,
+  VOTE_DEADLINE_OFFSET_OPTIONS,
+} from "@/lib/constants";
+import { leadTimeLabel } from "@/components/profile/ReminderSettingsPanel";
 import type { Place, RecurringSeries } from "@/types";
 
 const WEEKDAYS = [
@@ -47,6 +52,10 @@ export default function RecurringSeriesForm({
   const [title, setTitle] = useState(initialSeries?.title ?? "Lunch");
   const [weekday, setWeekday] = useState(initialSeries?.weekday ?? 3);
   const [time, setTime] = useState(initialSeries?.time_of_day.slice(0, 5) ?? "12:00");
+  const [voteDeadlineMinutes, setVoteDeadlineMinutes] = useState<number | null>(
+    initialSeries?.vote_deadline_offset_minutes ??
+      DEFAULT_VOTE_DEADLINE_OFFSET_MINUTES
+  );
   const [mode, setMode] = useState<Mode>(initialSeries?.mode ?? "fixed");
   const [fixedPlaceId, setFixedPlaceId] = useState<string | null>(
     initialSeries?.fixed_place_id ?? null
@@ -142,6 +151,7 @@ export default function RecurringSeriesForm({
         option_place_ids: mode === "vote" ? votePlaceIds : undefined,
         invitee_ids: invite.userIds,
         kaki_id: invite.kakiIds[0] ?? null,
+        vote_deadline_offset_minutes: voteDeadlineMinutes,
       };
       if (isEditing) {
         await mutateJson(
@@ -203,6 +213,28 @@ export default function RecurringSeriesForm({
             onChange={(e) => setTime(e.target.value)}
             className={`${inputClass} min-w-0`}
           />
+        </Field>
+
+        <Field
+          label="Voting closes"
+          hint="Force-closes voting this long before each occurrence starts, even if not everyone's answered. Applies to every future occurrence, and any already-generated one that's still open."
+        >
+          <select
+            value={voteDeadlineMinutes ?? ""}
+            onChange={(e) =>
+              setVoteDeadlineMinutes(
+                e.target.value === "" ? null : Number(e.target.value)
+              )
+            }
+            className={inputClass}
+          >
+            <option value="">No deadline</option>
+            {VOTE_DEADLINE_OFFSET_OPTIONS.map((minutes) => (
+              <option key={minutes} value={minutes}>
+                {leadTimeLabel(minutes)} before
+              </option>
+            ))}
+          </select>
         </Field>
       </Card>
 
