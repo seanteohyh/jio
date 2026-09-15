@@ -160,3 +160,31 @@ export function redactHiddenVotes(event: EventDetail): EventDetail {
 
   return { ...event, votes: [], tally: {}, voter_count: voterCount };
 }
+
+/**
+ * Whether a cast ballot should still count toward full-consensus auto-close
+ * once a new place option has been added since it was cast — bug report
+ * item 4: adding a place mid-vote shouldn't let stale ballots silently
+ * carry an auto-close through, so a fresh place deserves a fresh look at
+ * everyone's ranking before the group can be said to agree on anything.
+ *
+ * This is deliberately narrow: it only ever gates the full-consensus path
+ * (`maybeAutoCloseEvent`). The vote-deadline sweep (`closeEventsPastVoteDeadline`)
+ * ignores staleness entirely and closes with whatever ballots exist — "give
+ * the opportunity to revote, but the deadline still wins" per the bug
+ * report, not "block closing indefinitely until everyone revotes."
+ *
+ * `optionsChangedAt` of `null`/`undefined` means nothing's been added since
+ * the Jio's own options were first set, so nothing can ever be stale.
+ * `voteCastAt` missing (a ballot with no timestamp, which shouldn't happen
+ * in practice) is treated as stale rather than assumed fresh — the whole
+ * point is caution near a race, not the benefit of the doubt.
+ */
+export function isVoteStale(
+  voteCastAt: string | null | undefined,
+  optionsChangedAt: string | null | undefined
+): boolean {
+  if (!optionsChangedAt) return false;
+  if (!voteCastAt) return true;
+  return new Date(voteCastAt).getTime() < new Date(optionsChangedAt).getTime();
+}

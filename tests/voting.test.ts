@@ -3,6 +3,7 @@ import {
   computeBorda,
   computeWinner,
   firstPlaceCounts,
+  isVoteStale,
 } from "@/lib/voting";
 import type { EventVote } from "@/types";
 
@@ -128,5 +129,28 @@ describe("computeWinner", () => {
     // b totals 4, c totals 3, a totals 3.
     expect(result.winnerId).toBe("b");
     expect(result.points).toBe(4);
+  });
+});
+
+describe("isVoteStale", () => {
+  it("is never stale when nothing's changed since (null optionsChangedAt)", () => {
+    expect(isVoteStale("2026-08-01T00:00:00Z", null)).toBe(false);
+    expect(isVoteStale(undefined, null)).toBe(false);
+  });
+
+  it("is stale when the vote predates the last options change", () => {
+    expect(
+      isVoteStale("2026-08-01T00:00:00Z", "2026-08-02T00:00:00Z")
+    ).toBe(true);
+  });
+
+  it("is fresh when the vote came after the last options change", () => {
+    expect(
+      isVoteStale("2026-08-03T00:00:00Z", "2026-08-02T00:00:00Z")
+    ).toBe(false);
+  });
+
+  it("treats a missing vote timestamp as stale once something's changed", () => {
+    expect(isVoteStale(undefined, "2026-08-02T00:00:00Z")).toBe(true);
   });
 });

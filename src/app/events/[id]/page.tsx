@@ -4,6 +4,7 @@ import { use, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import useSWR from "swr";
 import {
+  AlertIcon,
   BallotIcon,
   CantMakeItIcon,
   GoingIcon,
@@ -74,6 +75,10 @@ interface EventResponse {
     isHost: boolean;
     canAddOptions: boolean;
     myVote: string[];
+    /** True once a place has been added since this ballot was cast — see
+     *  `isVoteStale`. Doesn't touch `myVote` itself; recasting (even the
+     *  same ranking) refreshes it. */
+    myVoteIsStale: boolean;
     myRsvp: RsvpResponse | null;
     /** Only populated when `myRsvp === "yes"` — see the route. */
     reminder: {
@@ -1459,6 +1464,18 @@ export default function EventDetailPage({
           })}
         </ul>
       </Card>
+      )}
+
+      {/* Bug report item 4 — a new place was added since this ballot was
+          cast, so it no longer counts toward full-consensus auto-close
+          (though the vote deadline, if one's set, still closes with it
+          regardless). Purely informational: recasting even the same
+          ranking is enough to clear it. */}
+      {isOpen && !isDatePolling && viewer.myVoteIsStale && (
+        <div className="border-ember/40 bg-ember-tint text-ember-tint-text flex items-center gap-2 rounded-xl border px-3 py-2.5 text-sm">
+          <AlertIcon className="h-4 w-4 shrink-0" aria-hidden="true" />
+          A new place was added — recast your vote so it counts.
+        </div>
       )}
 
       {/* --- Ballot --- */}

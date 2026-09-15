@@ -18,7 +18,7 @@ import {
   uuid,
 } from "@/lib/utils";
 import { pickCommitteeSuggestions } from "@/lib/suggestCommittee";
-import { computeWinner } from "@/lib/voting";
+import { computeWinner, isVoteStale } from "@/lib/voting";
 import { computeUserMetrics } from "@/lib/metrics";
 import { rankPlaces } from "@/lib/recommend";
 import { DISCOVERY_CONFIG } from "@/lib/discoveryConfig";
@@ -1225,6 +1225,7 @@ export const demoRepo: Repo = {
       notes: notes ?? null,
       vote_deadline_offset_minutes: voteDeadlineOffsetMinutes ?? null,
       vote_end_at: computeVoteEndAt(scheduledAt, voteDeadlineOffsetMinutes),
+      options_changed_at: null,
       created_at: new Date().toISOString(),
     };
     s.events.push(event);
@@ -1289,6 +1290,7 @@ export const demoRepo: Repo = {
       // date, from this same stored offset.
       vote_deadline_offset_minutes: voteDeadlineOffsetMinutes ?? null,
       vote_end_at: null,
+      options_changed_at: null,
       date_phase: "polling",
       created_at: new Date().toISOString(),
     };
@@ -1549,6 +1551,7 @@ export const demoRepo: Repo = {
       added_by: userId,
       is_suggested: false,
     });
+    event.options_changed_at = new Date().toISOString();
   },
 
   async addFreeTextOptionToEvent(eventId, label, userId) {
@@ -1579,6 +1582,7 @@ export const demoRepo: Repo = {
       label: trimmed,
     };
     s.options.push(option);
+    event.options_changed_at = new Date().toISOString();
     return { ...option, added_by_name: displayNameFor(userId) };
   },
 
@@ -1749,6 +1753,10 @@ export const demoRepo: Repo = {
         place: pick.place,
         added_by_name: displayNameFor(userId),
       });
+    }
+
+    if (added.length > 0) {
+      event.options_changed_at = new Date().toISOString();
     }
 
     return added;
@@ -2260,12 +2268,17 @@ export const demoRepo: Repo = {
       if (response !== "yes" && response !== "no") return null;
     }
 
-    // Everyone who confirmed going must have actually voted.
-    const votedUserIds = new Set(
-      s.votes.filter((v) => v.event_id === eventId).map((v) => v.user_id)
-    );
+    // Everyone who confirmed going must have actually voted — and, per bug
+    // report item 4, with a ballot cast no earlier than the last place
+    // added. A vote cast before a new option showed up doesn't get to
+    // silently carry an auto-close through; recasting (even unchanged)
+    // clears it. The vote-deadline sweep, unlike this path, closes with
+    // whatever ballots exist regardless of staleness — see `isVoteStale`.
+    const eventVotes = s.votes.filter((v) => v.event_id === eventId);
     for (const userId of participants) {
-      if (rsvpByUser.get(userId) === "yes" && !votedUserIds.has(userId)) {
+      if (rsvpByUser.get(userId) !== "yes") continue;
+      const ownVote = eventVotes.find((v) => v.user_id === userId);
+      if (!ownVote || isVoteStale(ownVote.created_at, event.options_changed_at)) {
         return null;
       }
     }
@@ -2273,8 +2286,7 @@ export const demoRepo: Repo = {
     const optionIds = s.options
       .filter((o) => o.event_id === eventId)
       .map((o) => o.place_id);
-    const votes = s.votes.filter((v) => v.event_id === eventId);
-    const winner = computeWinner(votes, optionIds).winnerId;
+    const winner = computeWinner(eventVotes, optionIds).winnerId;
 
     s.events[index] = {
       ...event,

@@ -384,6 +384,13 @@ export interface LunchEvent {
    *  088_vote_deadline.sql. Not meaningful to read outside
    *  `listAndClaimVoteDeadlineReminders`. */
   vote_deadline_reminder_sent_at?: string | null;
+  /** Bug report item 4 — bumped to "now" whenever a place option is added
+   *  to this Jio. `null` means nothing's been added since the Jio's own
+   *  options were first set. See `isVoteStale` for what this gates: a
+   *  ballot cast before this point no longer counts toward full-consensus
+   *  auto-close, though the vote-deadline sweep still closes with whatever
+   *  ballots exist regardless. */
+  options_changed_at?: string | null;
   created_at?: string;
 
   /** Derived. */

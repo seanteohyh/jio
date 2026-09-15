@@ -12,7 +12,7 @@ import {
   sortPlacesForList,
   uuid,
 } from "@/lib/utils";
-import { computeWinner } from "@/lib/voting";
+import { computeWinner, isVoteStale } from "@/lib/voting";
 import { computeUserMetrics } from "@/lib/metrics";
 import { rankPlaces } from "@/lib/recommend";
 import { pickCommitteeSuggestions } from "@/lib/suggestCommittee";
@@ -1857,6 +1857,8 @@ export const supabaseRepo: Repo = {
       .insert({ event_id: eventId, place_id: placeId, added_by: userId });
 
     if (error) fail("Could not add that place", error);
+
+    await client.rpc("bump_options_changed_at", { p_event_id: eventId });
   },
 
   async addFreeTextOptionToEvent(eventId, label, userId) {
@@ -1919,6 +1921,8 @@ export const supabaseRepo: Repo = {
       label: trimmed,
     });
     if (error) fail("Could not add that option", error);
+
+    await client.rpc("bump_options_changed_at", { p_event_id: eventId });
 
     return {
       event_id: eventId,
@@ -2135,6 +2139,8 @@ export const supabaseRepo: Repo = {
       )
       .select();
     if (error) fail("Could not add suggested places", error);
+
+    await client.rpc("bump_options_changed_at", { p_event_id: eventId });
 
     const names = await displayNameMap(client, [userId]);
     return ((inserted ?? []) as EventOption[]).map((o) => ({
@@ -2828,7 +2834,7 @@ export const supabaseRepo: Repo = {
 
     const { data: eventRow } = await client
       .from("lunch_events")
-      .select("host_id, kaki_id, status, date_phase")
+      .select("host_id, kaki_id, status, date_phase, options_changed_at")
       .eq("id", eventId)
       .maybeSingle();
     if (!eventRow) return null;
@@ -2837,6 +2843,7 @@ export const supabaseRepo: Repo = {
       kaki_id: string | null;
       status: string;
       date_phase: string | null;
+      options_changed_at: string | null;
     };
 
     if (event.status !== "open") return null;
@@ -2865,10 +2872,17 @@ export const supabaseRepo: Repo = {
       if (response !== "yes" && response !== "no") return null;
     }
 
+    // Everyone who confirmed going must have actually voted — and, per bug
+    // report item 4, with a ballot cast no earlier than the last place
+    // added. A vote cast before a new option showed up doesn't get to
+    // silently carry an auto-close through; recasting (even unchanged)
+    // clears it. The vote-deadline sweep, unlike this path, closes with
+    // whatever ballots exist regardless of staleness — see `isVoteStale`.
     const votes = (voteRows ?? []) as EventVote[];
-    const votedUserIds = new Set(votes.map((v) => v.user_id));
     for (const userId of participants) {
-      if (rsvpByUser.get(userId) === "yes" && !votedUserIds.has(userId)) {
+      if (rsvpByUser.get(userId) !== "yes") continue;
+      const ownVote = votes.find((v) => v.user_id === userId);
+      if (!ownVote || isVoteStale(ownVote.created_at, event.options_changed_at)) {
         return null;
       }
     }
@@ -2888,13 +2902,24 @@ export const supabaseRepo: Repo = {
     // re-evaluated inside the same statement as the write), but shrinks
     // the window from "however long this whole function takes" down to
     // the gap between this read and the write immediately after it.
-    const [freshParticipants, { data: freshRsvpRows }] = await Promise.all([
+    const [
+      freshParticipants,
+      { data: freshRsvpRows },
+      { data: freshEventRow },
+      { data: freshVoteRows },
+    ] = await Promise.all([
       resolveEventParticipants(client, {
         id: eventId,
         host_id: event.host_id,
         kaki_id: event.kaki_id,
       }),
       client.from("event_rsvps").select("user_id, response").eq("event_id", eventId),
+      client
+        .from("lunch_events")
+        .select("options_changed_at")
+        .eq("id", eventId)
+        .maybeSingle(),
+      client.from("event_votes").select("*").eq("event_id", eventId),
     ]);
     const freshRsvpByUser = new Map(
       ((freshRsvpRows ?? []) as { user_id: string; response: string }[]).map(
@@ -2904,6 +2929,17 @@ export const supabaseRepo: Repo = {
     for (const userId of freshParticipants) {
       const response = freshRsvpByUser.get(userId);
       if (response !== "yes" && response !== "no") return null;
+    }
+    const freshOptionsChangedAt =
+      (freshEventRow as { options_changed_at: string | null } | null)
+        ?.options_changed_at ?? null;
+    const freshVotes = (freshVoteRows ?? []) as EventVote[];
+    for (const userId of freshParticipants) {
+      if (freshRsvpByUser.get(userId) !== "yes") continue;
+      const ownVote = freshVotes.find((v) => v.user_id === userId);
+      if (!ownVote || isVoteStale(ownVote.created_at, freshOptionsChangedAt)) {
+        return null;
+      }
     }
 
     const { createServiceRoleClient } = await import(
