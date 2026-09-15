@@ -141,6 +141,34 @@ describe("generateDueOccurrences", () => {
     );
   });
 
+  it("gives each generated occurrence the series' own notes", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-05T09:00:00"));
+
+    await demoRepo.createRecurringSeries(
+      seriesInput({ notes: "Meet at the lobby" })
+    );
+    await demoRepo.generateDueOccurrences(DEMO_USER_ID);
+
+    const events = await demoRepo.listEvents(DEMO_USER_ID);
+    const generated = events.find((e) => e.recurring_series_id);
+    const detail = await demoRepo.getEvent(generated!.id);
+    expect(detail?.notes).toBe("Meet at the lobby");
+  });
+
+  it("leaves a generated occurrence's notes null when the series has none", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-05T09:00:00"));
+
+    await demoRepo.createRecurringSeries(seriesInput());
+    await demoRepo.generateDueOccurrences(DEMO_USER_ID);
+
+    const events = await demoRepo.listEvents(DEMO_USER_ID);
+    const generated = events.find((e) => e.recurring_series_id);
+    const detail = await demoRepo.getEvent(generated!.id);
+    expect(detail?.notes).toBeNull();
+  });
+
   it("does not generate when the next occurrence is outside the lookahead window", async () => {
     // A Thursday: next Wednesday is 6 days out, past the 3-day window.
     vi.useFakeTimers();
@@ -330,6 +358,27 @@ describe("updateRecurringSeries", () => {
         new Date(after!.scheduled_at).getTime() - 60 * 60000
       ).toISOString()
     );
+  });
+
+  it("propagates a notes change onto a still-open occurrence, even after someone's voted", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-05T09:00:00Z"));
+
+    const series = await demoRepo.createRecurringSeries(seriesInput());
+    await demoRepo.generateDueOccurrences(DEMO_USER_ID);
+    const before = (await demoRepo.listEvents(DEMO_USER_ID)).find(
+      (e) => e.recurring_series_id === series.id
+    )!;
+    // Unlike place/mode/invitees, a notes change doesn't invalidate an
+    // existing answer, so this propagates even once someone's voted.
+    await demoRepo.castBallot(before.id, DEMO_TEAMMATE_A, ["demo-place-01"]);
+
+    await demoRepo.updateRecurringSeries(series.id, DEMO_USER_ID, {
+      notes: "Bring cash, card reader is down",
+    });
+
+    const after = await demoRepo.getEvent(before.id);
+    expect(after?.notes).toBe("Bring cash, card reader is down");
   });
 
   it("never moves an already-generated occurrence's date when the weekday changes", async () => {

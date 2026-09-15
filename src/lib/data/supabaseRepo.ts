@@ -3027,6 +3027,7 @@ export const supabaseRepo: Repo = {
         fixed_place_id: data.fixed_place_id ?? null,
         option_place_ids: data.option_place_ids,
         vote_deadline_offset_minutes: data.vote_deadline_offset_minutes ?? null,
+        notes: data.notes?.trim() || null,
       })
       .select()
       .single();
@@ -3121,6 +3122,10 @@ export const supabaseRepo: Repo = {
         updates.vote_deadline_offset_minutes !== undefined
           ? updates.vote_deadline_offset_minutes
           : existing.vote_deadline_offset_minutes,
+      notes:
+        updates.notes !== undefined
+          ? updates.notes?.trim() || null
+          : existing.notes,
     };
 
     const { error: updateError } = await client
@@ -3171,6 +3176,15 @@ export const supabaseRepo: Repo = {
               series.vote_deadline_offset_minutes
             ),
           })
+          .eq("id", occurrence.id);
+      }
+
+      // Also unconditional, same reasoning — a note doesn't invalidate
+      // anyone's existing vote/RSVP the way changing the options would.
+      if (updates.notes !== undefined) {
+        await client
+          .from("lunch_events")
+          .update({ notes: series.notes ?? null })
           .eq("id", occurrence.id);
       }
 
@@ -3319,7 +3333,7 @@ export const supabaseRepo: Repo = {
         series.kaki_id ?? null,
         [...inviteeSet],
         undefined,
-        undefined,
+        series.notes ?? null,
         series.vote_deadline_offset_minutes
       );
 

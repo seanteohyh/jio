@@ -446,6 +446,13 @@ export interface RecurringSeries {
    *  place/mode/invitees, moving a deadline doesn't invalidate anyone's
    *  existing answer). */
   vote_deadline_offset_minutes?: number | null;
+  /** Applied to every generated occurrence's own `notes` — same host-facing
+   *  meaning as `LunchEvent.notes` ("meet at the lobby," "bring cash").
+   *  Propagates onto an already-generated, still-open occurrence the same
+   *  unconditional way `vote_deadline_offset_minutes` does: a note doesn't
+   *  invalidate anyone's existing vote/RSVP, so there's no reason to gate
+   *  it on whether anyone's answered yet. */
+  notes?: string | null;
   status: RecurringSeriesStatus;
   /** ISO date ("YYYY-MM-DD") of the most recently generated occurrence. */
   last_generated_date?: string | null;

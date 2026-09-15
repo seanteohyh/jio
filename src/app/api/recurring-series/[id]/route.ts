@@ -16,6 +16,7 @@ interface UpdateSeriesBody {
   fixed_place_id?: string | null;
   option_place_ids?: string[];
   vote_deadline_offset_minutes?: number | null;
+  notes?: string | null;
 }
 
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -82,6 +83,8 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       option_place_ids:
         body.mode === "vote" ? body.option_place_ids : undefined,
       vote_deadline_offset_minutes: body.vote_deadline_offset_minutes,
+      notes:
+        body.notes === undefined ? undefined : body.notes?.trim() || null,
     });
 
     return json({ series });

@@ -56,6 +56,7 @@ export default function RecurringSeriesForm({
     initialSeries?.vote_deadline_offset_minutes ??
       DEFAULT_VOTE_DEADLINE_OFFSET_MINUTES
   );
+  const [notes, setNotes] = useState(initialSeries?.notes ?? "");
   const [mode, setMode] = useState<Mode>(initialSeries?.mode ?? "fixed");
   const [fixedPlaceId, setFixedPlaceId] = useState<string | null>(
     initialSeries?.fixed_place_id ?? null
@@ -152,6 +153,7 @@ export default function RecurringSeriesForm({
         invitee_ids: invite.userIds,
         kaki_id: invite.kakiIds[0] ?? null,
         vote_deadline_offset_minutes: voteDeadlineMinutes,
+        notes: notes.trim() || null,
       };
       if (isEditing) {
         await mutateJson(
@@ -235,6 +237,20 @@ export default function RecurringSeriesForm({
               </option>
             ))}
           </select>
+        </Field>
+
+        <Field
+          label="Notes for invitees (optional)"
+          hint="Parking, dress code, anything else worth knowing before they show up. Applies to every future occurrence, and any already-generated one that's still open."
+        >
+          <textarea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            maxLength={500}
+            rows={3}
+            className={inputClass}
+            placeholder="e.g. Meet at the lobby, park at B2"
+          />
         </Field>
       </Card>
 

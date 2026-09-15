@@ -2404,6 +2404,7 @@ export const demoRepo: Repo = {
         updates.vote_deadline_offset_minutes !== undefined
           ? updates.vote_deadline_offset_minutes
           : series.vote_deadline_offset_minutes,
+      notes: updates.notes !== undefined ? updates.notes : series.notes,
     });
 
     // Propagate onto any already-generated occurrence that's still `open`
@@ -2431,6 +2432,12 @@ export const demoRepo: Repo = {
           occurrence.scheduled_at,
           series.vote_deadline_offset_minutes
         );
+      }
+
+      // Also unconditional, same reasoning — a note doesn't invalidate
+      // anyone's existing vote/RSVP the way changing the options would.
+      if (updates.notes !== undefined) {
+        occurrence.notes = series.notes ?? null;
       }
 
       const hasResponses =
@@ -2537,7 +2544,7 @@ export const demoRepo: Repo = {
         series.kaki_id ?? null,
         [...inviteeSet],
         undefined,
-        undefined,
+        series.notes ?? null,
         series.vote_deadline_offset_minutes
       );
       created.recurring_series_id = series.id;
