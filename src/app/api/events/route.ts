@@ -80,6 +80,11 @@ interface CreateEventBody {
   scheduled_at?: string;
   office_id?: string;
   place_ids?: string[];
+  /** Per-place note ("opens at 12:30pm instead"), keyed by place id — the
+   *  same field `PATCH .../options` edits after the fact, settable here so
+   *  a host doesn't need a trip back into the Jio once it exists. Fixed
+   *  Jios only (a Flexi Jio has no place options at creation). */
+  place_notes?: Record<string, string>;
   /** Display provenance — "Jio with the lunch kakis". */
   kaki_id?: string | null;
   /** Groups whose members should be invited. See `expandInvitees`. */
@@ -191,10 +196,22 @@ export async function POST(request: NextRequest) {
       notes,
       voteDeadlineOffsetMinutes
     );
+
+    // Set at creation rather than threaded through createEvent's own
+    // (already long) parameter list — reuses the exact same per-option path
+    // a host uses to edit a note after the fact. The host added every
+    // initial option, so `setOptionNote`'s own added_by check always passes
+    // here.
+    for (const [placeId, note] of Object.entries(body.place_notes ?? {})) {
+      if (!note.trim()) continue;
+      await repo.setOptionNote(event.id, placeId, user.id, note);
+    }
+
     await notifyInvitees(repo, invitees, event.id, title, event.vote_end_at);
     await logAction(repo, user.id, "jio.hosted", { eventId: event.id });
 
-    return json({ event }, 201);
+    const withNotes = await repo.getEvent(event.id);
+    return json({ event: withNotes ?? event }, 201);
   } catch (error) {
     return errorResponse(error);
   }

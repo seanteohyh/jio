@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import useSWR from "swr";
@@ -103,6 +103,11 @@ export default function JioForm({
   );
   const [hideVotes, setHideVotes] = useState(false);
   const [notes, setNotes] = useState("");
+  // Per-place notes ("opens at 12:30pm instead") for whatever's selected at
+  // creation time — same field `setOptionNote` edits after the fact, just
+  // set up front instead of requiring a trip back into the Jio once it
+  // exists. Keyed by place id.
+  const [placeNotes, setPlaceNotes] = useState<Record<string, string>>({});
   const [voteDeadlineMinutes, setVoteDeadlineMinutes] = useState<number | null>(
     DEFAULT_VOTE_DEADLINE_OFFSET_MINUTES
   );
@@ -182,6 +187,15 @@ export default function JioForm({
     [optionGroups]
   );
 
+  // Every place this form has ever shown, kept around by id even after a
+  // search/suggestion view moves on — the per-place note list below needs
+  // a selected place's name long after it's scrolled out of whichever
+  // group first surfaced it.
+  const seenPlacesRef = useRef<Map<string, Place>>(new Map());
+  useEffect(() => {
+    for (const p of optionPool) seenPlacesRef.current.set(p.id, p);
+  }, [optionPool]);
+
   const addCandidateDate = () => {
     if (!newCandidateDate || candidateDates.includes(newCandidateDate)) return;
     setCandidateDates((prev) => [...prev, newCandidateDate].sort());
@@ -226,6 +240,11 @@ export default function JioForm({
               ...shared,
               scheduled_at: new Date(when).toISOString(),
               place_ids: selected,
+              place_notes: Object.fromEntries(
+                Object.entries(placeNotes)
+                  .map(([placeId, note]) => [placeId, note.trim()] as const)
+                  .filter(([, note]) => note.length > 0)
+              ),
             }
       );
       showToast("Jio started");
@@ -435,6 +454,33 @@ export default function JioForm({
                 Not here? Add a place
               </Link>
             </p>
+
+            {selected.length > 0 && (
+              <div className="space-y-1.5">
+                <p className="text-stone text-xs">
+                  Add a note to any of these — everyone voting will see it.
+                </p>
+                {selected.map((placeId) => (
+                  <div key={placeId} className="flex items-center gap-2">
+                    <span className="text-stone w-24 shrink-0 truncate text-xs">
+                      {seenPlacesRef.current.get(placeId)?.name ?? "…"}
+                    </span>
+                    <input
+                      value={placeNotes[placeId] ?? ""}
+                      onChange={(e) =>
+                        setPlaceNotes((prev) => ({
+                          ...prev,
+                          [placeId]: e.target.value,
+                        }))
+                      }
+                      placeholder="e.g. opens at 12:30pm instead"
+                      maxLength={200}
+                      className={`${inputClass} min-w-0 flex-1 py-1.5 text-xs`}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
           </Wrapper>
         )}
 
