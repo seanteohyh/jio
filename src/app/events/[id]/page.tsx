@@ -718,6 +718,22 @@ export default function EventDetailPage({
     )
     .slice(0, 6);
 
+  // A free-text ("not here? add it anyway") vote option has no `places`
+  // row at all, so it can never turn up in the search above — `winner_place_id`
+  // has to resolve to a real place (Maps links, budget info, everywhere else
+  // that joins on it). Bug report: typing a free-text option's exact name
+  // here found nothing and gave no indication why. Surfacing the match lets
+  // the empty state below point at "register it, then it'll show up here"
+  // instead of silently doing nothing.
+  const winnerFreeTextMatch =
+    winnerQuery.trim() && winnerCandidates.length === 0
+      ? event.options.find(
+          (o) =>
+            o.label &&
+            o.label.toLowerCase().includes(winnerQuery.trim().toLowerCase())
+        )
+      : undefined;
+
   return (
     <div className="space-y-5">
       <header>
@@ -1964,6 +1980,33 @@ export default function EventDetailPage({
                       ))}
                     </ul>
                   )}
+                  {winnerQuery.trim() &&
+                    winnerCandidates.length === 0 &&
+                    (winnerFreeTextMatch ? (
+                      <p className="text-stone bg-paper rounded-lg px-2.5 py-2 text-xs">
+                        &ldquo;{winnerFreeTextMatch.label}&rdquo; was one of
+                        the vote options, but it isn&apos;t a registered
+                        place yet — only a real place can be the winner.{" "}
+                        <Link
+                          href={`/places/new?name=${encodeURIComponent(winnerFreeTextMatch.label ?? "")}&fromEvent=${id}&draftPlaceId=${encodeURIComponent(winnerFreeTextMatch.place_id)}`}
+                          className="text-ember underline"
+                        >
+                          Add it to Places
+                        </Link>
+                        , then search for it here again.
+                      </p>
+                    ) : (
+                      <p className="text-stone bg-paper rounded-lg px-2.5 py-2 text-xs">
+                        No matching place found.{" "}
+                        <Link
+                          href={`/places/new?name=${encodeURIComponent(winnerQuery.trim())}`}
+                          className="text-ember underline"
+                        >
+                          Add a new place
+                        </Link>
+                        , then search for it here again.
+                      </p>
+                    ))}
                   <Button
                     size="sm"
                     variant="ghost"
