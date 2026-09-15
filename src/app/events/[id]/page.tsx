@@ -870,6 +870,7 @@ export default function EventDetailPage({
             whenLabel={formatDateTime(event.scheduled_at)}
             standings={shareStandings}
             voteCount={voterCount}
+            winnerCorrected={Boolean(event.winner_corrected_at)}
             closedAtLabel={
               event.closed_at ? formatTime(event.closed_at) : undefined
             }
@@ -1436,12 +1437,17 @@ export default function EventDetailPage({
                       </Link>
                     )}
                   </span>
-                  {!hideStanding && (
-                    <span className="text-stone shrink-0 text-xs tabular-nums">
-                      <CountUp value={points} durationMs={400} />{" "}
-                      pt{points === 1 ? "" : "s"}
-                    </span>
-                  )}
+                  {!hideStanding &&
+                    (isWinner && event.winner_corrected_at ? (
+                      <span className="text-sage shrink-0 text-xs font-medium">
+                        Overruled
+                      </span>
+                    ) : (
+                      <span className="text-stone shrink-0 text-xs tabular-nums">
+                        <CountUp value={points} durationMs={400} />{" "}
+                        pt{points === 1 ? "" : "s"}
+                      </span>
+                    ))}
                 </div>
                 {option.note && (
                   <p className="text-ember mt-0.5 truncate text-[11px] italic">

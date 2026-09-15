@@ -33,6 +33,15 @@ interface ShareResultCardProps {
   standings?: ShareResultStanding[];
   /** Distinct voters, for the "N votes" summary line. */
   voteCount?: number;
+  /**
+   * Set once the host has corrected the winner after closing ("Where did
+   * you actually go?") — the group's own ballots never decided this
+   * result, so the summary line says "Overruled" instead of attributing a
+   * vote count to it, regardless of whatever points the corrected place's
+   * row happens to show (it may have gotten none at all, or wasn't even
+   * an option originally).
+   */
+  winnerCorrected?: boolean;
   /** Pre-formatted time the Jio actually closed, e.g. "12:04 pm". */
   closedAtLabel?: string;
   /** Pre-formatted lunch time, e.g. "12:30 pm", for the "see you at" footer. */
@@ -205,6 +214,7 @@ function draw(
     whenLabel,
     standings = [],
     voteCount = 0,
+    winnerCorrected = false,
     closedAtLabel,
     seeYouAtLabel,
   }: ShareResultCardProps,
@@ -282,9 +292,11 @@ function draw(
   y += 40;
   const winnerRow = standings.find((s) => s.isWinner);
   const summaryParts = [
-    winnerRow
-      ? `${winnerRow.points} pt${winnerRow.points === 1 ? "" : "s"}`
-      : null,
+    winnerCorrected
+      ? "Overruled"
+      : winnerRow
+        ? `${winnerRow.points} pt${winnerRow.points === 1 ? "" : "s"}`
+        : null,
     voteCount > 0 ? `${voteCount} vote${voteCount === 1 ? "" : "s"}` : null,
     closedAtLabel ? `closed ${closedAtLabel}` : null,
   ].filter((p): p is string => Boolean(p));
@@ -390,6 +402,7 @@ export default function ShareResultCard(props: ShareResultCardProps) {
     props.whenLabel,
     props.standings,
     props.voteCount,
+    props.winnerCorrected,
     props.closedAtLabel,
     props.seeYouAtLabel,
   ]);

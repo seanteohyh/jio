@@ -2157,7 +2157,11 @@ export const demoRepo: Repo = {
       throw new Error("That place does not exist");
     }
 
-    s.events[index] = { ...event, winner_place_id: newPlaceId };
+    s.events[index] = {
+      ...event,
+      winner_place_id: newPlaceId,
+      winner_corrected_at: new Date().toISOString(),
+    };
 
     const detail = await demoRepo.getEvent(eventId);
     if (!detail) throw new Error("That Jio vanished while correcting it");
@@ -2237,6 +2241,7 @@ export const demoRepo: Repo = {
       status: "open",
       winner_place_id: null,
       closed_at: null,
+      winner_corrected_at: null,
     };
 
     const detail = await demoRepo.getEvent(eventId);

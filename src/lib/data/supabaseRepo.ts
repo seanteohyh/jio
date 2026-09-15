@@ -2713,7 +2713,10 @@ export const supabaseRepo: Repo = {
 
     const { error, count } = await client
       .from("lunch_events")
-      .update({ winner_place_id: newPlaceId })
+      .update({
+        winner_place_id: newPlaceId,
+        winner_corrected_at: new Date().toISOString(),
+      })
       .eq("id", eventId)
       .eq("host_id", hostId);
     if (error) fail("Could not correct where this Jio went", error);
