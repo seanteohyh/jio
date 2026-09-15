@@ -18,7 +18,7 @@ import {
   uuid,
 } from "@/lib/utils";
 import { pickCommitteeSuggestions } from "@/lib/suggestCommittee";
-import { computeWinner } from "@/lib/voting";
+import { computeWinner, isVoteStale } from "@/lib/voting";
 import { computeUserMetrics } from "@/lib/metrics";
 import { rankPlaces } from "@/lib/recommend";
 import { DISCOVERY_CONFIG } from "@/lib/discoveryConfig";
@@ -1225,6 +1225,7 @@ export const demoRepo: Repo = {
       notes: notes ?? null,
       vote_deadline_offset_minutes: voteDeadlineOffsetMinutes ?? null,
       vote_end_at: computeVoteEndAt(scheduledAt, voteDeadlineOffsetMinutes),
+      options_changed_at: null,
       created_at: new Date().toISOString(),
     };
     s.events.push(event);
@@ -1289,6 +1290,7 @@ export const demoRepo: Repo = {
       // date, from this same stored offset.
       vote_deadline_offset_minutes: voteDeadlineOffsetMinutes ?? null,
       vote_end_at: null,
+      options_changed_at: null,
       date_phase: "polling",
       created_at: new Date().toISOString(),
     };
@@ -1549,6 +1551,7 @@ export const demoRepo: Repo = {
       added_by: userId,
       is_suggested: false,
     });
+    event.options_changed_at = new Date().toISOString();
   },
 
   async addFreeTextOptionToEvent(eventId, label, userId) {
@@ -1579,6 +1582,7 @@ export const demoRepo: Repo = {
       label: trimmed,
     };
     s.options.push(option);
+    event.options_changed_at = new Date().toISOString();
     return { ...option, added_by_name: displayNameFor(userId) };
   },
 
@@ -1659,6 +1663,23 @@ export const demoRepo: Repo = {
     );
   },
 
+  async setOptionNote(eventId, placeId, userId, note) {
+    const s = store();
+    const event = s.events.find((e) => e.id === eventId);
+    if (!event) throw new Error("Can't find that Jio — the link might be old.");
+    if (event.status !== "open") throw new Error("This Jio is already closed");
+
+    const option = s.options.find(
+      (o) => o.event_id === eventId && o.place_id === placeId
+    );
+    if (!option) throw new Error("That place is not an option");
+    if (option.added_by !== userId) {
+      throw new Error("Only whoever added this place can edit its note");
+    }
+
+    option.note = note?.trim() || null;
+  },
+
   async suggestOptionsForEvent(eventId, userId, excludePlaceIds = []) {
     const s = store();
     const event = s.events.find((e) => e.id === eventId);
@@ -1732,6 +1753,10 @@ export const demoRepo: Repo = {
         place: pick.place,
         added_by_name: displayNameFor(userId),
       });
+    }
+
+    if (added.length > 0) {
+      event.options_changed_at = new Date().toISOString();
     }
 
     return added;
@@ -2132,7 +2157,11 @@ export const demoRepo: Repo = {
       throw new Error("That place does not exist");
     }
 
-    s.events[index] = { ...event, winner_place_id: newPlaceId };
+    s.events[index] = {
+      ...event,
+      winner_place_id: newPlaceId,
+      winner_corrected_at: new Date().toISOString(),
+    };
 
     const detail = await demoRepo.getEvent(eventId);
     if (!detail) throw new Error("That Jio vanished while correcting it");
@@ -2212,6 +2241,7 @@ export const demoRepo: Repo = {
       status: "open",
       winner_place_id: null,
       closed_at: null,
+      winner_corrected_at: null,
     };
 
     const detail = await demoRepo.getEvent(eventId);
@@ -2243,12 +2273,17 @@ export const demoRepo: Repo = {
       if (response !== "yes" && response !== "no") return null;
     }
 
-    // Everyone who confirmed going must have actually voted.
-    const votedUserIds = new Set(
-      s.votes.filter((v) => v.event_id === eventId).map((v) => v.user_id)
-    );
+    // Everyone who confirmed going must have actually voted — and, per bug
+    // report item 4, with a ballot cast no earlier than the last place
+    // added. A vote cast before a new option showed up doesn't get to
+    // silently carry an auto-close through; recasting (even unchanged)
+    // clears it. The vote-deadline sweep, unlike this path, closes with
+    // whatever ballots exist regardless of staleness — see `isVoteStale`.
+    const eventVotes = s.votes.filter((v) => v.event_id === eventId);
     for (const userId of participants) {
-      if (rsvpByUser.get(userId) === "yes" && !votedUserIds.has(userId)) {
+      if (rsvpByUser.get(userId) !== "yes") continue;
+      const ownVote = eventVotes.find((v) => v.user_id === userId);
+      if (!ownVote || isVoteStale(ownVote.created_at, event.options_changed_at)) {
         return null;
       }
     }
@@ -2256,8 +2291,7 @@ export const demoRepo: Repo = {
     const optionIds = s.options
       .filter((o) => o.event_id === eventId)
       .map((o) => o.place_id);
-    const votes = s.votes.filter((v) => v.event_id === eventId);
-    const winner = computeWinner(votes, optionIds).winnerId;
+    const winner = computeWinner(eventVotes, optionIds).winnerId;
 
     s.events[index] = {
       ...event,
@@ -2404,6 +2438,7 @@ export const demoRepo: Repo = {
         updates.vote_deadline_offset_minutes !== undefined
           ? updates.vote_deadline_offset_minutes
           : series.vote_deadline_offset_minutes,
+      notes: updates.notes !== undefined ? updates.notes : series.notes,
     });
 
     // Propagate onto any already-generated occurrence that's still `open`
@@ -2431,6 +2466,12 @@ export const demoRepo: Repo = {
           occurrence.scheduled_at,
           series.vote_deadline_offset_minutes
         );
+      }
+
+      // Also unconditional, same reasoning — a note doesn't invalidate
+      // anyone's existing vote/RSVP the way changing the options would.
+      if (updates.notes !== undefined) {
+        occurrence.notes = series.notes ?? null;
       }
 
       const hasResponses =
@@ -2537,7 +2578,7 @@ export const demoRepo: Repo = {
         series.kaki_id ?? null,
         [...inviteeSet],
         undefined,
-        undefined,
+        series.notes ?? null,
         series.vote_deadline_offset_minutes
       );
       created.recurring_series_id = series.id;

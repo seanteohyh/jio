@@ -14,6 +14,10 @@ beforeEach(() => {
   resetDemoStore();
 });
 
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 const TOMORROW = new Date(Date.now() + 86400000).toISOString();
 
 async function makeEvent(inviteeIds: string[] = []) {
@@ -76,6 +80,62 @@ describe("maybeAutoCloseEvent", () => {
     const closed = await demoRepo.maybeAutoCloseEvent(event.id);
     expect(closed?.status).toBe("closed");
     expect(closed?.winner_place_id).toBe("demo-place-01");
+  });
+
+  it("stale ballots block auto-close until everyone revotes past the new place — bug report item 4", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2027-06-01T00:00:00Z"));
+
+    const event = await makeEvent([DEMO_TEAMMATE_A]);
+    await demoRepo.rsvp(event.id, DEMO_USER_ID, "yes");
+    await demoRepo.castBallot(event.id, DEMO_USER_ID, ["demo-place-01"]);
+    await demoRepo.rsvp(event.id, DEMO_TEAMMATE_A, "yes");
+    await demoRepo.castBallot(event.id, DEMO_TEAMMATE_A, ["demo-place-01"]);
+
+    // Someone adds a third place a minute later, after both ballots were
+    // already cast.
+    vi.setSystemTime(new Date("2027-06-01T00:01:00Z"));
+    await demoRepo.addOptionToEvent(event.id, "demo-place-03", DEMO_TEAMMATE_A);
+
+    // Both ballots now predate the new option — neither counts as "voted"
+    // for auto-close purposes any more.
+    expect(await demoRepo.maybeAutoCloseEvent(event.id)).toBeNull();
+
+    // The host recasts (even the same ranking) a minute after that — still
+    // blocked on the other participant's now-stale ballot.
+    vi.setSystemTime(new Date("2027-06-01T00:02:00Z"));
+    await demoRepo.castBallot(event.id, DEMO_USER_ID, ["demo-place-01"]);
+    expect(await demoRepo.maybeAutoCloseEvent(event.id)).toBeNull();
+
+    // Once everyone's recast past the new place, it closes as normal.
+    await demoRepo.castBallot(event.id, DEMO_TEAMMATE_A, ["demo-place-01"]);
+    const closed = await demoRepo.maybeAutoCloseEvent(event.id);
+    expect(closed?.status).toBe("closed");
+  });
+
+  it("a stale voter's getEvent viewer flag flips true, then clears on revote", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2027-06-01T00:00:00Z"));
+
+    const event = await makeEvent([DEMO_TEAMMATE_A]);
+    await demoRepo.castBallot(event.id, DEMO_USER_ID, ["demo-place-01"]);
+
+    let detail = await demoRepo.getEvent(event.id);
+    expect(detail?.options_changed_at).toBeNull();
+
+    vi.setSystemTime(new Date("2027-06-01T00:01:00Z"));
+    await demoRepo.addOptionToEvent(event.id, "demo-place-03", DEMO_TEAMMATE_A);
+    detail = await demoRepo.getEvent(event.id);
+    expect(detail?.options_changed_at).not.toBeNull();
+
+    const myVoteBeforeRecast = detail?.votes.find(
+      (v) => v.user_id === DEMO_USER_ID
+    );
+    expect(myVoteBeforeRecast?.created_at).toBeDefined();
+    expect(
+      new Date(myVoteBeforeRecast!.created_at!).getTime() <
+        new Date(detail!.options_changed_at!).getTime()
+    ).toBe(true);
   });
 
   it("host must RSVP too — no auto-confirm exception", async () => {
@@ -173,6 +233,37 @@ describe("closeEventsPastVoteDeadline", () => {
     // path indefinitely, which is exactly the gap this feature bounds.
 
     vi.setSystemTime(new Date("2027-06-01T01:00:01Z")); // just past the deadline
+
+    const closed = await demoRepo.closeEventsPastVoteDeadline();
+    expect(closed).toBe(1);
+    const detail = await demoRepo.getEvent(event.id);
+    expect(detail?.status).toBe("closed");
+    expect(detail?.winner_place_id).toBe("demo-place-01");
+  });
+
+  it("closes with a stale ballot once the deadline hits — bug report item 4 (deadline still wins)", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2027-06-01T00:00:00Z"));
+
+    const event = await demoRepo.createEvent(
+      DEMO_USER_ID,
+      "Test lunch",
+      new Date("2027-06-01T04:00:00Z").toISOString(),
+      DEFAULT_OFFICE.id,
+      ["demo-place-01", "demo-place-02"],
+      null,
+      [DEMO_TEAMMATE_A],
+      false,
+      null,
+      180 // deadline is 2027-06-01T01:00:00Z
+    );
+    await demoRepo.castBallot(event.id, DEMO_USER_ID, ["demo-place-01"]);
+
+    // A place is added after the ballot was cast — stale for full-consensus
+    // purposes, but the deadline sweep doesn't care about staleness at all.
+    await demoRepo.addOptionToEvent(event.id, "demo-place-03", DEMO_USER_ID);
+
+    vi.setSystemTime(new Date("2027-06-01T01:00:01Z"));
 
     const closed = await demoRepo.closeEventsPastVoteDeadline();
     expect(closed).toBe(1);

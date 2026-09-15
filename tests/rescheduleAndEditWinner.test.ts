@@ -244,6 +244,21 @@ describe("editEventWinner", () => {
       demoRepo.editEventWinner(event.id, DEMO_USER_ID, "not-a-real-place")
     ).rejects.toThrow();
   });
+
+  it("stamps winner_corrected_at once the winner is corrected", async () => {
+    const event = await makeEvent();
+    await demoRepo.closeEvent(event.id, DEMO_USER_ID, "demo-place-01");
+    expect(
+      (await demoRepo.getEvent(event.id))?.winner_corrected_at
+    ).toBeFalsy();
+
+    const updated = await demoRepo.editEventWinner(
+      event.id,
+      DEMO_USER_ID,
+      "demo-place-02"
+    );
+    expect(updated.winner_corrected_at).toBeTruthy();
+  });
 });
 
 describe("reopenEvent", () => {
@@ -265,6 +280,15 @@ describe("reopenEvent", () => {
         (v) => v.user_id === DEMO_TEAMMATE_A && v.place_id === "demo-place-01"
       )
     ).toBe(true);
+  });
+
+  it("clears winner_corrected_at from a prior correction on reopen", async () => {
+    const event = await makeEvent();
+    await demoRepo.closeEvent(event.id, DEMO_USER_ID, "demo-place-01");
+    await demoRepo.editEventWinner(event.id, DEMO_USER_ID, "demo-place-02");
+
+    const reopened = await demoRepo.reopenEvent(event.id, DEMO_USER_ID);
+    expect(reopened.winner_corrected_at).toBeFalsy();
   });
 
   it("accepts a fresh or changed ballot once reopened", async () => {

@@ -3,7 +3,7 @@ import { requireUser } from "@/lib/auth";
 import { getRepoAsync } from "@/lib/data/repo";
 import { badRequest, errorResponse, json, notFound, readJson } from "@/lib/api";
 import { featureGate } from "@/lib/config";
-import { redactHiddenVotes } from "@/lib/voting";
+import { isVoteStale, redactHiddenVotes } from "@/lib/voting";
 import { qualifiesForDecidedCelebration } from "@/lib/decidedCelebration";
 import { qualifiesForKakiBridgeSuggestion } from "@/lib/kakiBridge";
 
@@ -37,10 +37,19 @@ export async function GET(_request: NextRequest, { params }: Params) {
     // Computed from the true event before redaction — a voter still sees
     // their own submitted ranking confirmed even while the aggregate is
     // hidden from everyone, themselves included (see redactHiddenVotes).
-    const myVote = event.votes
-      .filter((v) => v.user_id === user.id)
+    const myVotes = event.votes.filter((v) => v.user_id === user.id);
+    const myVote = myVotes
+      .slice()
       .sort((a, b) => a.rank - b.rank)
       .map((v) => v.place_id);
+
+    // Bug report item 4 — "a new place was added, recast your vote." Any
+    // one of this voter's own ballot rows is representative: castBallot
+    // replaces the whole ballot in one call, so they all share (near
+    // enough) the same `created_at`.
+    const myVoteIsStale =
+      myVotes.length > 0 &&
+      isVoteStale(myVotes[0]?.created_at, event.options_changed_at);
 
     const myRsvp =
       event.rsvps.find((r) => r.user_id === user.id)?.response ?? null;
@@ -134,6 +143,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
         isHost: event.host_id === user.id,
         canAddOptions: canAddOptions && event.status === "open",
         myVote,
+        myVoteIsStale,
         myRsvp,
         reminder,
         decidedCelebration,

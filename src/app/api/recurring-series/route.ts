@@ -30,6 +30,7 @@ interface CreateSeriesBody {
   fixed_place_id?: string | null;
   option_place_ids?: string[];
   vote_deadline_offset_minutes?: number | null;
+  notes?: string | null;
 }
 
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -94,6 +95,7 @@ export async function POST(request: NextRequest) {
         body.vote_deadline_offset_minutes === undefined
           ? DEFAULT_VOTE_DEADLINE_OFFSET_MINUTES
           : body.vote_deadline_offset_minutes,
+      notes: body.notes?.trim() || null,
     });
 
     return json({ series }, 201);

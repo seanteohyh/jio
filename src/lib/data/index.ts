@@ -404,6 +404,21 @@ export interface Repo {
     userId: string
   ): Promise<void>;
   /**
+   * A place-specific note visible to everyone voting — "opens at 12:30pm
+   * instead," not a permanent fact about the place (that belongs on the
+   * `places` row itself), just context for this one Jio. Only whoever
+   * added the option may set or clear it — deliberately narrower than
+   * `removeOptionFromEvent`'s host-or-adder rule, since a note is someone
+   * claiming to know something specific, not a moderation action. `null`
+   * clears it.
+   */
+  setOptionNote(
+    eventId: string,
+    placeId: string,
+    userId: string,
+    note: string | null
+  ): Promise<void>;
+  /**
    * "Can't decide? Suggest 3" — 2 personalized picks (scored against
    * invitees who've RSVP'd yes/maybe, falling back to every invitee if
    * nobody's responded) plus 1 exploratory pick (novel to this specific
@@ -1213,6 +1228,7 @@ export const REPO_METHODS = [
   "addFreeTextOptionToEvent",
   "attachPlaceToOption",
   "removeOptionFromEvent",
+  "setOptionNote",
   "suggestOptionsForEvent",
   "castBallot",
   "rsvp",

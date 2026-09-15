@@ -4,6 +4,7 @@ import { use, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import useSWR from "swr";
 import {
+  AlertIcon,
   BallotIcon,
   CantMakeItIcon,
   GoingIcon,
@@ -74,6 +75,10 @@ interface EventResponse {
     isHost: boolean;
     canAddOptions: boolean;
     myVote: string[];
+    /** True once a place has been added since this ballot was cast — see
+     *  `isVoteStale`. Doesn't touch `myVote` itself; recasting (even the
+     *  same ranking) refreshes it. */
+    myVoteIsStale: boolean;
     myRsvp: RsvpResponse | null;
     /** Only populated when `myRsvp === "yes"` — see the route. */
     reminder: {
@@ -493,6 +498,14 @@ export default function EventDetailPage({
       setBallotTouched(false);
     });
 
+  const saveOptionNote = (placeId: string, note: string) =>
+    run(async () => {
+      await mutateJson(`/api/events/${id}/options`, "PATCH", {
+        place_id: placeId,
+        note: note.trim() || null,
+      });
+    });
+
   const sendInvites = () =>
     run(async () => {
       await mutateJson(`/api/events/${id}/invitees`, "POST", {
@@ -705,6 +718,22 @@ export default function EventDetailPage({
     )
     .slice(0, 6);
 
+  // A free-text ("not here? add it anyway") vote option has no `places`
+  // row at all, so it can never turn up in the search above — `winner_place_id`
+  // has to resolve to a real place (Maps links, budget info, everywhere else
+  // that joins on it). Bug report: typing a free-text option's exact name
+  // here found nothing and gave no indication why. Surfacing the match lets
+  // the empty state below point at "register it, then it'll show up here"
+  // instead of silently doing nothing.
+  const winnerFreeTextMatch =
+    winnerQuery.trim() && winnerCandidates.length === 0
+      ? event.options.find(
+          (o) =>
+            o.label &&
+            o.label.toLowerCase().includes(winnerQuery.trim().toLowerCase())
+        )
+      : undefined;
+
   return (
     <div className="space-y-5">
       <header>
@@ -841,6 +870,7 @@ export default function EventDetailPage({
             whenLabel={formatDateTime(event.scheduled_at)}
             standings={shareStandings}
             voteCount={voterCount}
+            winnerCorrected={Boolean(event.winner_corrected_at)}
             closedAtLabel={
               event.closed_at ? formatTime(event.closed_at) : undefined
             }
@@ -1407,13 +1437,23 @@ export default function EventDetailPage({
                       </Link>
                     )}
                   </span>
-                  {!hideStanding && (
-                    <span className="text-stone shrink-0 text-xs tabular-nums">
-                      <CountUp value={points} durationMs={400} />{" "}
-                      pt{points === 1 ? "" : "s"}
-                    </span>
-                  )}
+                  {!hideStanding &&
+                    (isWinner && event.winner_corrected_at ? (
+                      <span className="text-sage shrink-0 text-xs font-medium">
+                        Overruled
+                      </span>
+                    ) : (
+                      <span className="text-stone shrink-0 text-xs tabular-nums">
+                        <CountUp value={points} durationMs={400} />{" "}
+                        pt{points === 1 ? "" : "s"}
+                      </span>
+                    ))}
                 </div>
+                {option.note && (
+                  <p className="text-ember mt-0.5 truncate text-[11px] italic">
+                    {option.note}
+                  </p>
+                )}
                 {!hideStanding && (
                   <div className="bg-paper mt-1 h-2 overflow-hidden rounded-full">
                     <div
@@ -1446,6 +1486,18 @@ export default function EventDetailPage({
           })}
         </ul>
       </Card>
+      )}
+
+      {/* Bug report item 4 — a new place was added since this ballot was
+          cast, so it no longer counts toward full-consensus auto-close
+          (though the vote deadline, if one's set, still closes with it
+          regardless). Purely informational: recasting even the same
+          ranking is enough to clear it. */}
+      {isOpen && !isDatePolling && viewer.myVoteIsStale && (
+        <div className="border-ember/40 bg-ember-tint text-ember-tint-text flex items-center gap-2 rounded-xl border px-3 py-2.5 text-sm">
+          <AlertIcon className="h-4 w-4 shrink-0" aria-hidden="true" />
+          A new place was added — recast your vote so it counts.
+        </div>
       )}
 
       {/* --- Ballot --- */}
@@ -1539,6 +1591,11 @@ export default function EventDetailPage({
                         {placeDescriptor(option.place)}
                       </span>
                     )}
+                    {option?.note && (
+                      <span className="text-ember block truncate text-[11px] italic">
+                        {option.note}
+                      </span>
+                    )}
                   </span>
                   <span className="flex shrink-0 gap-1">
                     <button
@@ -1575,6 +1632,21 @@ export default function EventDetailPage({
       {viewer.canAddOptions && !isDatePolling && (
         <Card>
           <SectionHeading>Add a place</SectionHeading>
+
+          {event.recurring_series_id && (
+            <p className="text-stone mb-2 text-xs">
+              This Jio repeats every week with the same option pool. Adding a
+              place here only adds it to this occurrence — to always include
+              it going forward,{" "}
+              <Link
+                href={`/events/recurring/${event.recurring_series_id}/edit`}
+                className="text-ember underline"
+              >
+                edit the recurring series
+              </Link>{" "}
+              instead.
+            </p>
+          )}
 
           <div className="mb-3 space-y-2">
             <SuggestFilterControls
@@ -1702,6 +1774,43 @@ export default function EventDetailPage({
                     </button>
                   ))}
               </div>
+            </div>
+          )}
+
+          {/* A note on a place you added, visible to everyone voting —
+              e.g. "opens at 12:30pm instead." Deliberately narrower than
+              Remove above: only whoever actually added the place, not the
+              host too — a note is someone claiming to know something
+              specific, not a moderation action. */}
+          {event.options.some((o) => o.added_by === viewer.id) && (
+            <div className="mt-3 space-y-1.5">
+              <p className="text-stone text-xs">
+                Add a note to a place you added — everyone voting will see it.
+              </p>
+              {event.options
+                .filter((o) => o.added_by === viewer.id)
+                .map((option) => (
+                  <div
+                    key={option.place_id}
+                    className="flex items-center gap-2"
+                  >
+                    <span className="text-stone w-24 shrink-0 truncate text-xs">
+                      {option.place?.name ?? option.label}
+                    </span>
+                    <input
+                      defaultValue={option.note ?? ""}
+                      onBlur={(e) => {
+                        const value = e.target.value;
+                        if (value.trim() === (option.note ?? "")) return;
+                        saveOptionNote(option.place_id, value);
+                      }}
+                      placeholder="e.g. opens at 12:30pm instead"
+                      maxLength={200}
+                      disabled={busy}
+                      className={`${inputClass} min-w-0 flex-1 py-1.5 text-xs`}
+                    />
+                  </div>
+                ))}
             </div>
           )}
         </Card>
@@ -1877,6 +1986,33 @@ export default function EventDetailPage({
                       ))}
                     </ul>
                   )}
+                  {winnerQuery.trim() &&
+                    winnerCandidates.length === 0 &&
+                    (winnerFreeTextMatch ? (
+                      <p className="text-stone bg-paper rounded-lg px-2.5 py-2 text-xs">
+                        &ldquo;{winnerFreeTextMatch.label}&rdquo; was one of
+                        the vote options, but it isn&apos;t a registered
+                        place yet — only a real place can be the winner.{" "}
+                        <Link
+                          href={`/places/new?name=${encodeURIComponent(winnerFreeTextMatch.label ?? "")}&fromEvent=${id}&draftPlaceId=${encodeURIComponent(winnerFreeTextMatch.place_id)}`}
+                          className="text-ember underline"
+                        >
+                          Add it to Places
+                        </Link>
+                        , then search for it here again.
+                      </p>
+                    ) : (
+                      <p className="text-stone bg-paper rounded-lg px-2.5 py-2 text-xs">
+                        No matching place found.{" "}
+                        <Link
+                          href={`/places/new?name=${encodeURIComponent(winnerQuery.trim())}`}
+                          className="text-ember underline"
+                        >
+                          Add a new place
+                        </Link>
+                        , then search for it here again.
+                      </p>
+                    ))}
                   <Button
                     size="sm"
                     variant="ghost"
