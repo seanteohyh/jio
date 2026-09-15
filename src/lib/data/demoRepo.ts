@@ -1659,6 +1659,23 @@ export const demoRepo: Repo = {
     );
   },
 
+  async setOptionNote(eventId, placeId, userId, note) {
+    const s = store();
+    const event = s.events.find((e) => e.id === eventId);
+    if (!event) throw new Error("Can't find that Jio — the link might be old.");
+    if (event.status !== "open") throw new Error("This Jio is already closed");
+
+    const option = s.options.find(
+      (o) => o.event_id === eventId && o.place_id === placeId
+    );
+    if (!option) throw new Error("That place is not an option");
+    if (option.added_by !== userId) {
+      throw new Error("Only whoever added this place can edit its note");
+    }
+
+    option.note = note?.trim() || null;
+  },
+
   async suggestOptionsForEvent(eventId, userId, excludePlaceIds = []) {
     const s = store();
     const event = s.events.find((e) => e.id === eventId);

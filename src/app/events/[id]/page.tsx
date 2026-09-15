@@ -493,6 +493,14 @@ export default function EventDetailPage({
       setBallotTouched(false);
     });
 
+  const saveOptionNote = (placeId: string, note: string) =>
+    run(async () => {
+      await mutateJson(`/api/events/${id}/options`, "PATCH", {
+        place_id: placeId,
+        note: note.trim() || null,
+      });
+    });
+
   const sendInvites = () =>
     run(async () => {
       await mutateJson(`/api/events/${id}/invitees`, "POST", {
@@ -1414,6 +1422,11 @@ export default function EventDetailPage({
                     </span>
                   )}
                 </div>
+                {option.note && (
+                  <p className="text-ember mt-0.5 truncate text-[11px] italic">
+                    {option.note}
+                  </p>
+                )}
                 {!hideStanding && (
                   <div className="bg-paper mt-1 h-2 overflow-hidden rounded-full">
                     <div
@@ -1539,6 +1552,11 @@ export default function EventDetailPage({
                         {placeDescriptor(option.place)}
                       </span>
                     )}
+                    {option?.note && (
+                      <span className="text-ember block truncate text-[11px] italic">
+                        {option.note}
+                      </span>
+                    )}
                   </span>
                   <span className="flex shrink-0 gap-1">
                     <button
@@ -1575,6 +1593,21 @@ export default function EventDetailPage({
       {viewer.canAddOptions && !isDatePolling && (
         <Card>
           <SectionHeading>Add a place</SectionHeading>
+
+          {event.recurring_series_id && (
+            <p className="text-stone mb-2 text-xs">
+              This Jio repeats every week with the same option pool. Adding a
+              place here only adds it to this occurrence — to always include
+              it going forward,{" "}
+              <Link
+                href={`/events/recurring/${event.recurring_series_id}/edit`}
+                className="text-ember underline"
+              >
+                edit the recurring series
+              </Link>{" "}
+              instead.
+            </p>
+          )}
 
           <div className="mb-3 space-y-2">
             <SuggestFilterControls
@@ -1702,6 +1735,43 @@ export default function EventDetailPage({
                     </button>
                   ))}
               </div>
+            </div>
+          )}
+
+          {/* A note on a place you added, visible to everyone voting —
+              e.g. "opens at 12:30pm instead." Deliberately narrower than
+              Remove above: only whoever actually added the place, not the
+              host too — a note is someone claiming to know something
+              specific, not a moderation action. */}
+          {event.options.some((o) => o.added_by === viewer.id) && (
+            <div className="mt-3 space-y-1.5">
+              <p className="text-stone text-xs">
+                Add a note to a place you added — everyone voting will see it.
+              </p>
+              {event.options
+                .filter((o) => o.added_by === viewer.id)
+                .map((option) => (
+                  <div
+                    key={option.place_id}
+                    className="flex items-center gap-2"
+                  >
+                    <span className="text-stone w-24 shrink-0 truncate text-xs">
+                      {option.place?.name ?? option.label}
+                    </span>
+                    <input
+                      defaultValue={option.note ?? ""}
+                      onBlur={(e) => {
+                        const value = e.target.value;
+                        if (value.trim() === (option.note ?? "")) return;
+                        saveOptionNote(option.place_id, value);
+                      }}
+                      placeholder="e.g. opens at 12:30pm instead"
+                      maxLength={200}
+                      disabled={busy}
+                      className={`${inputClass} min-w-0 flex-1 py-1.5 text-xs`}
+                    />
+                  </div>
+                ))}
             </div>
           )}
         </Card>

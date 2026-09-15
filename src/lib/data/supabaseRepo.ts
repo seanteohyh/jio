@@ -1985,6 +1985,39 @@ export const supabaseRepo: Repo = {
       .eq("place_id", placeId);
   },
 
+  async setOptionNote(eventId, placeId, userId, note) {
+    const client = await db();
+
+    const { data: eventRow } = await client
+      .from("lunch_events")
+      .select("status")
+      .eq("id", eventId)
+      .maybeSingle();
+    if (!eventRow) throw new Error("Can't find that Jio — the link might be old.");
+    if ((eventRow as { status: string }).status !== "open") {
+      throw new Error("This Jio is already closed");
+    }
+
+    const { data: optionRow } = await client
+      .from("event_options")
+      .select("added_by")
+      .eq("event_id", eventId)
+      .eq("place_id", placeId)
+      .maybeSingle();
+    if (!optionRow) throw new Error("That place is not an option");
+    if ((optionRow as { added_by: string }).added_by !== userId) {
+      throw new Error("Only whoever added this place can edit its note");
+    }
+
+    const { error } = await client
+      .from("event_options")
+      .update({ note: note?.trim() || null })
+      .eq("event_id", eventId)
+      .eq("place_id", placeId)
+      .eq("added_by", userId);
+    if (error) fail("Could not save that note", error);
+  },
+
   async suggestOptionsForEvent(eventId, userId, excludePlaceIds = []) {
     const client = await db();
 

@@ -54,6 +54,10 @@ export async function POST(request: NextRequest, { params }: Params) {
  * (CHANGES_20260819d.md §1). See `attachPlaceToOption` for why this is its
  * own gated path rather than a field on the plain PUT this route doesn't
  * even have.
+ *
+ * Also doubles as the set/clear-note endpoint (`place_id` + `note`, distinct
+ * shape from the attach case above) — same route rather than a new one,
+ * since both are "PATCH one field on an existing option."
  */
 export async function PATCH(request: NextRequest, { params }: Params) {
   const blocked = featureGate("events");
@@ -67,17 +71,24 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     const body = await readJson<{
       old_place_id?: string;
       new_place_id?: string;
+      place_id?: string;
+      note?: string | null;
     }>(request);
-    if (!body?.old_place_id || !body?.new_place_id) {
-      return badRequest("Expected old_place_id and new_place_id");
-    }
 
-    await repo.attachPlaceToOption(
-      id,
-      body.old_place_id,
-      body.new_place_id,
-      user.id
-    );
+    if (body?.old_place_id && body?.new_place_id) {
+      await repo.attachPlaceToOption(
+        id,
+        body.old_place_id,
+        body.new_place_id,
+        user.id
+      );
+    } else if (body?.place_id) {
+      await repo.setOptionNote(id, body.place_id, user.id, body.note ?? null);
+    } else {
+      return badRequest(
+        "Expected old_place_id and new_place_id, or place_id and note"
+      );
+    }
 
     const event = await repo.getEvent(id);
     return json({ ok: true, event: event && redactHiddenVotes(event) });

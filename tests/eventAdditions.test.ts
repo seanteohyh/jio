@@ -202,6 +202,108 @@ describe("removing an option", () => {
   });
 });
 
+describe("setting an option note", () => {
+  it("lets whoever added a place set its note", async () => {
+    const event = await makeEvent({
+      inviteeIds: [DEMO_TEAMMATE_A],
+    });
+    await demoRepo.addOptionToEvent(event.id, "demo-place-02", DEMO_TEAMMATE_A);
+
+    await demoRepo.setOptionNote(
+      event.id,
+      "demo-place-02",
+      DEMO_TEAMMATE_A,
+      "Opens at 12:30pm instead"
+    );
+
+    const detail = await demoRepo.getEvent(event.id);
+    expect(
+      detail?.options.find((o) => o.place_id === "demo-place-02")?.note
+    ).toBe("Opens at 12:30pm instead");
+  });
+
+  it("refuses the host if they didn't add that place", async () => {
+    const event = await makeEvent({
+      inviteeIds: [DEMO_TEAMMATE_A],
+    });
+    await demoRepo.addOptionToEvent(event.id, "demo-place-02", DEMO_TEAMMATE_A);
+
+    await expect(
+      demoRepo.setOptionNote(
+        event.id,
+        "demo-place-02",
+        DEMO_USER_ID,
+        "Trying to add a note"
+      )
+    ).rejects.toThrow(/only whoever added this place/i);
+  });
+
+  it("refuses anyone else who didn't add that place", async () => {
+    const event = await makeEvent({
+      inviteeIds: [DEMO_TEAMMATE_A, DEMO_TEAMMATE_B],
+    });
+    await demoRepo.addOptionToEvent(event.id, "demo-place-02", DEMO_TEAMMATE_A);
+
+    await expect(
+      demoRepo.setOptionNote(
+        event.id,
+        "demo-place-02",
+        DEMO_TEAMMATE_B,
+        "Trying to add a note"
+      )
+    ).rejects.toThrow(/only whoever added this place/i);
+  });
+
+  it("clears the note with null", async () => {
+    const event = await makeEvent();
+    await demoRepo.setOptionNote(
+      event.id,
+      "demo-place-01",
+      DEMO_USER_ID,
+      "A note"
+    );
+    await demoRepo.setOptionNote(event.id, "demo-place-01", DEMO_USER_ID, null);
+
+    const detail = await demoRepo.getEvent(event.id);
+    expect(
+      detail?.options.find((o) => o.place_id === "demo-place-01")?.note
+    ).toBeNull();
+  });
+
+  it("trims whitespace and turns a blank note into null", async () => {
+    const event = await makeEvent();
+    await demoRepo.setOptionNote(event.id, "demo-place-01", DEMO_USER_ID, "  ");
+
+    const detail = await demoRepo.getEvent(event.id);
+    expect(
+      detail?.options.find((o) => o.place_id === "demo-place-01")?.note
+    ).toBeNull();
+  });
+
+  it("rejects setting a note once the Jio is closed", async () => {
+    const event = await makeEvent();
+    await demoRepo.castBallot(event.id, DEMO_USER_ID, ["demo-place-01"]);
+    await demoRepo.closeEvent(event.id, DEMO_USER_ID);
+
+    await expect(
+      demoRepo.setOptionNote(
+        event.id,
+        "demo-place-01",
+        DEMO_USER_ID,
+        "Too late"
+      )
+    ).rejects.toThrow(/already closed/i);
+  });
+
+  it("rejects a note on something that is not an option", async () => {
+    const event = await makeEvent();
+
+    await expect(
+      demoRepo.setOptionNote(event.id, "demo-place-20", DEMO_USER_ID, "Note")
+    ).rejects.toThrow(/not an option/i);
+  });
+});
+
 describe("invitees", () => {
   it("persists invitees added at creation time", async () => {
     const event = await makeEvent({

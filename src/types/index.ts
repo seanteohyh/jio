@@ -503,6 +503,10 @@ export interface EventOption {
    * to a real place via `attachPlaceToOption`.
    */
   label?: string | null;
+  /** A place-specific note visible to everyone voting, e.g. "opens at
+   *  12:30pm instead" — see `Repo.setOptionNote`. Only whoever added the
+   *  option may set/clear it. */
+  note?: string | null;
 
   /** Derived. */
   place?: Place;
