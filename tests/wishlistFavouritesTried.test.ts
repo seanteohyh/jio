@@ -21,15 +21,17 @@ beforeEach(() => {
 });
 
 const TOMORROW = new Date(Date.now() + 86400000).toISOString();
+const YESTERDAY = new Date(Date.now() - 86400000).toISOString();
 
 async function makeEvent(
   inviteeIds: string[] = [],
-  hostId: string = DEMO_USER_ID
+  hostId: string = DEMO_USER_ID,
+  scheduledAt: string = YESTERDAY
 ) {
   return demoRepo.createEvent(
     hostId,
     "Test lunch",
-    TOMORROW,
+    scheduledAt,
     DEFAULT_OFFICE.id,
     ["demo-place-01", "demo-place-02"],
     null,
@@ -154,6 +156,19 @@ describe("listTriedPlaceIds / listTried", () => {
   it("excludes a Jio that never closed", async () => {
     const event = await makeEvent([], FRESH_USER_A);
     await demoRepo.rsvp(event.id, FRESH_USER_A, "yes");
+
+    const ids = await demoRepo.listTriedPlaceIds(FRESH_USER_A);
+    expect(ids).not.toContain("demo-place-01");
+  });
+
+  it("excludes a decided Jio whose scheduled time hasn't happened yet", async () => {
+    // Confirmed for a place doesn't mean attended — same "Going to" vs
+    // "Went to" tense already used on the Jio itself.
+    const event = await makeEvent([], FRESH_USER_A, TOMORROW);
+    await demoRepo.rsvp(event.id, FRESH_USER_A, "yes");
+    await demoRepo.castBallot(event.id, FRESH_USER_A, ["demo-place-01"]);
+    const closed = await demoRepo.maybeAutoCloseEvent(event.id);
+    expect(closed?.winner_place_id).toBeTruthy();
 
     const ids = await demoRepo.listTriedPlaceIds(FRESH_USER_A);
     expect(ids).not.toContain("demo-place-01");
