@@ -3542,6 +3542,11 @@ export const supabaseRepo: Repo = {
   async listTriedPlaceIds(userId) {
     const client = await db();
 
+    // Decided isn't the same as attended — a Jio confirmed for next Friday
+    // hasn't actually happened yet, same "Going to" vs "Went to" tense
+    // already used on the Jio itself (EventRow.tsx).
+    const nowIso = new Date().toISOString();
+
     const [visitRes, yesRsvpRes, hostedRes] = await Promise.all([
       client.from("visits").select("place_id").eq("user_id", userId),
       client
@@ -3554,7 +3559,8 @@ export const supabaseRepo: Repo = {
         .select("winner_place_id")
         .eq("host_id", userId)
         .eq("status", "closed")
-        .not("winner_place_id", "is", null),
+        .not("winner_place_id", "is", null)
+        .lte("scheduled_at", nowIso),
     ]);
 
     const placeIds = new Set<string>();
@@ -3576,7 +3582,8 @@ export const supabaseRepo: Repo = {
         .select("winner_place_id")
         .in("id", attendedEventIds)
         .eq("status", "closed")
-        .not("winner_place_id", "is", null);
+        .not("winner_place_id", "is", null)
+        .lte("scheduled_at", nowIso);
       for (const e of (attendedEvents ?? []) as {
         winner_place_id: string | null;
       }[]) {

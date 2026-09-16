@@ -2671,8 +2671,13 @@ export const demoRepo: Repo = {
         .filter((r) => r.user_id === userId && r.response === "yes")
         .map((r) => r.event_id)
     );
+    const now = Date.now();
     for (const e of s.events) {
       if (e.status !== "closed" || !e.winner_place_id) continue;
+      // Decided isn't the same as attended — a Jio confirmed for next
+      // Friday hasn't actually happened yet, same "Going to" vs "Went to"
+      // tense already used on the Jio itself (EventRow.tsx).
+      if (new Date(e.scheduled_at).getTime() > now) continue;
       if (e.host_id === userId || attendedEventIds.has(e.id)) {
         placeIds.add(e.winner_place_id);
       }
