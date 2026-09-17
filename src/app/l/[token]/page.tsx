@@ -3,6 +3,7 @@ import { getRepoAsync } from "@/lib/data/repo";
 import { BudgetBadge, Card, Chip, LinkButton, SectionHeading, Stars } from "@/components/ui";
 import ShareLink from "@/components/ShareLink";
 import SocialsIcon from "@/components/SocialsIcon";
+import HomeScreenNudge from "@/components/HomeScreenNudge";
 import { FoodpandaIcon, GrabIcon } from "@/components/DeliveryIcons";
 import { lobangShareUrl } from "@/lib/shareUrl";
 import { config } from "@/lib/config";
@@ -60,6 +61,8 @@ export default async function PublicLobangPage({
 
   return (
     <div className="space-y-5">
+      {!user && <HomeScreenNudge />}
+
       <Card className="bg-cream space-y-1.5">
         <p className="text-sm">
           <span className="font-medium">{lobang.from_display_name}</span>
