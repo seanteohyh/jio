@@ -26,16 +26,32 @@ export interface CommitteeSuggestion {
  *
  * `excludePlaceIds` covers both places already an option on the event and
  * (on a re-roll) places suggested earlier in the same session.
+ *
+ * `kakiWishlistPlaceIds` (migration 093) is the group's own shared
+ * wishlist, not any one member's personal one — a different signal from
+ * `wishlistBoost` inside `groupRecommend`, so it's applied here instead of
+ * threaded through `MemberData`/`RankOptions`: a wishlisted place is moved
+ * to the front of the already-ranked list before the top 2 are taken as
+ * "personalized," the same bump an individual `wishlistBoost` gets today,
+ * without disturbing `groupRecommend`'s own per-member scoring.
  */
 export function pickCommitteeSuggestions(
   places: Place[],
   membersData: MemberData[],
   excludePlaceIds: Set<string>,
-  options: RankOptions = {}
+  options: RankOptions = {},
+  kakiWishlistPlaceIds: Set<string> = new Set()
 ): CommitteeSuggestion[] {
-  const ranked = groupRecommend(membersData, places, options).filter(
+  const rankedAll = groupRecommend(membersData, places, options).filter(
     (s) => !excludePlaceIds.has(s.place.id)
   );
+  const ranked =
+    kakiWishlistPlaceIds.size > 0
+      ? [
+          ...rankedAll.filter((s) => kakiWishlistPlaceIds.has(s.place.id)),
+          ...rankedAll.filter((s) => !kakiWishlistPlaceIds.has(s.place.id)),
+        ]
+      : rankedAll;
   const personalized = ranked.slice(0, 2);
   const personalizedIds = new Set(personalized.map((s) => s.place.id));
 

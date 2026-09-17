@@ -17,6 +17,7 @@ import { KakiMetricsCharts } from "@/components/MetricsCharts";
 import { useToast } from "@/components/Toast";
 import AddKakiMemberPanel from "@/components/kakis/AddKakiMemberPanel";
 import KakiFoodIdentityCard from "@/components/kakis/KakiFoodIdentityCard";
+import KakiWishlistCard from "@/components/kakis/KakiWishlistCard";
 import PebbleAvatar from "@/components/kakis/PebbleAvatar";
 import { InviteIcon } from "@/components/icons";
 import { fetcher, mutateJson } from "@/lib/fetcher";
@@ -230,6 +231,8 @@ export default function KakiDetailPage({
           crowns={crowns}
         />
       )}
+
+      <KakiWishlistCard kakiId={id} canEdit={viewer.isMember} />
 
       <Card>
         <SectionHeading>Members</SectionHeading>

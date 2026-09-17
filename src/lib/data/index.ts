@@ -11,6 +11,9 @@ import type {
   DuplicateProfileGroup,
   EventDetail,
   EventOption,
+  ExpenseCategory,
+  ExpenseEntry,
+  ExpenseMonthSummary,
   FavouriteEntry,
   Filters,
   FlagReason,
@@ -22,6 +25,7 @@ import type {
   KakiDetail,
   KakiFoodIdentityCard,
   KakiFoodIdentitySnapshot,
+  KakiWishlistEntry,
   Lobang,
   LobangTarget,
   LunchEvent,
@@ -159,6 +163,46 @@ export interface Repo {
   listReviewLikesSince(
     sinceIso: string
   ): Promise<Array<{ visit_id: string; visit_user_id: string; created_at: string }>>;
+
+  // ---- Personal expense ledger (always private — see 094's RLS) ----
+
+  /** Paginated, newest first, for one calendar month. `page` is 1-based. */
+  listExpenseEntries(
+    userId: string,
+    month: string, // "2026-08"
+    page: number,
+    pageSize: number
+  ): Promise<{ entries: ExpenseEntry[]; totalCount: number }>;
+
+  getExpenseMonthSummary(userId: string, month: string): Promise<ExpenseMonthSummary>;
+
+  createExpenseEntry(
+    userId: string,
+    input: {
+      amountCents: number;
+      label: string;
+      category: ExpenseCategory;
+      placeId?: string | null;
+      sourceVisitId?: string | null;
+      loggedAt?: string; // defaults to today
+    }
+  ): Promise<ExpenseEntry>;
+
+  /** Amend one of your own entries — confirmed in preference over
+   *  delete-and-re-add, so a typo'd amount or mis-tapped category doesn't
+   *  need the entry recreated. Same ownership shape as `updateVisit`. */
+  updateExpenseEntry(
+    userId: string,
+    entryId: string,
+    patch: Partial<{
+      amountCents: number;
+      label: string;
+      category: ExpenseCategory;
+      loggedAt: string;
+    }>
+  ): Promise<ExpenseEntry>;
+
+  deleteExpenseEntry(userId: string, entryId: string): Promise<void>;
 
   // ---- Walk cache & offices ----
   getWalkCache(officeId: string): Promise<WalkCacheEntry[]>;
@@ -704,6 +748,23 @@ export interface Repo {
     note: string | null
   ): Promise<void>;
 
+  // ---- Kaki wishlist (group-level, distinct from the personal one) ----
+  /** Filtered to `place.status === "active"` — same convention
+   *  `pickCommitteeSuggestions` already applies, so an inactive place's
+   *  entry just stops showing up rather than being deleted. */
+  listKakiWishlist(kakiId: string): Promise<KakiWishlistEntry[]>;
+  addKakiWishlistEntry(
+    kakiId: string,
+    userId: string,
+    placeId: string
+  ): Promise<KakiWishlistEntry>;
+  /** Any current member may remove any entry, not just whoever added it. */
+  removeKakiWishlistEntry(
+    kakiId: string,
+    userId: string,
+    entryId: string
+  ): Promise<void>;
+
   // ---- Favourites (independent of the wishlist — see FavouriteEntry) ----
   listFavourites(userId: string): Promise<FavouriteEntry[]>;
   toggleFavourite(
@@ -1193,6 +1254,11 @@ export const REPO_METHODS = [
   "toggleReviewLike",
   "claimReviewLikePushWindow",
   "listReviewLikesSince",
+  "listExpenseEntries",
+  "getExpenseMonthSummary",
+  "createExpenseEntry",
+  "updateExpenseEntry",
+  "deleteExpenseEntry",
   "getWalkCache",
   "upsertWalkCache",
   "listOffices",
@@ -1256,6 +1322,9 @@ export const REPO_METHODS = [
   "listWishlist",
   "toggleWishlist",
   "updateWishlistNote",
+  "listKakiWishlist",
+  "addKakiWishlistEntry",
+  "removeKakiWishlistEntry",
   "listFavourites",
   "toggleFavourite",
   "listTriedPlaceIds",

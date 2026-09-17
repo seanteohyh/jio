@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { formatCuisine, formatMonthKey } from "@/lib/utils";
+import { formatCents } from "@/lib/expenses";
 import { ArrowRightIcon, StarIcon } from "@/components/icons";
 import CountUp from "@/components/CountUp";
 import CuisinePlate from "@/components/kakis/CuisinePlate";
@@ -134,7 +135,17 @@ function StatTile({
   );
 }
 
-export function UserMetricsCharts({ metrics }: { metrics: UserMetrics }) {
+export function UserMetricsCharts({
+  metrics,
+  expenseSummary,
+}: {
+  metrics: UserMetrics;
+  /** Real logged amounts (migration 094), once there are any — replaces
+   *  the "Usual spend" tile's place-tier estimate with a real average and
+   *  sends it to the spending ledger instead of the old estimate tab.
+   *  `undefined`/no entries yet: the tile stays exactly as it was. */
+  expenseSummary?: { hasLoggedExpenses: boolean; avgPerEntryCents: number };
+}) {
   if (metrics.totalVisits === 0) {
     return (
       <EmptyState
@@ -166,9 +177,21 @@ export function UserMetricsCharts({ metrics }: { metrics: UserMetrics }) {
         />
         <StatTile
           label="Usual spend"
-          value={metrics.avgBudgetLabel}
-          sub={`${metrics.currentVariety} places in 30 days`}
-          href="/profile/visits?view=spend"
+          value={
+            expenseSummary?.hasLoggedExpenses
+              ? formatCents(expenseSummary.avgPerEntryCents)
+              : metrics.avgBudgetLabel
+          }
+          sub={
+            expenseSummary?.hasLoggedExpenses
+              ? "avg. per entry"
+              : `${metrics.currentVariety} places in 30 days`
+          }
+          href={
+            expenseSummary?.hasLoggedExpenses
+              ? "/profile/spending"
+              : "/profile/visits?view=spend"
+          }
         />
       </div>
 

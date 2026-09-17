@@ -17,6 +17,7 @@ import { computeUserMetrics } from "@/lib/metrics";
 import { rankPlaces } from "@/lib/recommend";
 import { pickCommitteeSuggestions } from "@/lib/suggestCommittee";
 import { DISCOVERY_CONFIG } from "@/lib/discoveryConfig";
+import { buildExpenseMonthSummary, nextMonthKey, previousMonthKey } from "@/lib/expenses";
 import { createAuthServerClient } from "@/lib/supabase/serverAuth";
 import type { Repo } from "./index";
 import type {
@@ -34,6 +35,7 @@ import type {
   EventOption,
   EventRsvp,
   EventVote,
+  ExpenseEntry,
   FavouriteEntry,
   Filters,
   FoodIdentityCard,
@@ -43,6 +45,7 @@ import type {
   KakiFoodIdentityCard,
   KakiFoodIdentitySnapshot,
   KakiMember,
+  KakiWishlistEntry,
   Lobang,
   LobangTarget,
   LunchEvent,
@@ -842,6 +845,137 @@ export const supabaseRepo: Repo = {
         visit_user_id: ownerOf.get(l.visit_id) as string,
         created_at: l.created_at,
       }));
+  },
+
+  // ---- Personal expense ledger ----
+
+  async listExpenseEntries(userId, month, page, pageSize) {
+    const client = await db();
+    const start = (page - 1) * pageSize;
+    const end = start + pageSize - 1;
+
+    const { data, error, count } = await client
+      .from("expense_entries")
+      .select("*", { count: "exact" })
+      .eq("user_id", userId)
+      .gte("logged_at", `${month}-01`)
+      .lt("logged_at", `${nextMonthKey(month)}-01`)
+      .order("logged_at", { ascending: false })
+      .order("created_at", { ascending: false })
+      .range(start, end);
+
+    if (error) fail("Could not load your spending", error);
+
+    const entries = (data ?? []) as ExpenseEntry[];
+    const placeIds = entries
+      .map((e) => e.place_id)
+      .filter((id): id is string => Boolean(id));
+    const placeById = await hydratePlacesById(client, placeIds);
+
+    return {
+      entries: entries.map((e) => ({
+        ...e,
+        place_name: e.place_id ? (placeById.get(e.place_id)?.name ?? null) : null,
+      })),
+      totalCount: count ?? 0,
+    };
+  },
+
+  async getExpenseMonthSummary(userId, month) {
+    const client = await db();
+    const prevKey = previousMonthKey(month);
+
+    const [thisMonthRes, previousMonthRes, prefsRes] = await Promise.all([
+      client
+        .from("expense_entries")
+        .select("*")
+        .eq("user_id", userId)
+        .gte("logged_at", `${month}-01`)
+        .lt("logged_at", `${nextMonthKey(month)}-01`),
+      client
+        .from("expense_entries")
+        .select("*")
+        .eq("user_id", userId)
+        .gte("logged_at", `${prevKey}-01`)
+        .lt("logged_at", `${month}-01`),
+      client
+        .from("user_prefs")
+        .select("budget_min, budget_max")
+        .eq("user_id", userId)
+        .maybeSingle(),
+    ]);
+
+    if (thisMonthRes.error) fail("Could not load your spending", thisMonthRes.error);
+    if (previousMonthRes.error) {
+      fail("Could not load your spending", previousMonthRes.error);
+    }
+
+    const budgetPrefs = prefsRes.data as Pick<
+      UserPrefs,
+      "budget_min" | "budget_max"
+    > | null;
+
+    return buildExpenseMonthSummary(
+      month,
+      (thisMonthRes.data ?? []) as ExpenseEntry[],
+      (previousMonthRes.data ?? []) as ExpenseEntry[],
+      budgetPrefs
+    );
+  },
+
+  async createExpenseEntry(userId, input) {
+    const client = await db();
+    const { data, error } = await client
+      .from("expense_entries")
+      .insert({
+        user_id: userId,
+        amount_cents: input.amountCents,
+        label: input.label,
+        category: input.category,
+        place_id: input.placeId ?? null,
+        source_visit_id: input.sourceVisitId ?? null,
+        ...(input.loggedAt ? { logged_at: input.loggedAt } : {}),
+      })
+      .select()
+      .single();
+
+    if (error) fail("Could not log that expense", error);
+    return data as ExpenseEntry;
+  },
+
+  async updateExpenseEntry(userId, entryId, patch) {
+    const client = await db();
+    const fields: Record<string, unknown> = {};
+    if (patch.amountCents !== undefined) fields.amount_cents = patch.amountCents;
+    if (patch.label !== undefined) fields.label = patch.label;
+    if (patch.category !== undefined) fields.category = patch.category;
+    if (patch.loggedAt !== undefined) fields.logged_at = patch.loggedAt;
+
+    const { data, error } = await client
+      .from("expense_entries")
+      .update(fields)
+      .eq("id", entryId)
+      .eq("user_id", userId)
+      .select()
+      .single();
+
+    // expense_entries_all_own's RLS already restricts this to your own
+    // rows; the explicit user_id filter turns "policy refused" into a
+    // plain no-rows result, same reasoning updateVisit's own comment gives.
+    if (error) fail("Could not update that entry", error);
+    if (!data) throw new Error("That entry is not yours to change");
+    return data as ExpenseEntry;
+  },
+
+  async deleteExpenseEntry(userId, entryId) {
+    const client = await db();
+    const { error } = await client
+      .from("expense_entries")
+      .delete()
+      .eq("id", entryId)
+      .eq("user_id", userId);
+
+    if (error) fail("Could not delete that entry", error);
   },
 
   // ---- Walk cache & offices ----
@@ -2124,7 +2258,27 @@ export const supabaseRepo: Repo = {
     });
 
     const exclude = new Set([...currentOptionIds, ...excludePlaceIds]);
-    const picks = pickCommitteeSuggestions(enrichedPlaces, membersData, exclude);
+
+    // The group already told the app it wants these — additive, only
+    // applies when this Jio actually belongs to a Kaki.
+    let kakiWishlistPlaceIds = new Set<string>();
+    if (event.kaki_id) {
+      const { data: kakiWishlistRows } = await client
+        .from("kaki_wishlist_entries")
+        .select("place_id")
+        .eq("kaki_id", event.kaki_id);
+      kakiWishlistPlaceIds = new Set(
+        ((kakiWishlistRows ?? []) as { place_id: string }[]).map((w) => w.place_id)
+      );
+    }
+
+    const picks = pickCommitteeSuggestions(
+      enrichedPlaces,
+      membersData,
+      exclude,
+      {},
+      kakiWishlistPlaceIds
+    );
     if (picks.length === 0) return [];
 
     const { data: inserted, error } = await client
@@ -3814,6 +3968,86 @@ export const supabaseRepo: Repo = {
       .eq("kaki_id", kakiId);
 
     return { ...kaki, member_count: (members ?? []).length };
+  },
+
+  // ---- Kaki wishlist (group-level, distinct from the personal one) ----
+
+  async listKakiWishlist(kakiId) {
+    const client = await db();
+    const { data, error } = await client
+      .from("kaki_wishlist_entries")
+      .select("*")
+      .eq("kaki_id", kakiId)
+      .order("created_at", { ascending: false });
+    if (error) fail("Could not load this group's wishlist", error);
+
+    const entries = (data ?? []) as KakiWishlistEntry[];
+    if (entries.length === 0) return [];
+
+    const placeById = await hydratePlacesById(
+      client,
+      entries.map((e) => e.place_id)
+    );
+    const names = await displayNameMap(
+      client,
+      entries.map((e) => e.added_by)
+    );
+
+    return entries
+      .map((e) => ({
+        ...e,
+        place: placeById.get(e.place_id),
+        added_by_name: names.get(e.added_by),
+      }))
+      // Confirmed: filter to active, don't prune — same convention
+      // pickCommitteeSuggestions already applies.
+      .filter((e) => e.place?.status === "active");
+  },
+
+  async addKakiWishlistEntry(kakiId, userId, placeId) {
+    const client = await db();
+
+    const { data: existing } = await client
+      .from("kaki_wishlist_entries")
+      .select("id")
+      .eq("kaki_id", kakiId)
+      .eq("place_id", placeId)
+      .maybeSingle();
+    if (existing) throw new Error("Already on the list");
+
+    const { data, error } = await client
+      .from("kaki_wishlist_entries")
+      .insert({ kaki_id: kakiId, place_id: placeId, added_by: userId })
+      .select()
+      .single();
+    // RLS (kaki_wishlist_insert) is what actually enforces membership —
+    // this failure reads as "not a member," same framing renameKaki uses.
+    if (error) {
+      fail("Could not add to this group's wishlist — you may not be a member", error);
+    }
+
+    const entry = data as KakiWishlistEntry;
+    const placeById = await hydratePlacesById(client, [placeId]);
+    return {
+      ...entry,
+      place: placeById.get(placeId),
+      added_by_name: (await displayNameMap(client, [userId])).get(userId),
+    };
+  },
+
+  async removeKakiWishlistEntry(kakiId, _userId, entryId) {
+    const client = await db();
+    const { error } = await client
+      .from("kaki_wishlist_entries")
+      .delete()
+      .eq("id", entryId)
+      .eq("kaki_id", kakiId);
+    // RLS (kaki_wishlist_delete) enforces membership; a no-op delete (wrong
+    // id, or not a member) isn't distinguishable from "already gone" here,
+    // same as other delete-by-id methods in this file.
+    if (error) {
+      fail("Could not remove that — you may not be a member", error);
+    }
   },
 
   // ---- Lobangs ----

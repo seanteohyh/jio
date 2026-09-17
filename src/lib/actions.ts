@@ -17,6 +17,8 @@ export type ActionType =
   | "place.favourited"
   | "place.created"
   | "kaki.created"
+  | "kaki.wishlisted"
+  | "expense.logged"
   | "report.filed"
   | "place.flagged";
 

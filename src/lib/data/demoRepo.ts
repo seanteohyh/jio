@@ -20,6 +20,7 @@ import {
 import { pickCommitteeSuggestions } from "@/lib/suggestCommittee";
 import { computeWinner, isVoteStale } from "@/lib/voting";
 import { computeUserMetrics } from "@/lib/metrics";
+import { buildExpenseMonthSummary, previousMonthKey } from "@/lib/expenses";
 import { rankPlaces } from "@/lib/recommend";
 import { DISCOVERY_CONFIG } from "@/lib/discoveryConfig";
 import {
@@ -65,6 +66,9 @@ import type {
   EventInvitee,
   EventOption,
   EventRsvp,
+  ExpenseCategory,
+  ExpenseEntry,
+  ExpenseMonthSummary,
   FavouriteEntry,
   EventVote,
   Filters,
@@ -78,6 +82,7 @@ import type {
   KakiFoodIdentityCard,
   KakiFoodIdentitySnapshot,
   KakiMember,
+  KakiWishlistEntry,
   Lobang,
   LobangTarget,
   LunchEvent,
@@ -125,6 +130,10 @@ interface DemoStore {
   dateVotes: EventDateVote[];
   wishlist: WishlistEntry[];
   favourites: FavouriteEntry[];
+  /** Group-level counterpart to `wishlist` — migration 093. */
+  kakiWishlistEntries: KakiWishlistEntry[];
+  /** Personal spending ledger — migration 094, always private. */
+  expenseEntries: ExpenseEntry[];
   /** UX review log #25 / migration 070 — one row per (user, event) that has
    *  already seen its decided-Jio celebration. */
   decidedCelebrationViews: { user_id: string; event_id: string; shown_at: string }[];
@@ -225,6 +234,8 @@ function seed(): DemoStore {
     dateVotes: [],
     wishlist: demoWishlist.map((w) => ({ ...w })),
     favourites: [],
+    kakiWishlistEntries: [],
+    expenseEntries: [],
     decidedCelebrationViews: [],
     kakiBridgeDismissals: [],
     reviewLikes: [],
@@ -802,7 +813,8 @@ export const demoRepo: Repo = {
   },
 
   async deleteVisit(id, userId) {
-    const visits = store().visits;
+    const s = store();
+    const visits = s.visits;
     const index = visits.findIndex((v) => v.id === id);
     if (index === -1 || visits[index].user_id !== userId) {
       throw new Error("That visit is not yours to delete");
@@ -810,6 +822,15 @@ export const demoRepo: Repo = {
     const placeId = visits[index].place_id;
     visits.splice(index, 1);
     stampRatingUpdated(placeId);
+
+    // Confirmed: source_visit_id is ON DELETE SET NULL, not cascade — an
+    // expense entry survives a visit being deleted, it just loses the
+    // link. No real FK here to do this automatically, so it's explicit,
+    // same "demo mode has no RLS/constraints to lean on" reasoning as
+    // elsewhere in this file.
+    for (const entry of s.expenseEntries) {
+      if (entry.source_visit_id === id) entry.source_visit_id = null;
+    }
   },
 
   async listPublicReviews(placeId, viewerId) {
@@ -887,6 +908,83 @@ export const demoRepo: Repo = {
         };
       })
       .filter((l) => l.visit_user_id !== "");
+  },
+
+  // ---- Personal expense ledger ----
+
+  async listExpenseEntries(userId, month, page, pageSize) {
+    const s = store();
+    const all = s.expenseEntries
+      .filter((e) => e.user_id === userId && e.logged_at.startsWith(month))
+      .sort(
+        (a, b) =>
+          b.logged_at.localeCompare(a.logged_at) ||
+          b.created_at.localeCompare(a.created_at)
+      );
+    const totalCount = all.length;
+    const start = (page - 1) * pageSize;
+    const entries = all.slice(start, start + pageSize).map((e) => ({
+      ...e,
+      place_name: e.place_id
+        ? (s.places.find((p) => p.id === e.place_id)?.name ?? null)
+        : null,
+    }));
+    return { entries, totalCount };
+  },
+
+  async getExpenseMonthSummary(userId, month) {
+    const s = store();
+    const thisMonth = s.expenseEntries.filter(
+      (e) => e.user_id === userId && e.logged_at.startsWith(month)
+    );
+    const prevKey = previousMonthKey(month);
+    const previousMonth = s.expenseEntries.filter(
+      (e) => e.user_id === userId && e.logged_at.startsWith(prevKey)
+    );
+    const prefs = s.prefs.find((p) => p.user_id === userId);
+    const budgetPrefs = prefs
+      ? { budget_min: prefs.budget_min, budget_max: prefs.budget_max }
+      : null;
+    return buildExpenseMonthSummary(month, thisMonth, previousMonth, budgetPrefs);
+  },
+
+  async createExpenseEntry(userId, input) {
+    const entry: ExpenseEntry = {
+      id: uuid(),
+      user_id: userId,
+      amount_cents: input.amountCents,
+      label: input.label,
+      category: input.category,
+      place_id: input.placeId ?? null,
+      source_visit_id: input.sourceVisitId ?? null,
+      logged_at: input.loggedAt ?? sgtDateKey(new Date()),
+      created_at: new Date().toISOString(),
+    };
+    store().expenseEntries.push(entry);
+    return entry;
+  },
+
+  async updateExpenseEntry(userId, entryId, patch) {
+    const s = store();
+    const entry = s.expenseEntries.find(
+      (e) => e.id === entryId && e.user_id === userId
+    );
+    if (!entry) throw new Error("That entry is not yours to change");
+
+    if (patch.amountCents !== undefined) entry.amount_cents = patch.amountCents;
+    if (patch.label !== undefined) entry.label = patch.label;
+    if (patch.category !== undefined) entry.category = patch.category;
+    if (patch.loggedAt !== undefined) entry.logged_at = patch.loggedAt;
+    return entry;
+  },
+
+  async deleteExpenseEntry(userId, entryId) {
+    const s = store();
+    const index = s.expenseEntries.findIndex(
+      (e) => e.id === entryId && e.user_id === userId
+    );
+    if (index === -1) throw new Error("That entry is not yours to delete");
+    s.expenseEntries.splice(index, 1);
   },
 
   // ---- Walk cache & offices ----
@@ -1737,7 +1835,23 @@ export const demoRepo: Repo = {
     );
     const exclude = new Set([...currentOptionIds, ...excludePlaceIds]);
 
-    const picks = pickCommitteeSuggestions(places, membersData, exclude);
+    // The group already told the app it wants these — additive, only
+    // applies when this Jio actually belongs to a Kaki.
+    const kakiWishlistPlaceIds = event.kaki_id
+      ? new Set(
+          s.kakiWishlistEntries
+            .filter((e) => e.kaki_id === event.kaki_id)
+            .map((e) => e.place_id)
+        )
+      : new Set<string>();
+
+    const picks = pickCommitteeSuggestions(
+      places,
+      membersData,
+      exclude,
+      {},
+      kakiWishlistPlaceIds
+    );
 
     const added: EventOption[] = [];
     for (const pick of picks) {
@@ -2823,6 +2937,77 @@ export const demoRepo: Repo = {
       ...kaki,
       member_count: s.kakiMembers.filter((m) => m.kaki_id === kakiId).length,
     };
+  },
+
+  // ---- Kaki wishlist (group-level, distinct from the personal one) ----
+
+  async listKakiWishlist(kakiId) {
+    const s = store();
+    return s.kakiWishlistEntries
+      .filter((e) => e.kaki_id === kakiId)
+      .filter((e) => {
+        const place = s.places.find((p) => p.id === e.place_id);
+        return place?.status === "active";
+      })
+      .map((e) => {
+        const place = s.places.find((p) => p.id === e.place_id);
+        return {
+          ...e,
+          place: place ? enrich(place) : undefined,
+          added_by_name: displayNameFor(e.added_by),
+        };
+      })
+      .sort((a, b) => b.created_at.localeCompare(a.created_at));
+  },
+
+  async addKakiWishlistEntry(kakiId, userId, placeId) {
+    const s = store();
+    const kaki = s.kakis.find((k) => k.id === kakiId);
+    if (!kaki) throw new Error("That group does not exist");
+
+    const isMember = s.kakiMembers.some(
+      (m) => m.kaki_id === kakiId && m.user_id === userId
+    );
+    if (!isMember) {
+      throw new Error("Only a member of this group can add to its wishlist");
+    }
+
+    const existing = s.kakiWishlistEntries.find(
+      (e) => e.kaki_id === kakiId && e.place_id === placeId
+    );
+    if (existing) throw new Error("Already on the list");
+
+    const entry: KakiWishlistEntry = {
+      id: uuid(),
+      kaki_id: kakiId,
+      place_id: placeId,
+      added_by: userId,
+      created_at: new Date().toISOString(),
+    };
+    s.kakiWishlistEntries.push(entry);
+
+    const place = s.places.find((p) => p.id === placeId);
+    return {
+      ...entry,
+      place: place ? enrich(place) : undefined,
+      added_by_name: displayNameFor(userId),
+    };
+  },
+
+  async removeKakiWishlistEntry(kakiId, userId, entryId) {
+    const s = store();
+    const isMember = s.kakiMembers.some(
+      (m) => m.kaki_id === kakiId && m.user_id === userId
+    );
+    if (!isMember) {
+      throw new Error("Only a member of this group can edit its wishlist");
+    }
+
+    const index = s.kakiWishlistEntries.findIndex(
+      (e) => e.id === entryId && e.kaki_id === kakiId
+    );
+    if (index === -1) throw new Error("That entry does not exist");
+    s.kakiWishlistEntries.splice(index, 1);
   },
 
   // ---- Lobangs ----

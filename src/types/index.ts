@@ -178,6 +178,40 @@ export interface Visit {
   liked_by_me?: boolean;
 }
 
+/**
+ * A private spending ledger — deliberately not the same shape as `Visit`.
+ * Most entries have no place at all (a coffee run, a snack), so `place_id`
+ * is nullable and `label` is free text rather than a place lookup
+ * (migration 094). Always private — see that migration's RLS.
+ */
+export type ExpenseCategory = "lunch" | "coffee" | "snack" | "other";
+
+export interface ExpenseEntry {
+  id: string;
+  user_id: string;
+  amount_cents: number;
+  label: string;
+  category: ExpenseCategory;
+  place_id?: string | null;
+  source_visit_id?: string | null;
+  logged_at: string;
+  created_at: string;
+  /** Derived. */
+  place_name?: string | null;
+}
+
+export interface ExpenseMonthSummary {
+  month: string; // "2026-08"
+  totalCents: number;
+  byCategory: Record<ExpenseCategory, number>;
+  /** vs. the previous month — null with no prior-month data to compare. */
+  deltaVsPreviousMonthPct: number | null;
+  /** Narrative line against the user's own budget_min/budget_max
+   *  preference — reuses metrics.ts's existing `budgetLabel()` formatting,
+   *  not a new helper. Null when there isn't enough data yet. */
+  comparisonNote: string | null;
+}
+
 export interface WalkCacheEntry {
   office_id: string;
   place_id: string;
@@ -617,6 +651,24 @@ export interface WishlistEntry {
 
   /** Derived. */
   place?: Place;
+}
+
+/**
+ * Group-level counterpart to `WishlistEntry` — belongs to a Kaki, not one
+ * person, and any current member can add or remove an entry (migration
+ * 093). Filtered to `place.status === "active"` wherever it's listed, same
+ * as `pickCommitteeSuggestions` already does — an inactive place's entry
+ * just stops showing up rather than being deleted.
+ */
+export interface KakiWishlistEntry {
+  id: string;
+  kaki_id: string;
+  place_id: string;
+  added_by: string;
+  created_at: string;
+  /** Derived. */
+  place?: Place;
+  added_by_name?: string;
 }
 
 /**
