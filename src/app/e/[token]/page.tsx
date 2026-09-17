@@ -3,6 +3,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { getRepoAsync } from "@/lib/data/repo";
 import { Card, Chip, LinkButton } from "@/components/ui";
 import ShareLink from "@/components/ShareLink";
+import HomeScreenNudge from "@/components/HomeScreenNudge";
 import { eventInviteUrl } from "@/lib/shareUrl";
 import { config } from "@/lib/config";
 import { formatCountdown, formatDateTime } from "@/lib/utils";
@@ -64,6 +65,8 @@ export default async function EventInvitePage({
 
     return (
       <div className="space-y-5">
+        <HomeScreenNudge />
+
         <header>
           <h1 className="text-2xl font-semibold tracking-tight">
             {preview.title}
