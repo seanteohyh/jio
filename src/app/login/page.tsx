@@ -3,9 +3,10 @@
 import { Suspense, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button, Card, ErrorNote, Field, inputClass } from "@/components/ui";
-import { config } from "@/lib/config";
+import { config, features } from "@/lib/config";
 import { DEFAULT_OFFICE } from "@/lib/constants";
 import JioLockup from "@/components/brand/JioLockup";
+import type { Office } from "@/types";
 
 /**
  * Sign in.
@@ -34,6 +35,18 @@ function NameForm({ next }: { next: string }) {
   // field, so picking a different name never leaves the flow it started in.
   const [choosingNewName, setChoosingNewName] = useState(false);
   const [altName, setAltName] = useState("");
+  // Only ever populated (and only ever shown) for a brand-new account —
+  // claiming an existing one already has an office, nothing to ask.
+  const [offices, setOffices] = useState<Office[]>([]);
+  const [officeId, setOfficeId] = useState("");
+  const [officeStep, setOfficeStep] = useState(false);
+  const [officeBusy, setOfficeBusy] = useState(false);
+  const [officeError, setOfficeError] = useState<string | null>(null);
+
+  const finish = () => {
+    router.push(next);
+    router.refresh();
+  };
 
   const attempt = async (tryName: string, confirmClaim?: boolean) => {
     setBusy(true);
@@ -73,11 +86,61 @@ function NameForm({ next }: { next: string }) {
 
       if (!response.ok) throw new Error(payload.error);
 
-      router.push(next);
-      router.refresh();
+      // An account just claimed (confirmClaim === true) already has its own
+      // office from whenever it was first set up — nothing to ask, and
+      // asking would look like this reset it. Only a genuinely fresh
+      // account (no match, ever) gets offered a choice, and only when
+      // there's an admin-configured list with more than the one default to
+      // actually choose between.
+      if (confirmClaim !== true && features.offices) {
+        try {
+          const officesRes = await fetch("/api/offices");
+          if (officesRes.ok) {
+            const officesPayload = await officesRes.json();
+            const list: Office[] = officesPayload.offices ?? [];
+            if (list.length > 1) {
+              setOffices(list);
+              setOfficeId(
+                list.some((o) => o.id === DEFAULT_OFFICE.id)
+                  ? DEFAULT_OFFICE.id
+                  : list[0].id
+              );
+              setOfficeStep(true);
+              setBusy(false);
+              return;
+            }
+          }
+        } catch {
+          // Office selection is a nicety, not a blocker — fall through to
+          // finishing sign-in on whatever default already applies.
+        }
+      }
+
+      finish();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not sign in");
       setBusy(false);
+    }
+  };
+
+  const submitOffice = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setOfficeBusy(true);
+    setOfficeError(null);
+    try {
+      const response = await fetch("/api/user-prefs", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ default_office_id: officeId || null }),
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.error ?? "Could not save that");
+      }
+      finish();
+    } catch (err) {
+      setOfficeError(err instanceof Error ? err.message : "Could not save that");
+      setOfficeBusy(false);
     }
   };
 
@@ -122,6 +185,39 @@ function NameForm({ next }: { next: string }) {
           </Button>
         </form>
       </div>
+    );
+  }
+
+  if (officeStep) {
+    return (
+      <form onSubmit={submitOffice} className="space-y-3">
+        <p className="text-ink text-sm">
+          Welcome, {name.trim()}. One more thing —
+        </p>
+
+        <Field
+          label="Office"
+          hint="Walking times and suggestions are measured from here."
+        >
+          <select
+            value={officeId}
+            onChange={(e) => setOfficeId(e.target.value)}
+            className={inputClass}
+          >
+            {offices.map((office) => (
+              <option key={office.id} value={office.id}>
+                {office.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+
+        {officeError && <ErrorNote>{officeError}</ErrorNote>}
+
+        <Button type="submit" className="w-full" disabled={officeBusy}>
+          {officeBusy ? "One moment…" : "Start eating"}
+        </Button>
+      </form>
     );
   }
 
@@ -203,22 +299,6 @@ function NameForm({ next }: { next: string }) {
           maxLength={40}
           autoFocus
         />
-      </Field>
-
-      {/*
-        The office used to be shown on /welcome, one screen later. It carries
-        no input — it is a locked label — so folding it in here costs nothing
-        and lets name-mode sign-in be the only screen a new user sees.
-      */}
-      <Field label="Office">
-        <input
-          value={DEFAULT_OFFICE.name}
-          disabled
-          className={`${inputClass} cursor-not-allowed opacity-70`}
-        />
-        <p className="text-stone mt-1 text-xs">
-          This pilot only supports one office for now.
-        </p>
       </Field>
 
       {error && <ErrorNote>{error}</ErrorNote>}

@@ -18,7 +18,8 @@ import PersonalInvitePanel, {
 } from "@/components/profile/PersonalInvitePanel";
 import { fetcher, mutateJson } from "@/lib/fetcher";
 import { BUDGET_TIERS, DEFAULT_OFFICE } from "@/lib/constants";
-import type { AuthUser, BudgetTier } from "@/types";
+import { features } from "@/lib/config";
+import type { AuthUser, BudgetTier, Office } from "@/types";
 
 interface MeResponse {
   user: (AuthUser & { display_name: string }) | null;
@@ -50,8 +51,10 @@ const WELCOME_CUISINES: { slug: string; label: string }[] = [
  * mode the display name was already typed at sign-in, so this just
  * prefills and lets it be confirmed or tweaked rather than asking twice.
  *
- * Office is a locked field, not a picker — only one office is functionally
- * usable right now despite the schema supporting more.
+ * Office is a real picker whenever an admin has actually configured more
+ * than the one default (`features.offices`, same gate `/profile`'s own
+ * office field uses) — otherwise there's nothing to choose between, so it
+ * stays out of the way entirely rather than showing a picker with one option.
  *
  * CHANGES_20260821_combined2.md §2/§3B added the three blocks below the
  * name/office form: a taste-preference bootstrap (so a first-timer's very
@@ -65,6 +68,12 @@ export default function WelcomePage() {
   const router = useRouter();
   const { data, isLoading } = useSWR<MeResponse>("/api/me", fetcher);
   const invite = usePersonalInviteLink();
+  const { data: officeData } = useSWR<{ offices: Office[] }>(
+    features.offices ? "/api/offices" : null,
+    fetcher
+  );
+  const offices = officeData?.offices ?? [];
+  const showOfficePicker = features.offices && offices.length > 1;
 
   const [name, setName] = useState("");
   const [prefilled, setPrefilled] = useState(false);
@@ -72,6 +81,8 @@ export default function WelcomePage() {
   const [error, setError] = useState<string | null>(null);
   const [cuisineLikes, setCuisineLikes] = useState<string[]>([]);
   const [budgetTier, setBudgetTier] = useState<BudgetTier | null>(null);
+  const [officeId, setOfficeId] = useState("");
+  const [officePrefilled, setOfficePrefilled] = useState(false);
 
   useEffect(() => {
     if (!prefilled && data?.user?.display_name) {
@@ -79,6 +90,17 @@ export default function WelcomePage() {
       setPrefilled(true);
     }
   }, [data, prefilled]);
+
+  useEffect(() => {
+    if (!officePrefilled && offices.length > 0) {
+      setOfficeId(
+        offices.some((o) => o.id === DEFAULT_OFFICE.id)
+          ? DEFAULT_OFFICE.id
+          : offices[0].id
+      );
+      setOfficePrefilled(true);
+    }
+  }, [offices, officePrefilled]);
 
   const toggleCuisine = (slug: string) => {
     setCuisineLikes((prev) =>
@@ -96,13 +118,14 @@ export default function WelcomePage() {
       // Best-effort — a first-timer's whole existence here is optional taps,
       // so a failed prefs save shouldn't block the one thing that matters:
       // getting them onto Home.
-      if (cuisineLikes.length > 0 || budgetTier !== null) {
+      if (cuisineLikes.length > 0 || budgetTier !== null || showOfficePicker) {
         try {
           await mutateJson("/api/user-prefs", "PUT", {
             cuisine_likes: cuisineLikes,
             ...(budgetTier !== null
               ? { budget_min: budgetTier, budget_max: budgetTier }
               : {}),
+            ...(showOfficePicker ? { default_office_id: officeId } : {}),
           });
         } catch {
           // Ignored — see above.
@@ -145,16 +168,32 @@ export default function WelcomePage() {
             />
           </Field>
 
-          <Field label="Office">
-            <input
-              value={DEFAULT_OFFICE.name}
-              disabled
-              className={`${inputClass} cursor-not-allowed opacity-70`}
-            />
-            <p className="text-stone mt-1 text-xs">
-              This pilot only supports one office for now.
-            </p>
-          </Field>
+          {showOfficePicker ? (
+            <Field
+              label="Office"
+              hint="Walking times and suggestions are measured from here."
+            >
+              <select
+                value={officeId}
+                onChange={(e) => setOfficeId(e.target.value)}
+                className={inputClass}
+              >
+                {offices.map((office) => (
+                  <option key={office.id} value={office.id}>
+                    {office.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          ) : (
+            <Field label="Office">
+              <input
+                value={DEFAULT_OFFICE.name}
+                disabled
+                className={`${inputClass} cursor-not-allowed opacity-70`}
+              />
+            </Field>
+          )}
 
           <div className="border-line space-y-3 border-t pt-4">
             <div>

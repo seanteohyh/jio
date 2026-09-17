@@ -240,6 +240,28 @@ in this mode. Asking for a name and then asking again to confirm it was one
 question too many. `/welcome` still exists for `email` mode, where people
 genuinely arrive without having given a name.
 
+**Office is asked at most once, and only of someone it's actually new
+information for.** The sign-in form itself no longer shows an office field at
+all — it used to show one permanently, locked to the single seeded default,
+which was actively wrong once an admin added a second office (`/admin/offices`)
+and confusing regardless: a returning user staring at a field they can
+neither change nor usefully ignore. Now the name field's submit alone decides
+what happens next: claiming an *existing* account (the "an account named 'X'
+already exists — is this you?" confirmation below, answered yes) skips office
+entirely and finishes signing in immediately — that account already has
+whichever office it was set up with, and re-asking would look like it just
+got reset. Only a genuinely new name — no match, nothing to claim — gets a
+second, one-question step offering every office `GET /api/offices` returns
+(so anything an admin has added is selectable immediately, not just the
+original default), defaulting to the seeded office, saved via the same
+`user_prefs.default_office_id` PUT the Profile page's own office field
+already writes to. Skipped entirely when there's nothing to actually choose
+between — the `offices` feature flag is off, or an admin hasn't added a
+second office yet — so a single-office deployment sees no picker at all,
+same as before. `/welcome` picked up the identical picker for `email` mode's
+equivalent first-timer screen, replacing its own copy of the old locked
+field.
+
 **`/e/[token]`'s first-timer redirect (CHANGES_20260821_combined2.md §2) uses
 two independent signals, not one, because `name` mode breaks the obvious
 one.** The obvious check — `!profile.onboarded_at`, the same gate Home
