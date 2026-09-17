@@ -140,10 +140,12 @@ export function UserMetricsCharts({
   expenseSummary,
 }: {
   metrics: UserMetrics;
-  /** Real logged amounts (migration 094), once there are any — replaces
-   *  the "Usual spend" tile's place-tier estimate with a real average and
-   *  sends it to the spending ledger instead of the old estimate tab.
-   *  `undefined`/no entries yet: the tile stays exactly as it was. */
+  /** Real logged amounts (migration 094). The tile always links to
+   *  `/profile/spending` now — that page is the only entry point into
+   *  logging a first expense, so the link can't wait for one to already
+   *  exist. Once there's at least one this month, the tile's own number
+   *  swaps from the place-tier estimate to a real per-entry average;
+   *  `undefined`/no entries yet, it shows the estimate exactly as before. */
   expenseSummary?: { hasLoggedExpenses: boolean; avgPerEntryCents: number };
 }) {
   if (metrics.totalVisits === 0) {
@@ -187,11 +189,7 @@ export function UserMetricsCharts({
               ? "avg. per entry"
               : `${metrics.currentVariety} places in 30 days`
           }
-          href={
-            expenseSummary?.hasLoggedExpenses
-              ? "/profile/spending"
-              : "/profile/visits?view=spend"
-          }
+          href="/profile/spending"
         />
       </div>
 
