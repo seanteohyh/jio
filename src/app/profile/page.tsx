@@ -45,6 +45,7 @@ import type {
   AuthUser,
   BudgetTier,
   CuisineOption,
+  ExpenseMonthSummary,
   Office,
   UserFoodIdentitySnapshot,
   UserMetrics,
@@ -100,6 +101,10 @@ export default function ProfilePage() {
     "/api/cuisines",
     fetcher
   );
+  const { data: expensesData } = useSWR<{
+    summary: ExpenseMonthSummary;
+    totalCount: number;
+  }>("/api/expenses", fetcher);
 
   const [name, setName] = useState("");
   const [likes, setLikes] = useState<string[]>([]);
@@ -393,7 +398,23 @@ export default function ProfilePage() {
                 totalVisits={metricsData.user.totalVisits}
                 metrics={metricsData.user}
               />
-              <UserMetricsCharts metrics={metricsData.user} />
+              <UserMetricsCharts
+                metrics={metricsData.user}
+                expenseSummary={
+                  expensesData
+                    ? {
+                        hasLoggedExpenses: expensesData.totalCount > 0,
+                        avgPerEntryCents:
+                          expensesData.totalCount > 0
+                            ? Math.round(
+                                expensesData.summary.totalCents /
+                                  expensesData.totalCount
+                              )
+                            : 0,
+                      }
+                    : undefined
+                }
+              />
             </section>
           )}
 

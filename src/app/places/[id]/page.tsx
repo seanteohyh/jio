@@ -93,6 +93,10 @@ export default function PlaceDetailPage({
   const [notes, setNotes] = useState("");
   const [dishes, setDishes] = useState("");
   const [isPublic, setIsPublic] = useState(true);
+  // Merged convenience field onto the personal expense ledger (migration
+  // 094) — a plain dollar string, only ever sent on a brand-new visit
+  // (never an edit, matching what the ledger side actually supports).
+  const [amount, setAmount] = useState("");
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   // UX review log #10 — guards the wishlist toggle against a fast
@@ -119,6 +123,7 @@ export default function PlaceDetailPage({
     setDishes(target.best_dishes.join(", "));
     setNotes(target.notes ?? "");
     setIsPublic(target.is_public);
+    setAmount("");
     setLogging(true);
     setTimeout(
       () => logFormRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }),
@@ -247,12 +252,21 @@ export default function PlaceDetailPage({
       if (editingVisitId) {
         await mutateJson(`/api/visits/${editingVisitId}`, "PATCH", body);
       } else {
-        await mutateJson("/api/visits", "POST", { place_id: place.id, ...body });
+        const trimmedAmount = amount.trim();
+        const amountCents = trimmedAmount
+          ? Math.round(parseFloat(trimmedAmount) * 100)
+          : 0;
+        await mutateJson("/api/visits", "POST", {
+          place_id: place.id,
+          ...body,
+          ...(amountCents > 0 ? { amount_cents: amountCents } : {}),
+        });
       }
       setLogging(false);
       setEditingVisitId(null);
       setNotes("");
       setDishes("");
+      setAmount("");
       mutate();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Could not save");
@@ -275,6 +289,7 @@ export default function PlaceDetailPage({
     setDishes("");
     setNotes("");
     setIsPublic(true);
+    setAmount("");
     setActionError(null);
     setLogging(true);
   };
@@ -285,6 +300,7 @@ export default function PlaceDetailPage({
     setDishes(review.best_dishes.join(", "));
     setNotes(review.notes ?? "");
     setIsPublic(review.is_public);
+    setAmount("");
     setActionError(null);
     setLogging(true);
     // The form sits above the Reviews list it's reachable from here, so a
@@ -777,6 +793,29 @@ export default function PlaceDetailPage({
                   ))}
                 </div>
               </div>
+
+              {!editingVisitId && (
+                <Field
+                  label="How much did it cost?"
+                  hint="Optional — logs to your spending page too."
+                >
+                  <div className="relative">
+                    <span className="text-stone pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-sm">
+                      $
+                    </span>
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      min="0"
+                      step="0.01"
+                      value={amount}
+                      onChange={(e) => setAmount(e.target.value)}
+                      className={`${inputClass} pl-6`}
+                      placeholder="12.50"
+                    />
+                  </div>
+                </Field>
+              )}
 
               <Field label="What would you recommend?" hint="Comma or line separated.">
                 {/*

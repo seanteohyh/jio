@@ -29,6 +29,12 @@ interface CreateVisitBody {
   notes?: string;
   visited_at?: string;
   is_public?: boolean;
+  /** Optional — the merged convenience path onto the personal expense
+   *  ledger (migration 094). Logs a `lunch`-category entry tied to this
+   *  visit via `source_visit_id`, for whenever someone's already here
+   *  rating a place and wants to note what it cost, without a separate
+   *  trip to the spending page. */
+  amount_cents?: number;
 }
 
 export async function POST(request: NextRequest) {
@@ -65,6 +71,18 @@ export async function POST(request: NextRequest) {
       placeId: visit.place_id,
       visitId: visit.id,
     });
+
+    if (body.amount_cents && body.amount_cents > 0) {
+      const place = await repo.getPlace(body.place_id);
+      await repo.createExpenseEntry(user.id, {
+        amountCents: body.amount_cents,
+        label: place?.name ?? "Lunch",
+        category: "lunch",
+        placeId: body.place_id,
+        sourceVisitId: visit.id,
+        loggedAt: visit.visited_at,
+      });
+    }
 
     return json({ visit }, 201);
   } catch (error) {
