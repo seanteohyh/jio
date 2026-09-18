@@ -199,6 +199,9 @@ export interface Repo {
       label: string;
       category: ExpenseCategory;
       loggedAt: string;
+      /** Search-to-match while editing carries the same optional place
+       *  link creating an entry does — `null` clears a previous match. */
+      placeId: string | null;
     }>
   ): Promise<ExpenseEntry>;
 

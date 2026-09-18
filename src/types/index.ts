@@ -184,7 +184,13 @@ export interface Visit {
  * is nullable and `label` is free text rather than a place lookup
  * (migration 094). Always private — see that migration's RLS.
  */
-export type ExpenseCategory = "lunch" | "coffee" | "snack" | "other";
+export type ExpenseCategory =
+  | "breakfast"
+  | "lunch"
+  | "dinner"
+  | "coffee"
+  | "snack"
+  | "other";
 
 export interface ExpenseEntry {
   id: string;

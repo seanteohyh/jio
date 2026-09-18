@@ -950,6 +950,7 @@ export const supabaseRepo: Repo = {
     if (patch.label !== undefined) fields.label = patch.label;
     if (patch.category !== undefined) fields.category = patch.category;
     if (patch.loggedAt !== undefined) fields.logged_at = patch.loggedAt;
+    if (patch.placeId !== undefined) fields.place_id = patch.placeId;
 
     const { data, error } = await client
       .from("expense_entries")

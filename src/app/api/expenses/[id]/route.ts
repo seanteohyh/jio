@@ -6,21 +6,33 @@ import type { ExpenseCategory } from "@/types";
 
 type Params = { params: Promise<{ id: string }> };
 
-const CATEGORIES: ExpenseCategory[] = ["lunch", "coffee", "snack", "other"];
+const CATEGORIES: ExpenseCategory[] = [
+  "breakfast",
+  "lunch",
+  "dinner",
+  "coffee",
+  "snack",
+  "other",
+];
 
 interface UpdateExpenseBody {
   amount_cents?: number;
   label?: string;
   category?: string;
   logged_at?: string;
+  place_id?: string | null;
 }
 
 /**
  * Amend one of your own entries — added per confirmed decision (delete-only
  * was the doc's original scope; edit was chosen instead, so a typo'd amount
  * or mis-tapped category doesn't need the entry deleted and re-added).
- * `place_id`/`source_visit_id` aren't editable here — same reasoning
- * `updateVisit` keeps `place_id`/`user_id` off its own whitelist.
+ * `place_id` is editable too — the same search-with-freeform-fallback on
+ * "What was it?" the create path has also runs on an edit, so a match
+ * found (or cleared) while editing needs somewhere to go. `source_visit_id`
+ * stays off the whitelist — that link is set once, at creation, only ever
+ * by the merged convenience path on the rating form, same reasoning
+ * `updateVisit` keeps `user_id` off its own whitelist.
  */
 export async function PATCH(request: NextRequest, { params }: Params) {
   try {
@@ -49,6 +61,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       label: body.label?.trim(),
       category: body.category as ExpenseCategory | undefined,
       loggedAt: body.logged_at,
+      placeId: "place_id" in body ? (body.place_id ?? null) : undefined,
     });
 
     return json({ entry });

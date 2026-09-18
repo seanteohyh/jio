@@ -99,6 +99,51 @@ describe("expense ledger", () => {
     expect(updated.label).toBe("Kopi"); // untouched field stays as-is
   });
 
+  it.each(["breakfast", "lunch", "dinner", "coffee", "snack", "other"] as const)(
+    "accepts %s as a category",
+    async (category) => {
+      const entry = await demoRepo.createExpenseEntry(DEMO_USER_ID, {
+        amountCents: 500,
+        label: "Something",
+        category,
+      });
+      expect(entry.category).toBe(category);
+    }
+  );
+
+  it("links a place match found while editing, and can clear one back off", async () => {
+    const entry = await demoRepo.createExpenseEntry(DEMO_USER_ID, {
+      amountCents: 800,
+      label: "Bo Chung banh mi",
+      category: "lunch",
+    });
+    expect(entry.place_id ?? null).toBeNull();
+
+    const linked = await demoRepo.updateExpenseEntry(DEMO_USER_ID, entry.id, {
+      placeId: "demo-place-01",
+    });
+    expect(linked.place_id).toBe("demo-place-01");
+
+    const unlinked = await demoRepo.updateExpenseEntry(DEMO_USER_ID, entry.id, {
+      placeId: null,
+    });
+    expect(unlinked.place_id ?? null).toBeNull();
+  });
+
+  it("hydrates place_name once an entry is created with a matched place", async () => {
+    const entry = await demoRepo.createExpenseEntry(DEMO_USER_ID, {
+      amountCents: 800,
+      label: "Ichiban Boshi",
+      category: "lunch",
+      placeId: "demo-place-01",
+      loggedAt: "2026-08-05",
+    });
+
+    const { entries } = await demoRepo.listExpenseEntries(DEMO_USER_ID, "2026-08", 1, 20);
+    const found = entries.find((e) => e.id === entry.id);
+    expect(found?.place_name).toBeTruthy();
+  });
+
   it("refuses to edit or delete someone else's entry", async () => {
     const entry = await demoRepo.createExpenseEntry(DEMO_USER_ID, {
       amountCents: 500,

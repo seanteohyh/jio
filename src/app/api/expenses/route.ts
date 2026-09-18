@@ -6,7 +6,14 @@ import { currentMonthKey } from "@/lib/expenses";
 import { logAction } from "@/lib/actions";
 import type { ExpenseCategory } from "@/types";
 
-const CATEGORIES: ExpenseCategory[] = ["lunch", "coffee", "snack", "other"];
+const CATEGORIES: ExpenseCategory[] = [
+  "breakfast",
+  "lunch",
+  "dinner",
+  "coffee",
+  "snack",
+  "other",
+];
 const MONTH_PATTERN = /^\d{4}-\d{2}$/;
 const PAGE_SIZE = 20;
 

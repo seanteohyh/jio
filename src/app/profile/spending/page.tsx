@@ -20,19 +20,28 @@ import {
   previousMonthKey,
 } from "@/lib/expenses";
 import { formatDate, formatMonthKey } from "@/lib/utils";
-import type { ExpenseCategory, ExpenseEntry, ExpenseMonthSummary } from "@/types";
+import type {
+  ExpenseCategory,
+  ExpenseEntry,
+  ExpenseMonthSummary,
+  Place,
+} from "@/types";
 
 const PAGE_SIZE = 20;
 
 const CATEGORIES: { value: ExpenseCategory; label: string }[] = [
+  { value: "breakfast", label: "Breakfast" },
   { value: "lunch", label: "Lunch" },
+  { value: "dinner", label: "Dinner" },
   { value: "coffee", label: "Coffee" },
   { value: "snack", label: "Snack" },
   { value: "other", label: "Other" },
 ];
 
 const CATEGORY_LABEL: Record<ExpenseCategory, string> = {
+  breakfast: "Breakfast",
   lunch: "Lunch",
+  dinner: "Dinner",
   coffee: "Coffee",
   snack: "Snack",
   other: "Other",
@@ -48,12 +57,22 @@ interface ExpensesResponse {
 
 /** Shared amount/label/category fields — used both by the quick-add sheet
  *  (a new entry) and a row's inline edit (an existing one). Only the save
- *  button's label and what happens on submit differ between the two. */
+ *  button's label and what happens on submit differ between the two.
+ *
+ * "What was it?" doubles as a place search — same optional
+ * search-with-freeform-fallback shape as the Kaki wishlist's own
+ * search-to-add, over the same `/api/places?q=` every other search box in
+ * the app already uses. A match is opportunistic, never required: picking
+ * a suggestion links `placeId` (and fills the label with the place's own
+ * name); typing straight past the dropdown, or editing after a pick, just
+ * saves whatever text is there as a plain label with no place attached. */
 function EntryFields({
   amount,
   setAmount,
   label,
   setLabel,
+  placeId,
+  setPlaceId,
   category,
   setCategory,
 }: {
@@ -61,9 +80,25 @@ function EntryFields({
   setAmount: (v: string) => void;
   label: string;
   setLabel: (v: string) => void;
+  placeId: string | null;
+  setPlaceId: (v: string | null) => void;
   category: ExpenseCategory;
   setCategory: (v: ExpenseCategory) => void;
 }) {
+  const trimmedLabel = label.trim();
+  const { data: searchData } = useSWR<{ places: Place[] }>(
+    !placeId && trimmedLabel.length >= 2
+      ? `/api/places?q=${encodeURIComponent(trimmedLabel)}`
+      : null,
+    fetcher
+  );
+  const results = searchData?.places ?? [];
+
+  const pickPlace = (place: Place) => {
+    setLabel(place.name);
+    setPlaceId(place.id);
+  };
+
   return (
     <>
       <Field label="Amount">
@@ -87,10 +122,34 @@ function EntryFields({
       <Field label="What was it?">
         <input
           value={label}
-          onChange={(e) => setLabel(e.target.value)}
+          onChange={(e) => {
+            setLabel(e.target.value);
+            // Editing past a pick means it's custom text again — a stale
+            // link to whatever was matched before would silently attach
+            // the wrong place to whatever gets typed next.
+            if (placeId) setPlaceId(null);
+          }}
           className={inputClass}
           placeholder="Yakun kaya toast"
         />
+        {placeId ? (
+          <p className="text-sage mt-1 text-xs">Matched to a place.</p>
+        ) : (
+          results.length > 0 && (
+            <div className="border-line bg-frost mt-1 max-h-40 space-y-0.5 overflow-y-auto rounded-lg border p-1">
+              {results.map((place) => (
+                <button
+                  key={place.id}
+                  type="button"
+                  onClick={() => pickPlace(place)}
+                  className="hover:bg-cream w-full truncate rounded-md px-2 py-1.5 text-left text-sm"
+                >
+                  {place.name}
+                </button>
+              ))}
+            </div>
+          )
+        )}
       </Field>
       <Field label="Kind">
         <div className="flex flex-wrap gap-1.5">
@@ -118,6 +177,7 @@ function QuickAddSheet({
 }) {
   const [amount, setAmount] = useState("");
   const [label, setLabel] = useState("");
+  const [placeId, setPlaceId] = useState<string | null>(null);
   const [category, setCategory] = useState<ExpenseCategory>("lunch");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -128,6 +188,7 @@ function QuickAddSheet({
   const reset = () => {
     setAmount("");
     setLabel("");
+    setPlaceId(null);
     setCategory("lunch");
   };
 
@@ -150,6 +211,7 @@ function QuickAddSheet({
       await mutateJson("/api/expenses", "POST", {
         amount_cents: amountCents,
         label: label.trim(),
+        place_id: placeId,
         category,
       });
       onLogged();
@@ -196,6 +258,8 @@ function QuickAddSheet({
           setAmount={setAmount}
           label={label}
           setLabel={setLabel}
+          placeId={placeId}
+          setPlaceId={setPlaceId}
           category={category}
           setCategory={setCategory}
         />
@@ -220,6 +284,7 @@ function EntryRow({
   const [editing, setEditing] = useState(false);
   const [amount, setAmount] = useState((entry.amount_cents / 100).toFixed(2));
   const [label, setLabel] = useState(entry.label);
+  const [placeId, setPlaceId] = useState<string | null>(entry.place_id ?? null);
   const [category, setCategory] = useState<ExpenseCategory>(entry.category);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -227,6 +292,7 @@ function EntryRow({
   const startEdit = () => {
     setAmount((entry.amount_cents / 100).toFixed(2));
     setLabel(entry.label);
+    setPlaceId(entry.place_id ?? null);
     setCategory(entry.category);
     setError(null);
     setEditing(true);
@@ -251,6 +317,7 @@ function EntryRow({
       await mutateJson(`/api/expenses/${entry.id}`, "PATCH", {
         amount_cents: amountCents,
         label: label.trim(),
+        place_id: placeId,
         category,
       });
       setEditing(false);
@@ -283,6 +350,8 @@ function EntryRow({
             setAmount={setAmount}
             label={label}
             setLabel={setLabel}
+            placeId={placeId}
+            setPlaceId={setPlaceId}
             category={category}
             setCategory={setCategory}
           />
