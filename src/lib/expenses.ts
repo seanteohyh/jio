@@ -51,7 +51,14 @@ export function centsToBudgetTier(cents: number): BudgetTier {
 }
 
 function emptyByCategory(): Record<ExpenseCategory, number> {
-  return { lunch: 0, coffee: 0, snack: 0, other: 0 };
+  return {
+    breakfast: 0,
+    lunch: 0,
+    dinner: 0,
+    coffee: 0,
+    snack: 0,
+    other: 0,
+  };
 }
 
 function budgetRangeLabel(min: BudgetTier, max: BudgetTier): string {

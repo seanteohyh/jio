@@ -975,6 +975,7 @@ export const demoRepo: Repo = {
     if (patch.label !== undefined) entry.label = patch.label;
     if (patch.category !== undefined) entry.category = patch.category;
     if (patch.loggedAt !== undefined) entry.logged_at = patch.loggedAt;
+    if (patch.placeId !== undefined) entry.place_id = patch.placeId;
     return entry;
   },
 
