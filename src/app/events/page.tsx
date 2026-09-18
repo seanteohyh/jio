@@ -70,12 +70,20 @@ function MonthCalendar({
   cursor,
   onCursorChange,
   events,
+  activeSeries,
   selectedDay,
   onSelectDay,
 }: {
   cursor: Date;
   onCursorChange: (d: Date) => void;
   events: LunchEvent[];
+  /** Standing weekly Jios — used to preview a future occurrence's day even
+   *  before `generateDueOccurrences` has actually materialized it (that's
+   *  lazy, host-triggered, and only within a few days' lookahead — see
+   *  RECURRING_LOOKAHEAD_DAYS — so a Wednesday three weeks out otherwise
+   *  shows nothing at all, which is exactly how a standing lunch gets
+   *  double-booked over). */
+  activeSeries: RecurringSeries[];
   selectedDay: Date;
   onSelectDay: (d: Date) => void;
 }) {
@@ -91,6 +99,33 @@ function MonthCalendar({
     }
     return map;
   }, [events]);
+
+  // A preview only — never a stand-in for the real thing. Shown for a day
+  // that (a) matches an active series' weekday, (b) isn't already covered
+  // by a real, generated occurrence of that same series, and (c) isn't in
+  // the past (nothing to preview about a Wednesday that's already happened
+  // one way or another).
+  const virtualByDay = useMemo(() => {
+    const map = new Map<string, RecurringSeries[]>();
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    for (const day of days) {
+      if (day < todayStart) continue;
+      const key = day.toDateString();
+      const dayEvents = eventsByDay.get(key) ?? [];
+      for (const series of activeSeries) {
+        if (day.getDay() !== series.weekday) continue;
+        const alreadyGenerated = dayEvents.some(
+          (e) => e.recurring_series_id === series.id
+        );
+        if (alreadyGenerated) continue;
+        const list = map.get(key) ?? [];
+        list.push(series);
+        map.set(key, list);
+      }
+    }
+    return map;
+  }, [days, activeSeries, eventsByDay]);
 
   const today = new Date();
   const monthLabel = cursor.toLocaleDateString("en-SG", {
@@ -133,6 +168,7 @@ function MonthCalendar({
         {days.map((day) => {
           const inMonth = day.getMonth() === cursor.getMonth();
           const dayEvents = eventsByDay.get(day.toDateString()) ?? [];
+          const virtualSeries = virtualByDay.get(day.toDateString()) ?? [];
           const selected = isSameDay(day, selectedDay);
           return (
             <button
@@ -163,6 +199,20 @@ function MonthCalendar({
                     )}
                   />
                 ))}
+                {virtualSeries
+                  .slice(0, Math.max(0, 3 - dayEvents.length))
+                  .map((series) => (
+                    <span
+                      key={`virtual-${series.id}`}
+                      role="img"
+                      aria-label={`${series.title} — recurring, not started yet`}
+                      title={`${series.title} — recurring, not started yet`}
+                      className={cn(
+                        "h-1.5 w-1.5 rounded-full border",
+                        selected ? "border-white" : "border-amber"
+                      )}
+                    />
+                  ))}
               </span>
             </button>
           );
@@ -246,6 +296,8 @@ export default function EventsPage() {
   const events = data?.events ?? [];
   const userId = meData?.user?.id;
   const now = Date.now();
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
 
   const filtered = useMemo(() => {
     switch (filter) {
@@ -310,6 +362,14 @@ export default function EventsPage() {
       e.date_phase !== "polling" &&
       isSameDay(new Date(e.scheduled_at), selectedDay)
   );
+
+  // Same "preview a standing Jio before it's actually generated" reasoning
+  // as the calendar dots below — only shown when there's nothing real for
+  // this day yet and the day itself hasn't already passed.
+  const selectedDayVirtualSeries =
+    selectedDayEvents.length === 0 && selectedDay.getTime() >= todayStart.getTime()
+      ? activeSeries.filter((s) => s.weekday === selectedDay.getDay())
+      : [];
 
   const FILTERS: { key: Filter; label: string }[] = [
     { key: "all", label: "All" },
@@ -475,6 +535,7 @@ export default function EventsPage() {
                 cursor={cursor}
                 onCursorChange={setCursor}
                 events={filtered}
+                activeSeries={activeSeries}
                 selectedDay={selectedDay}
                 onSelectDay={setSelectedDay}
               />
@@ -489,9 +550,7 @@ export default function EventsPage() {
                         month: "short",
                       })}
                 </SectionHeading>
-                {selectedDayEvents.length === 0 ? (
-                  <p className="text-stone text-sm">Nothing this day.</p>
-                ) : (
+                {selectedDayEvents.length > 0 ? (
                   <ul className="space-y-2">
                     {selectedDayEvents.map((event) => (
                       <li key={event.id}>
@@ -499,6 +558,32 @@ export default function EventsPage() {
                       </li>
                     ))}
                   </ul>
+                ) : selectedDayVirtualSeries.length > 0 ? (
+                  <ul className="space-y-1.5">
+                    {selectedDayVirtualSeries.map((series) => (
+                      <li
+                        key={series.id}
+                        className="border-amber/40 bg-amber-tint/60 flex items-center justify-between gap-2 rounded-xl border border-dashed p-3"
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium">
+                            {series.title}
+                          </p>
+                          <p className="text-amber-text text-xs">
+                            {series.time_of_day} · standing, not started yet
+                          </p>
+                        </div>
+                        <Link
+                          href={`/events/recurring/${series.id}/edit`}
+                          className="text-amber-text shrink-0 text-xs underline"
+                        >
+                          Edit
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-stone text-sm">Nothing this day.</p>
                 )}
               </section>
             </>
