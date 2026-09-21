@@ -159,20 +159,20 @@ export default function EventDetailPage({
   // UX review log #25 — set for the duration of this account's own
   // optimistic vote/RSVP mutation (submitBallot/sendRsvp below) so the
   // realtime handler just below can skip its own redundant refetch during
-  // that exact window. Voting is what typically auto-closes a Jio, which
-  // is also one of the two tables (event_votes) this same realtime
-  // subscription listens on — the vote write itself fires the realtime
-  // notification near-instantly, well before the same request's own
-  // maybeAutoCloseEvent() has actually flipped the status. If that
-  // realtime-triggered fetch and this action's own post-write fetch land
-  // close enough together, React can batch the two resulting re-renders
-  // into one, and only the *last* one survives — sometimes the earlier,
-  // "closed + decidedCelebration: true" response, sometimes the earlier
-  // still-open one, depending on which happened to resolve last. Either
-  // way, this account's own action already re-fetches once the real write
-  // (including auto-close) has actually landed, so a second, independent
-  // refetch triggered by that same write's own realtime echo adds no new
-  // information — only a chance to race it out.
+  // that exact window. A vote write is also one of the two tables
+  // (event_votes) this same realtime subscription listens on — the write
+  // itself fires the realtime notification near-instantly, well before
+  // this same request's own post-write `getEvent` (reflecting the fresh
+  // tally, and possibly a newly-`readyToClose` state) has actually
+  // resolved. If that realtime-triggered fetch and this action's own
+  // post-write fetch land close enough together, React can batch the two
+  // resulting re-renders into one, and only the *last* one survives —
+  // sometimes the slightly-stale realtime one, sometimes this account's
+  // own fresher one, depending on which happened to resolve last. Either
+  // way, this account's own action already re-fetches once its own write
+  // has actually landed, so a second, independent refetch triggered by
+  // that same write's own realtime echo adds no new information — only a
+  // chance to race it out.
   const ownMutationInFlight = useRef(false);
 
   // Live updates while people vote. Falls back silently if realtime is off.
@@ -820,6 +820,32 @@ export default function EventDetailPage({
           <p className="text-sm font-medium">
             Confirmed for {formatDate(justConfirmedDate)}!
           </p>
+        </Card>
+      )}
+
+      {/*
+        A Jio anyone can still join via its own share link (or, kaki-linked,
+        just by being a member) can never have a genuinely final population
+        — this used to auto-close the instant every *current* participant
+        had answered, which meant it could close the moment before someone
+        else opened that same link to join and vote. Now it's just a
+        prompt: the host decides when it's actually done, same "Close with
+        the vote" action the card further down offers, surfaced here too
+        since that one's easy to miss below a long ballot.
+      */}
+      {viewer.isHost && isOpen && !isDatePolling && event.readyToClose && (
+        <Card className="border-sage/40 bg-sage-tint/70 animate-fade-in space-y-2">
+          <p className="text-sage text-xs font-semibold tracking-wide uppercase">
+            Everyone&apos;s answered
+          </p>
+          <p className="text-sm">
+            Every invitee has RSVP&apos;d and voted — ready to lock in a
+            winner whenever you are. Still expecting someone else? No rush,
+            this Jio stays open until you close it.
+          </p>
+          <Button size="sm" onClick={() => close()} disabled={busy}>
+            Close with the vote
+          </Button>
         </Card>
       )}
 

@@ -609,6 +609,15 @@ export interface EventDetail extends LunchEvent {
   candidateDates: EventCandidateDate[];
   /** Only meaningful for a Flexi Jio (`date_phase` set). */
   dateVotes: EventDateVote[];
+  /**
+   * Every current participant has RSVP'd yes/no and everyone going has cast
+   * a fresh (non-stale) vote — `false` while closed/cancelled or still
+   * date-polling. Used to prompt the host to close manually rather than to
+   * close automatically — see `computeReadyToClose`'s own doc comment in
+   * `src/lib/voting.ts` for why closing on this the instant it goes true
+   * turned out to be unsafe for a Jio anyone can still join.
+   */
+  readyToClose: boolean;
 }
 
 /**

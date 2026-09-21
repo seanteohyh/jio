@@ -4,10 +4,19 @@ import { DEFAULT_OFFICE, DEMO_USER_ID } from "@/lib/constants";
 import { DEMO_TEAMMATE_A, DEMO_TEAMMATE_B } from "@/lib/data/demoData";
 
 /**
- * CHANGES_20260821_combined.md Part 2 — a Jio auto-closes once every
- * participant has RSVP'd yes/no (not "maybe") and everyone who RSVP'd yes
- * has voted. Deliberately no host auto-confirm exception: the host RSVPs
- * like anyone else, same rule for everyone.
+ * CHANGES_20260821_combined.md Part 2 introduced full-consensus auto-close:
+ * a Jio closed itself, no host action required, once every participant had
+ * RSVP'd yes/no (not "maybe") and everyone who RSVP'd yes had voted. A
+ * later bug report — "Jio keeps closing whilst new members trying to add
+ * their votes in" — found this unsafe for any Jio someone else can still
+ * join (its own share link, or just being a Kaki member): it closed the
+ * instant every *current* participant had answered, locking out whoever
+ * was about to join and vote a moment later. It no longer closes anything
+ * by itself; the same full-consensus condition is now `EventDetail
+ * .readyToClose`, surfaced to the host as a prompt rather than acted on
+ * automatically — see `computeReadyToClose`'s doc comment in
+ * `src/lib/voting.ts`. Deliberately no host auto-confirm exception: the
+ * host RSVPs like anyone else, same rule for everyone.
  */
 
 beforeEach(() => {
@@ -32,37 +41,38 @@ async function makeEvent(inviteeIds: string[] = []) {
   );
 }
 
-describe("maybeAutoCloseEvent", () => {
-  it("does not close while a participant has not responded at all", async () => {
+describe("EventDetail.readyToClose", () => {
+  it("is false while a participant has not responded at all", async () => {
     const event = await makeEvent([DEMO_TEAMMATE_A]);
     await demoRepo.rsvp(event.id, DEMO_USER_ID, "yes");
     await demoRepo.castBallot(event.id, DEMO_USER_ID, ["demo-place-01"]);
     // DEMO_TEAMMATE_A never responds.
 
-    expect(await demoRepo.maybeAutoCloseEvent(event.id)).toBeNull();
-    expect((await demoRepo.getEvent(event.id))?.status).toBe("open");
+    const detail = await demoRepo.getEvent(event.id);
+    expect(detail?.readyToClose).toBe(false);
+    expect(detail?.status).toBe("open");
   });
 
-  it("does not close while a participant answered 'maybe'", async () => {
+  it("is false while a participant answered 'maybe'", async () => {
     const event = await makeEvent([DEMO_TEAMMATE_A]);
     await demoRepo.rsvp(event.id, DEMO_USER_ID, "yes");
     await demoRepo.castBallot(event.id, DEMO_USER_ID, ["demo-place-01"]);
     await demoRepo.rsvp(event.id, DEMO_TEAMMATE_A, "maybe");
 
-    expect(await demoRepo.maybeAutoCloseEvent(event.id)).toBeNull();
+    expect((await demoRepo.getEvent(event.id))?.readyToClose).toBe(false);
   });
 
-  it("does not close while a confirmed-yes participant has not voted", async () => {
+  it("is false while a confirmed-yes participant has not voted", async () => {
     const event = await makeEvent([DEMO_TEAMMATE_A]);
     await demoRepo.rsvp(event.id, DEMO_USER_ID, "yes");
     await demoRepo.castBallot(event.id, DEMO_USER_ID, ["demo-place-01"]);
     await demoRepo.rsvp(event.id, DEMO_TEAMMATE_A, "yes");
     // DEMO_TEAMMATE_A confirmed but never voted.
 
-    expect(await demoRepo.maybeAutoCloseEvent(event.id)).toBeNull();
+    expect((await demoRepo.getEvent(event.id))?.readyToClose).toBe(false);
   });
 
-  it("closes once every participant has responded and every yes has voted", async () => {
+  it("is true once every participant has responded and every yes has voted — a real Jio never closes on this by itself any more", async () => {
     const event = await makeEvent([DEMO_TEAMMATE_A, DEMO_TEAMMATE_B]);
     await demoRepo.rsvp(event.id, DEMO_USER_ID, "yes");
     await demoRepo.castBallot(event.id, DEMO_USER_ID, [
@@ -77,12 +87,31 @@ describe("maybeAutoCloseEvent", () => {
     // Declines — not required to vote.
     await demoRepo.rsvp(event.id, DEMO_TEAMMATE_B, "no");
 
-    const closed = await demoRepo.maybeAutoCloseEvent(event.id);
-    expect(closed?.status).toBe("closed");
-    expect(closed?.winner_place_id).toBe("demo-place-01");
+    const detail = await demoRepo.getEvent(event.id);
+    expect(detail?.readyToClose).toBe(true);
+    // The bug this replaced: this Jio stays open regardless — the host
+    // decides when to actually close it, not this check.
+    expect(detail?.status).toBe("open");
   });
 
-  it("stale ballots block auto-close until everyone revotes past the new place — bug report item 4", async () => {
+  it("a new joiner un-readies a Jio that was already ready — the exact bug report this replaced", async () => {
+    const event = await makeEvent([DEMO_TEAMMATE_A]);
+    await demoRepo.rsvp(event.id, DEMO_USER_ID, "yes");
+    await demoRepo.castBallot(event.id, DEMO_USER_ID, ["demo-place-01"]);
+    await demoRepo.rsvp(event.id, DEMO_TEAMMATE_A, "yes");
+    await demoRepo.castBallot(event.id, DEMO_TEAMMATE_A, ["demo-place-01"]);
+    expect((await demoRepo.getEvent(event.id))?.readyToClose).toBe(true);
+
+    // A third person opens the share link and joins — "everyone's
+    // answered" is no longer true, and (per the fix) nothing already
+    // closed the Jio out from under them.
+    await demoRepo.joinEventViaInvite(event.id, DEMO_TEAMMATE_B);
+    const detail = await demoRepo.getEvent(event.id);
+    expect(detail?.readyToClose).toBe(false);
+    expect(detail?.status).toBe("open");
+  });
+
+  it("stale ballots keep it not-ready until everyone revotes past the new place — bug report item 4", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2027-06-01T00:00:00Z"));
 
@@ -98,19 +127,18 @@ describe("maybeAutoCloseEvent", () => {
     await demoRepo.addOptionToEvent(event.id, "demo-place-03", DEMO_TEAMMATE_A);
 
     // Both ballots now predate the new option — neither counts as "voted"
-    // for auto-close purposes any more.
-    expect(await demoRepo.maybeAutoCloseEvent(event.id)).toBeNull();
+    // for readiness purposes any more.
+    expect((await demoRepo.getEvent(event.id))?.readyToClose).toBe(false);
 
     // The host recasts (even the same ranking) a minute after that — still
     // blocked on the other participant's now-stale ballot.
     vi.setSystemTime(new Date("2027-06-01T00:02:00Z"));
     await demoRepo.castBallot(event.id, DEMO_USER_ID, ["demo-place-01"]);
-    expect(await demoRepo.maybeAutoCloseEvent(event.id)).toBeNull();
+    expect((await demoRepo.getEvent(event.id))?.readyToClose).toBe(false);
 
-    // Once everyone's recast past the new place, it closes as normal.
+    // Once everyone's recast past the new place, it's ready again.
     await demoRepo.castBallot(event.id, DEMO_TEAMMATE_A, ["demo-place-01"]);
-    const closed = await demoRepo.maybeAutoCloseEvent(event.id);
-    expect(closed?.status).toBe("closed");
+    expect((await demoRepo.getEvent(event.id))?.readyToClose).toBe(true);
   });
 
   it("a stale voter's getEvent viewer flag flips true, then clears on revote", async () => {
@@ -144,26 +172,26 @@ describe("maybeAutoCloseEvent", () => {
     await demoRepo.rsvp(event.id, DEMO_TEAMMATE_A, "yes");
     await demoRepo.castBallot(event.id, DEMO_TEAMMATE_A, ["demo-place-01"]);
 
-    expect(await demoRepo.maybeAutoCloseEvent(event.id)).toBeNull();
+    expect((await demoRepo.getEvent(event.id))?.readyToClose).toBe(false);
 
     await demoRepo.rsvp(event.id, DEMO_USER_ID, "yes");
     await demoRepo.castBallot(event.id, DEMO_USER_ID, ["demo-place-01"]);
-    expect((await demoRepo.maybeAutoCloseEvent(event.id))?.status).toBe(
-      "closed"
-    );
+    expect((await demoRepo.getEvent(event.id))?.readyToClose).toBe(true);
   });
 
-  it("closes with no winner when everyone declines (nobody to vote)", async () => {
+  it("is true with no winner in view when everyone declines (nobody to vote)", async () => {
     const event = await makeEvent([DEMO_TEAMMATE_A]);
     await demoRepo.rsvp(event.id, DEMO_USER_ID, "no");
     await demoRepo.rsvp(event.id, DEMO_TEAMMATE_A, "no");
 
-    const closed = await demoRepo.maybeAutoCloseEvent(event.id);
-    expect(closed?.status).toBe("closed");
-    expect(closed?.winner_place_id).toBeNull();
+    const detail = await demoRepo.getEvent(event.id);
+    expect(detail?.readyToClose).toBe(true);
+    // Ready to close (the host can lock it in with no winner), but not
+    // closed by itself.
+    expect(detail?.status).toBe("open");
   });
 
-  it("does not close a still-polling Flexi Jio", async () => {
+  it("is false for a still-polling Flexi Jio", async () => {
     const event = await demoRepo.createFlexiEvent(
       DEMO_USER_ID,
       "Flexi lunch",
@@ -174,28 +202,23 @@ describe("maybeAutoCloseEvent", () => {
     );
     await demoRepo.rsvp(event.id, DEMO_USER_ID, "yes");
 
-    expect(await demoRepo.maybeAutoCloseEvent(event.id)).toBeNull();
+    expect((await demoRepo.getEvent(event.id))?.readyToClose).toBe(false);
   });
 
-  it("no-ops on an already-closed event", async () => {
+  it("is false once already closed", async () => {
     const event = await makeEvent();
     await demoRepo.rsvp(event.id, DEMO_USER_ID, "yes");
     await demoRepo.castBallot(event.id, DEMO_USER_ID, ["demo-place-01"]);
-    await demoRepo.maybeAutoCloseEvent(event.id);
-    expect((await demoRepo.getEvent(event.id))?.status).toBe("closed");
+    await demoRepo.closeEvent(event.id, DEMO_USER_ID, null);
 
-    expect(await demoRepo.maybeAutoCloseEvent(event.id)).toBeNull();
+    expect((await demoRepo.getEvent(event.id))?.readyToClose).toBe(false);
   });
 
-  it("no-ops on a cancelled event", async () => {
+  it("is false once cancelled", async () => {
     const event = await makeEvent();
     await demoRepo.cancelEvent(event.id, DEMO_USER_ID);
 
-    expect(await demoRepo.maybeAutoCloseEvent(event.id)).toBeNull();
-  });
-
-  it("returns null for an event that does not exist", async () => {
-    expect(await demoRepo.maybeAutoCloseEvent("no-such-event")).toBeNull();
+    expect((await demoRepo.getEvent(event.id))?.readyToClose).toBe(false);
   });
 });
 

@@ -664,29 +664,27 @@ export interface Repo {
     minutes: number | null
   ): Promise<EventDetail>;
   /**
-   * CHANGES_20260821_combined.md Part 2 — closes this Jio itself, no host
-   * action required, once every participant (`resolveEventParticipants`:
-   * host, kaki members, invitees) has RSVP'd `yes` or `no` — `maybe` does
-   * not count, read literally from how this was asked for — and everyone
-   * who RSVP'd `yes` has cast a ballot. No-ops (returns `null`) if the
-   * condition isn't met yet, the event isn't `open`, or it's still a
-   * polling Flexi Jio with no place-vote to close. Write-driven, not
-   * lazy/polled: the only two things that can ever newly satisfy this are
-   * an RSVP or a vote, so the caller is expected to call this right after
-   * each of those two writes succeed, same as `notifyHostOfVote` already
-   * does for its own trigger. Reuses `closeEvent`'s own Borda-count
-   * winner logic, not a second implementation of it.
-   */
-  maybeAutoCloseEvent(eventId: string): Promise<EventDetail | null>;
-  /**
-   * The other half of the vote-deadline feature — a cron sweep
-   * (`/api/cron/vote-deadline`), not write-triggered like
-   * `maybeAutoCloseEvent` above. Closes every `open`, non-polling event
-   * whose `vote_end_at` has passed, regardless of who's still pending —
-   * the whole point being to bound how long a Jio can sit unresolved once
-   * its host set a deadline. Computes the Borda winner from whatever votes
-   * exist at that point (`null` if nobody voted at all, same as any other
-   * close). Returns how many were closed.
+   * A cron sweep (`/api/cron/vote-deadline`), not write-triggered. Closes
+   * every `open`, non-polling event whose `vote_end_at` has passed,
+   * regardless of who's still pending — the whole point being to bound
+   * how long a Jio can sit unresolved once its host set a deadline.
+   * Computes the Borda winner from whatever votes exist at that point
+   * (`null` if nobody voted at all, same as any other close). Returns how
+   * many were closed.
+   *
+   * This used to have a write-triggered sibling, `maybeAutoCloseEvent` —
+   * closing a Jio itself, no host action required, the instant every
+   * *current* participant (`resolveEventParticipants`: host, kaki
+   * members, invitees) had RSVP'd and voted. It's gone: a Jio anyone can
+   * still join via its own share link (or, kaki-linked, just by being a
+   * member) can never have a genuinely final population, so closing the
+   * moment everyone *so far* had answered could — and did — lock out
+   * someone who was about to join and vote a moment later. See
+   * `computeReadyToClose`'s doc comment in `src/lib/voting.ts`: the same
+   * condition is still computed, just surfaced as `EventDetail.readyToClose`
+   * (a prompt on the host's own page) rather than acted on automatically.
+   * Closing now only ever happens through the host's own explicit request
+   * (`closeEvent`) or this sweep.
    */
   closeEventsPastVoteDeadline(): Promise<number>;
   /**
@@ -1329,7 +1327,6 @@ export const REPO_METHODS = [
   "reopenEvent",
   "setHideVotes",
   "setVoteDeadlineOffset",
-  "maybeAutoCloseEvent",
   "closeEventsPastVoteDeadline",
   "listAndClaimVoteDeadlineReminders",
   "createRecurringSeries",

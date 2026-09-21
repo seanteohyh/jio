@@ -118,7 +118,7 @@ describe("listTriedPlaceIds / listTried", () => {
     await demoRepo.castBallot(event.id, DEMO_USER_ID, ["demo-place-01"]);
     await demoRepo.rsvp(event.id, DEMO_TEAMMATE_A, "yes");
     await demoRepo.castBallot(event.id, DEMO_TEAMMATE_A, ["demo-place-01"]);
-    const closed = await demoRepo.maybeAutoCloseEvent(event.id);
+    const closed = await demoRepo.closeEvent(event.id, DEMO_USER_ID, null);
     expect(closed?.winner_place_id).toBeTruthy();
 
     const ids = await demoRepo.listTriedPlaceIds(DEMO_USER_ID);
@@ -133,7 +133,7 @@ describe("listTriedPlaceIds / listTried", () => {
     await demoRepo.castBallot(event.id, DEMO_TEAMMATE_A, ["demo-place-01"]);
     await demoRepo.rsvp(event.id, DEMO_TEAMMATE_B, "yes");
     await demoRepo.castBallot(event.id, DEMO_TEAMMATE_B, ["demo-place-01"]);
-    await demoRepo.maybeAutoCloseEvent(event.id);
+    await demoRepo.closeEvent(event.id, DEMO_USER_ID, null);
 
     const ids = await demoRepo.listTriedPlaceIds(DEMO_TEAMMATE_A);
     expect(ids).toContain("demo-place-01");
@@ -145,7 +145,7 @@ describe("listTriedPlaceIds / listTried", () => {
     await demoRepo.castBallot(event.id, DEMO_USER_ID, ["demo-place-01"]);
     await demoRepo.rsvp(event.id, FRESH_USER_A, "maybe");
     await demoRepo.rsvp(event.id, FRESH_USER_B, "no");
-    await demoRepo.maybeAutoCloseEvent(event.id);
+    await demoRepo.closeEvent(event.id, DEMO_USER_ID, null);
 
     const idsForMaybe = await demoRepo.listTriedPlaceIds(FRESH_USER_A);
     const idsForDeclined = await demoRepo.listTriedPlaceIds(FRESH_USER_B);
@@ -167,7 +167,7 @@ describe("listTriedPlaceIds / listTried", () => {
     const event = await makeEvent([], FRESH_USER_A, TOMORROW);
     await demoRepo.rsvp(event.id, FRESH_USER_A, "yes");
     await demoRepo.castBallot(event.id, FRESH_USER_A, ["demo-place-01"]);
-    const closed = await demoRepo.maybeAutoCloseEvent(event.id);
+    const closed = await demoRepo.closeEvent(event.id, FRESH_USER_A, null);
     expect(closed?.winner_place_id).toBeTruthy();
 
     const ids = await demoRepo.listTriedPlaceIds(FRESH_USER_A);
@@ -187,7 +187,7 @@ describe("listTriedPlaceIds / listTried", () => {
     const event = await makeEvent();
     await demoRepo.rsvp(event.id, DEMO_USER_ID, "yes");
     await demoRepo.castBallot(event.id, DEMO_USER_ID, ["demo-place-01"]);
-    await demoRepo.maybeAutoCloseEvent(event.id);
+    await demoRepo.closeEvent(event.id, DEMO_USER_ID, null);
 
     const ids = await demoRepo.listTriedPlaceIds(DEMO_USER_ID);
     expect(ids.filter((id) => id === "demo-place-01")).toHaveLength(1);

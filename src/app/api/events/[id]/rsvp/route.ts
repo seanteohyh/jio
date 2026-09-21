@@ -4,7 +4,7 @@ import { getRepoAsync } from "@/lib/data/repo";
 import { badRequest, errorResponse, json, readJson } from "@/lib/api";
 import { featureGate } from "@/lib/config";
 import { redactHiddenVotes } from "@/lib/voting";
-import { notifyEventDecided } from "@/lib/eventNotifications";
+import { sendPushToUsers } from "@/lib/push";
 import { logAction } from "@/lib/actions";
 import type { RsvpResponse } from "@/types";
 
@@ -31,14 +31,28 @@ export async function POST(request: NextRequest, { params }: Params) {
     await repo.rsvp(id, user.id, response);
     await logAction(repo, user.id, "jio.rsvp", { eventId: id, response });
 
-    // CHANGES_20260821_combined.md Part 2 — an RSVP is one of the only two
-    // writes that can newly satisfy the auto-close condition, so it's
-    // checked right here rather than lazily. No-ops instantly unless this
-    // RSVP was genuinely the last piece.
-    const closedEvent = await repo.maybeAutoCloseEvent(id);
-    if (closedEvent) await notifyEventDecided(repo, closedEvent);
+    const event = await repo.getEvent(id);
 
-    const event = closedEvent ?? (await repo.getEvent(id));
+    // A decline can just as easily be the last missing answer as a vote —
+    // same "ready to close" prompt `notifyHostOfVote` sends from
+    // vote/route.ts, same per-event throttle, just triggered from the
+    // other write that can make `readyToClose` newly true. Never fires for
+    // the host's own RSVP on their own Jio; they're already looking at it.
+    if (event?.readyToClose && user.id !== event.host_id) {
+      try {
+        const claimed = await repo.claimVotePushWindow(id);
+        if (claimed) {
+          await sendPushToUsers(repo, [event.host_id], {
+            title: "Everyone's answered — ready to close?",
+            body: event.title,
+            url: `/events/${id}`,
+          });
+        }
+      } catch {
+        // Logged inside sendPushToUsers already; an RSVP must never fail on this.
+      }
+    }
+
     return json({ ok: true, event: event && redactHiddenVotes(event) });
   } catch (error) {
     return errorResponse(error);
