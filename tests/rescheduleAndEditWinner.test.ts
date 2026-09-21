@@ -145,6 +145,66 @@ describe("rescheduleEvent", () => {
   });
 });
 
+describe("renameEvent", () => {
+  it("lets the host rename an open Jio", async () => {
+    const event = await makeEvent();
+    const updated = await demoRepo.renameEvent(
+      event.id,
+      DEMO_USER_ID,
+      "Renamed lunch"
+    );
+    expect(updated.title).toBe("Renamed lunch");
+  });
+
+  it("still lets the host rename it after it's closed", async () => {
+    const event = await makeEvent();
+    await demoRepo.closeEvent(event.id, DEMO_USER_ID, "demo-place-01");
+    const updated = await demoRepo.renameEvent(
+      event.id,
+      DEMO_USER_ID,
+      "Renamed after close"
+    );
+    expect(updated.status).toBe("closed");
+    expect(updated.title).toBe("Renamed after close");
+  });
+
+  it("still lets the host rename it after it's cancelled", async () => {
+    const event = await makeEvent();
+    await demoRepo.cancelEvent(event.id, DEMO_USER_ID);
+    const updated = await demoRepo.renameEvent(
+      event.id,
+      DEMO_USER_ID,
+      "Renamed after cancel"
+    );
+    expect(updated.status).toBe("cancelled");
+    expect(updated.title).toBe("Renamed after cancel");
+  });
+
+  it("trims whitespace", async () => {
+    const event = await makeEvent();
+    const updated = await demoRepo.renameEvent(
+      event.id,
+      DEMO_USER_ID,
+      "  Padded  "
+    );
+    expect(updated.title).toBe("Padded");
+  });
+
+  it("refuses an empty title", async () => {
+    const event = await makeEvent();
+    await expect(
+      demoRepo.renameEvent(event.id, DEMO_USER_ID, "   ")
+    ).rejects.toThrow();
+  });
+
+  it("refuses anyone but the host", async () => {
+    const event = await makeEvent();
+    await expect(
+      demoRepo.renameEvent(event.id, DEMO_TEAMMATE_A, "Hijacked name")
+    ).rejects.toThrow();
+  });
+});
+
 describe("setVoteDeadlineOffset", () => {
   it("lets the host set a deadline and computes vote_end_at from it", async () => {
     const event = await makeEvent();

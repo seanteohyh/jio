@@ -2846,6 +2846,26 @@ export const supabaseRepo: Repo = {
     return detail;
   },
 
+  async renameEvent(eventId, hostId, title) {
+    const trimmed = title.trim();
+    if (!trimmed) {
+      throw new Error("A Jio needs a name");
+    }
+
+    const client = await db();
+    const { error, count } = await client
+      .from("lunch_events")
+      .update({ title: trimmed })
+      .eq("id", eventId)
+      .eq("host_id", hostId);
+    if (error) fail("Could not rename this Jio", error);
+    if (count === 0) throw new Error("Only the host can rename this Jio");
+
+    const detail = await supabaseRepo.getEvent(eventId);
+    if (!detail) throw new Error("That Jio vanished while renaming");
+    return detail;
+  },
+
   async editEventWinner(eventId, hostId, newPlaceId) {
     const client = await db();
 

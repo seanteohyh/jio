@@ -160,10 +160,12 @@ export async function GET(_request: NextRequest, { params }: Params) {
  * they live on the same page: "Change date & time" (any time except once
  * cancelled), "Where did you actually go?" (once closed only), toggling
  * a Jio's hidden-vote setting after the fact (`hide_votes` — see
- * `setHideVotes`'s own doc comment in src/lib/data/index.ts), and changing
+ * `setHideVotes`'s own doc comment in src/lib/data/index.ts), changing
  * the vote deadline (`vote_deadline_offset_minutes`, open-only — see
- * `setVoteDeadlineOffset`'s own doc comment). Any of the four may be sent
- * alone or together.
+ * `setVoteDeadlineOffset`'s own doc comment), and renaming the Jio itself
+ * (`title` — purely cosmetic, so it's available at any time including once
+ * closed or cancelled; see `renameEvent`'s own doc comment). Any of the
+ * five may be sent alone or together.
  */
 export async function PATCH(request: NextRequest, { params }: Params) {
   const blocked = featureGate("events");
@@ -178,17 +180,25 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       winner_place_id?: string;
       hide_votes?: boolean;
       vote_deadline_offset_minutes?: number | null;
+      title?: string;
     }>(request);
     if (!body) return badRequest("That didn't save — mind trying again?");
     if (
       !body.scheduled_at &&
       !body.winner_place_id &&
       typeof body.hide_votes !== "boolean" &&
-      body.vote_deadline_offset_minutes === undefined
+      body.vote_deadline_offset_minutes === undefined &&
+      !body.title
     ) {
       return badRequest("Nothing to update");
     }
 
+    if (body.title) {
+      if (!body.title.trim()) {
+        return badRequest("A Jio needs a name");
+      }
+      await repo.renameEvent(id, user.id, body.title.trim());
+    }
     if (body.scheduled_at) {
       const when = new Date(body.scheduled_at);
       if (Number.isNaN(when.getTime())) {
