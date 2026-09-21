@@ -31,7 +31,7 @@ import type { FavouriteEntry, Lobang, Place, WishlistEntry } from "@/types";
 
 const PAGE_SIZE = 15;
 
-type Tab = "all" | "want_to_try" | "tried" | "favourites" | "lobangs";
+type Tab = "all" | "not_tried" | "want_to_try" | "tried" | "favourites" | "lobangs";
 
 /** Both toggles, everywhere a place card shows an action — a place can be
  *  saved to either list, both, or neither, from wherever it happens to be
@@ -106,6 +106,7 @@ export default function PlacesPage() {
 
   const tabs = [
     ["all", "All"] as [Tab, string],
+    ["not_tried", "Not tried"] as [Tab, string],
     ...(features.wishlist
       ? [
           [
@@ -160,7 +161,7 @@ export default function PlacesPage() {
           value={filters}
           onChange={setFilters}
           showSort
-          showKakiFilter={tab === "all"}
+          showKakiFilter={tab === "all" || tab === "not_tried"}
           onTouchedChange={setFiltersTouched}
         />
       )}
@@ -186,7 +187,11 @@ export default function PlacesPage() {
         </div>
       )}
 
-      {tab === "want_to_try" ? (
+      {tab === "not_tried" ? (
+        <Suspense fallback={<SkeletonRows count={6} rowClassName="h-28 w-full" />}>
+          <BrowseList filters={filters} excludeTried />
+        </Suspense>
+      ) : tab === "want_to_try" ? (
         <WantToTryList
           entries={wantToTryEntries}
           loading={wishlistLoading}
@@ -457,9 +462,10 @@ function FavouritesList({
 /**
  * Never user-toggled, unlike Want to try/Favourites — a place lands here on
  * its own once you've logged a review for it, or actually attended a Jio
- * that was decided there (RSVP'd yes, or hosted). Distinct from Places'
- * "New to try" rail on the browse tab, which is the opposite idea — top
- * picks you've *never* been to.
+ * that was decided there (RSVP'd yes, or hosted). "Not tried" (the browse
+ * tab's `excludeTried` mode, via `BrowseList`) is its exact mirror — every
+ * active place minus this same set — and Places' "New to try" rail is a
+ * smaller, top-ranked-only preview of that same idea.
  */
 function TriedList({
   places,
@@ -624,7 +630,17 @@ function LobangsList({
  *
  * Kept as its own component so its paging state unmounts with the tab.
  */
-function BrowseList({ filters }: { filters: FilterState }) {
+function BrowseList({
+  filters,
+  excludeTried = false,
+}: {
+  filters: FilterState;
+  /** Places' own "Not tried" tab — same server-paginated list as "All,"
+   *  just with `?excludeTried=true` added to every request. Kept as a flag
+   *  on this one component rather than a second copy, so the two tabs can
+   *  never drift in how they filter/sort/paginate. */
+  excludeTried?: boolean;
+}) {
   const searchParams = useSearchParams();
   const excludeCuisine = searchParams.get("exclude") ?? undefined;
   const [page, setPage] = useState(1);
@@ -643,6 +659,7 @@ function BrowseList({ filters }: { filters: FilterState }) {
   if (filters.kakiFavouritesOnly) baseQuery.set("kakiFavouritesOnly", "true");
   if (filters.hasFoodpanda) baseQuery.set("hasFoodpanda", "true");
   if (filters.hasGrab) baseQuery.set("hasGrab", "true");
+  if (excludeTried) baseQuery.set("excludeTried", "true");
   const filterKey = baseQuery.toString();
 
   // A filter change starts the list over at page 1.
@@ -673,9 +690,11 @@ function BrowseList({ filters }: { filters: FilterState }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data]);
 
-  // The review queue: places the discovery cron found that nobody has vetted.
+  // The review queue: places the discovery cron found that nobody has
+  // vetted — an "All"-tab-only concern, not repeated on "Not tried" (every
+  // needs_review place is already, definitionally, not tried).
   const { data: pendingData } = useSWR<{ places: Place[] }>(
-    features.discovery ? "/api/places?status=needs_review" : null,
+    features.discovery && !excludeTried ? "/api/places?status=needs_review" : null,
     fetcher
   );
 
@@ -687,8 +706,10 @@ function BrowseList({ filters }: { filters: FilterState }) {
   // UX review log #6 — the personal-suggestion rails only make sense on a
   // plain browse: a search or an active cuisine filter is already a
   // specific intent, and stacking curated rails on top of that would read
-  // as clutter rather than help.
-  const isPlainBrowse = !filters.search && filters.cuisines.length === 0;
+  // as clutter rather than help. Also skipped on "Not tried" — its own
+  // "New to try" rail is exactly this tab's own idea already, just as a
+  // top-N preview rather than the full paginated list.
+  const isPlainBrowse = !excludeTried && !filters.search && filters.cuisines.length === 0;
 
   return (
     <div className="space-y-5">
@@ -724,7 +745,7 @@ function BrowseList({ filters }: { filters: FilterState }) {
         </Card>
       )}
 
-      {features.blogImport && (
+      {!excludeTried && features.blogImport && (
         <p className="text-stone text-xs">
           Read a good list somewhere?{" "}
           <Link href="/places/import" className="text-ember underline">
@@ -743,9 +764,17 @@ function BrowseList({ filters }: { filters: FilterState }) {
 
       {!isLoading && places.length === 0 && !error && (
         <EmptyState
-          title="Nothing here yet"
-          description="Either the filters are too tight, or nobody has added anywhere yet."
-          action={<LinkButton href="/places/new">Add the first place</LinkButton>}
+          title={excludeTried ? "You've tried everywhere that matches" : "Nothing here yet"}
+          description={
+            excludeTried
+              ? "Every active place within these filters is already something you've logged a visit to, or attended a Jio decided at. Loosen a filter for more."
+              : "Either the filters are too tight, or nobody has added anywhere yet."
+          }
+          action={
+            excludeTried ? undefined : (
+              <LinkButton href="/places/new">Add the first place</LinkButton>
+            )
+          }
         />
       )}
 
