@@ -18,7 +18,7 @@ import {
   uuid,
 } from "@/lib/utils";
 import { pickCommitteeSuggestions } from "@/lib/suggestCommittee";
-import { computeWinner, isVoteStale } from "@/lib/voting";
+import { computeReadyToClose, computeWinner } from "@/lib/voting";
 import { computeUserMetrics } from "@/lib/metrics";
 import { buildExpenseMonthSummary, previousMonthKey } from "@/lib/expenses";
 import { rankPlaces } from "@/lib/recommend";
@@ -1474,6 +1474,15 @@ export const demoRepo: Repo = {
       candidateDates,
       dateVotes,
       tally: eventTally(event.id),
+      readyToClose:
+        event.status === "open" && event.date_phase !== "polling"
+          ? computeReadyToClose(
+              resolveEventParticipants(event),
+              rsvps,
+              s.votes.filter((v) => v.event_id === event.id),
+              event.options_changed_at
+            )
+          : false,
     };
   },
 
@@ -2383,60 +2392,6 @@ export const demoRepo: Repo = {
     const detail = await demoRepo.getEvent(eventId);
     if (!detail) throw new Error("That Jio vanished while reopening it");
     return detail;
-  },
-
-  async maybeAutoCloseEvent(eventId) {
-    const s = store();
-    const index = s.events.findIndex((e) => e.id === eventId);
-    if (index === -1) return null;
-    const event = s.events[index];
-
-    if (event.status !== "open") return null;
-    if (event.date_phase === "polling") return null;
-
-    const participants = resolveEventParticipants(event);
-    const rsvpByUser = new Map(
-      s.rsvps
-        .filter((r) => r.event_id === eventId)
-        .map((r) => [r.user_id, r.response])
-    );
-
-    // Every participant must have confirmed or declined — "maybe", or no
-    // response at all, both leave this Jio open, same as a still-silent
-    // invitee would.
-    for (const userId of participants) {
-      const response = rsvpByUser.get(userId);
-      if (response !== "yes" && response !== "no") return null;
-    }
-
-    // Everyone who confirmed going must have actually voted — and, per bug
-    // report item 4, with a ballot cast no earlier than the last place
-    // added. A vote cast before a new option showed up doesn't get to
-    // silently carry an auto-close through; recasting (even unchanged)
-    // clears it. The vote-deadline sweep, unlike this path, closes with
-    // whatever ballots exist regardless of staleness — see `isVoteStale`.
-    const eventVotes = s.votes.filter((v) => v.event_id === eventId);
-    for (const userId of participants) {
-      if (rsvpByUser.get(userId) !== "yes") continue;
-      const ownVote = eventVotes.find((v) => v.user_id === userId);
-      if (!ownVote || isVoteStale(ownVote.created_at, event.options_changed_at)) {
-        return null;
-      }
-    }
-
-    const optionIds = s.options
-      .filter((o) => o.event_id === eventId)
-      .map((o) => o.place_id);
-    const winner = computeWinner(eventVotes, optionIds).winnerId;
-
-    s.events[index] = {
-      ...event,
-      status: "closed",
-      winner_place_id: winner,
-      closed_at: new Date().toISOString(),
-    };
-
-    return demoRepo.getEvent(eventId);
   },
 
   async closeEventsPastVoteDeadline() {

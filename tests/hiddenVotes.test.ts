@@ -40,6 +40,7 @@ function event(overrides: Partial<EventDetail> = {}): EventDetail {
     tally: {},
     candidateDates: [],
     dateVotes: [],
+    readyToClose: false,
     ...overrides,
   };
 }

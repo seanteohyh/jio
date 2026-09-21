@@ -5,7 +5,6 @@ import { badRequest, errorResponse, json, readJson } from "@/lib/api";
 import { featureGate } from "@/lib/config";
 import { redactHiddenVotes } from "@/lib/voting";
 import { sendPushToUsers } from "@/lib/push";
-import { notifyEventDecided } from "@/lib/eventNotifications";
 import { logAction } from "@/lib/actions";
 import type { EventDetail } from "@/types";
 import type { Repo } from "@/lib/data";
@@ -15,7 +14,11 @@ type Params = { params: Promise<{ id: string }> };
 /**
  * Throttled to at most one push per event per window (038_vote_push_throttle.sql)
  * — the host hears "people are voting", not one ping per voter. Never fires
- * for the host's own vote on their own Jio.
+ * for the host's own vote on their own Jio. Once this vote makes the Jio
+ * `readyToClose` (see `computeReadyToClose` in `src/lib/voting.ts`), the
+ * copy switches from a plain progress ping to an actual prompt — a Jio no
+ * longer closes itself the instant this becomes true, so the host needs
+ * telling, not just counting.
  */
 async function notifyHostOfVote(
   repo: Repo,
@@ -28,7 +31,9 @@ async function notifyHostOfVote(
     if (!claimed) return;
     const voterCount = new Set(event.votes.map((v) => v.user_id)).size;
     await sendPushToUsers(repo, [event.host_id], {
-      title: `${voterCount} ${voterCount === 1 ? "person has" : "people have"} voted`,
+      title: event.readyToClose
+        ? "Everyone's answered — ready to close?"
+        : `${voterCount} ${voterCount === 1 ? "person has" : "people have"} voted`,
       body: event.title,
       url: `/events/${event.id}`,
     });
@@ -68,13 +73,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     const event = await repo.getEvent(id);
     if (event) await notifyHostOfVote(repo, event, user.id);
 
-    // CHANGES_20260821_combined.md Part 2 — a vote is the other of the two
-    // writes that can newly satisfy the auto-close condition.
-    const closedEvent = await repo.maybeAutoCloseEvent(id);
-    if (closedEvent) await notifyEventDecided(repo, closedEvent);
-
-    const finalEvent = closedEvent ?? event;
-    return json({ ok: true, event: finalEvent && redactHiddenVotes(finalEvent) });
+    return json({ ok: true, event: event && redactHiddenVotes(event) });
   } catch (error) {
     return errorResponse(error);
   }

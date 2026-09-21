@@ -12,7 +12,7 @@ import {
   sortPlacesForList,
   uuid,
 } from "@/lib/utils";
-import { computeWinner, isVoteStale } from "@/lib/voting";
+import { computeReadyToClose, computeWinner } from "@/lib/voting";
 import { computeUserMetrics } from "@/lib/metrics";
 import { rankPlaces } from "@/lib/recommend";
 import { pickCommitteeSuggestions } from "@/lib/suggestCommittee";
@@ -1696,6 +1696,24 @@ export const supabaseRepo: Repo = {
       }
     }
 
+    // Skipped whenever it can't be true anyway (closed/cancelled/polling) —
+    // one less round trip (kaki membership + invitees) for every non-open
+    // Jio's own page load, which is most of them.
+    let readyToClose = false;
+    if (event.status === "open" && event.date_phase !== "polling") {
+      const participants = await resolveEventParticipants(client, {
+        id: event.id,
+        host_id: event.host_id,
+        kaki_id: event.kaki_id,
+      });
+      readyToClose = computeReadyToClose(
+        participants,
+        rsvpRows,
+        votes,
+        event.options_changed_at
+      );
+    }
+
     const detail: EventDetail = {
       ...event,
       host_name: names.get(event.host_id),
@@ -1716,6 +1734,7 @@ export const supabaseRepo: Repo = {
       candidateDates,
       dateVotes,
       tally,
+      readyToClose,
     };
 
     return detail;
@@ -2991,152 +3010,6 @@ export const supabaseRepo: Repo = {
     const detail = await supabaseRepo.getEvent(eventId);
     if (!detail) throw new Error("That Jio vanished while reopening it");
     return detail;
-  },
-
-  /**
-   * See the interface doc comment. Reads go through the normal client —
-   * `event_rsvps`/`event_votes`/`lunch_events` are all broadly readable
-   * (007_rls.sql), so there's no permission gap on the check itself. The
-   * write is the exception: whoever's RSVP or vote just made this true
-   * often isn't the host, and `lunch_events_update` only allows
-   * `host_id = auth.uid()` — the same "not necessarily the host's own
-   * request" problem `reopen_event`/`cancel_event` solved with a SQL
-   * function. This reuses the service-role client instead, since closing
-   * needs `computeWinner` (Borda counting, TypeScript) rather than
-   * reimplementing it in plpgsql — the README's documented escape hatch
-   * for exactly this "act outside one user's RLS scope" situation, same
-   * as the cron routes and `listReviewLikesSince` already do.
-   */
-  async maybeAutoCloseEvent(eventId) {
-    const client = await db();
-
-    const { data: eventRow } = await client
-      .from("lunch_events")
-      .select("host_id, kaki_id, status, date_phase, options_changed_at")
-      .eq("id", eventId)
-      .maybeSingle();
-    if (!eventRow) return null;
-    const event = eventRow as {
-      host_id: string;
-      kaki_id: string | null;
-      status: string;
-      date_phase: string | null;
-      options_changed_at: string | null;
-    };
-
-    if (event.status !== "open") return null;
-    if (event.date_phase === "polling") return null;
-
-    const [participants, { data: rsvpRows }, { data: voteRows }, { data: optionRows }] =
-      await Promise.all([
-        resolveEventParticipants(client, {
-          id: eventId,
-          host_id: event.host_id,
-          kaki_id: event.kaki_id,
-        }),
-        client.from("event_rsvps").select("user_id, response").eq("event_id", eventId),
-        client.from("event_votes").select("*").eq("event_id", eventId),
-        client.from("event_options").select("place_id").eq("event_id", eventId),
-      ]);
-
-    const rsvpByUser = new Map(
-      ((rsvpRows ?? []) as { user_id: string; response: string }[]).map(
-        (r) => [r.user_id, r.response]
-      )
-    );
-
-    for (const userId of participants) {
-      const response = rsvpByUser.get(userId);
-      if (response !== "yes" && response !== "no") return null;
-    }
-
-    // Everyone who confirmed going must have actually voted — and, per bug
-    // report item 4, with a ballot cast no earlier than the last place
-    // added. A vote cast before a new option showed up doesn't get to
-    // silently carry an auto-close through; recasting (even unchanged)
-    // clears it. The vote-deadline sweep, unlike this path, closes with
-    // whatever ballots exist regardless of staleness — see `isVoteStale`.
-    const votes = (voteRows ?? []) as EventVote[];
-    for (const userId of participants) {
-      if (rsvpByUser.get(userId) !== "yes") continue;
-      const ownVote = votes.find((v) => v.user_id === userId);
-      if (!ownVote || isVoteStale(ownVote.created_at, event.options_changed_at)) {
-        return null;
-      }
-    }
-
-    const optionIds = ((optionRows ?? []) as { place_id: string }[]).map(
-      (o) => o.place_id
-    );
-    const winner = computeWinner(votes, optionIds).winnerId;
-
-    // Re-verify immediately before writing, against a fresh read rather
-    // than reusing the one from above — this is what actually caused a
-    // real "closed before two genuinely-invited people ever got a chance
-    // to respond" report: an "invite more people" request landing on a
-    // different connection, between the read above and the write below,
-    // wasn't visible to the check that had already run. This doesn't
-    // eliminate that race outright (that would need the whole gate
-    // re-evaluated inside the same statement as the write), but shrinks
-    // the window from "however long this whole function takes" down to
-    // the gap between this read and the write immediately after it.
-    const [
-      freshParticipants,
-      { data: freshRsvpRows },
-      { data: freshEventRow },
-      { data: freshVoteRows },
-    ] = await Promise.all([
-      resolveEventParticipants(client, {
-        id: eventId,
-        host_id: event.host_id,
-        kaki_id: event.kaki_id,
-      }),
-      client.from("event_rsvps").select("user_id, response").eq("event_id", eventId),
-      client
-        .from("lunch_events")
-        .select("options_changed_at")
-        .eq("id", eventId)
-        .maybeSingle(),
-      client.from("event_votes").select("*").eq("event_id", eventId),
-    ]);
-    const freshRsvpByUser = new Map(
-      ((freshRsvpRows ?? []) as { user_id: string; response: string }[]).map(
-        (r) => [r.user_id, r.response]
-      )
-    );
-    for (const userId of freshParticipants) {
-      const response = freshRsvpByUser.get(userId);
-      if (response !== "yes" && response !== "no") return null;
-    }
-    const freshOptionsChangedAt =
-      (freshEventRow as { options_changed_at: string | null } | null)
-        ?.options_changed_at ?? null;
-    const freshVotes = (freshVoteRows ?? []) as EventVote[];
-    for (const userId of freshParticipants) {
-      if (freshRsvpByUser.get(userId) !== "yes") continue;
-      const ownVote = freshVotes.find((v) => v.user_id === userId);
-      if (!ownVote || isVoteStale(ownVote.created_at, freshOptionsChangedAt)) {
-        return null;
-      }
-    }
-
-    const { createServiceRoleClient } = await import(
-      "@/lib/supabase/serviceClient"
-    );
-    const admin = createServiceRoleClient();
-    const { error } = await admin
-      .from("lunch_events")
-      .update({
-        status: "closed",
-        winner_place_id: winner,
-        closed_at: new Date().toISOString(),
-      })
-      .eq("id", eventId)
-      .eq("status", "open"); // Guards a race with a manual close/cancel in flight.
-
-    if (error) fail("Could not auto-close that Jio", error);
-
-    return supabaseRepo.getEvent(eventId);
   },
 
   async closeEventsPastVoteDeadline() {

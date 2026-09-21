@@ -127,7 +127,7 @@ describe("getAdminAnalytics funnelSteps", () => {
     await sleep(5);
     await demoRepo.rsvp(event.id, DEMO_USER_ID, "yes");
     await demoRepo.castBallot(event.id, DEMO_USER_ID, ["demo-place-01"]);
-    const closed = await demoRepo.maybeAutoCloseEvent(event.id);
+    const closed = await demoRepo.closeEvent(event.id, DEMO_USER_ID, null);
     expect(closed?.status).toBe("closed");
 
     const after = await stepCounts();
@@ -140,7 +140,7 @@ describe("getAdminAnalytics funnelSteps", () => {
     const event = await makeEvent([DEMO_TEAMMATE_A]);
     await demoRepo.rsvp(event.id, DEMO_USER_ID, "no");
     await demoRepo.rsvp(event.id, DEMO_TEAMMATE_A, "no");
-    const closed = await demoRepo.maybeAutoCloseEvent(event.id);
+    const closed = await demoRepo.closeEvent(event.id, DEMO_USER_ID, null);
     expect(closed?.status).toBe("closed");
     expect(closed?.winner_place_id).toBeNull();
 
@@ -163,7 +163,7 @@ describe("getAdminAnalytics funnelSteps", () => {
     await demoRepo.rsvp(event.id, DEMO_USER_ID, "yes");
     await demoRepo.castBallot(event.id, DEMO_USER_ID, ["demo-place-01"]);
     await demoRepo.rsvp(event.id, DEMO_TEAMMATE_A, "no");
-    await demoRepo.maybeAutoCloseEvent(event.id);
+    await demoRepo.closeEvent(event.id, DEMO_USER_ID, null);
 
     const after = await demoRepo.getAdminAnalytics(90);
     // Demo seed data gives every seeded profile the same signup date, so

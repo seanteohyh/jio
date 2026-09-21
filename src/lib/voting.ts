@@ -162,17 +162,18 @@ export function redactHiddenVotes(event: EventDetail): EventDetail {
 }
 
 /**
- * Whether a cast ballot should still count toward full-consensus auto-close
- * once a new place option has been added since it was cast — bug report
- * item 4: adding a place mid-vote shouldn't let stale ballots silently
- * carry an auto-close through, so a fresh place deserves a fresh look at
- * everyone's ranking before the group can be said to agree on anything.
+ * Whether a cast ballot should still count toward "ready to close" once a
+ * new place option has been added since it was cast — bug report item 4:
+ * adding a place mid-vote shouldn't let a stale ballot silently count as
+ * "voted" for a place they never actually saw, so a fresh place deserves a
+ * fresh look at everyone's ranking before the group can be said to agree
+ * on anything.
  *
- * This is deliberately narrow: it only ever gates the full-consensus path
- * (`maybeAutoCloseEvent`). The vote-deadline sweep (`closeEventsPastVoteDeadline`)
- * ignores staleness entirely and closes with whatever ballots exist — "give
- * the opportunity to revote, but the deadline still wins" per the bug
- * report, not "block closing indefinitely until everyone revotes."
+ * This is deliberately narrow: it only ever gates `computeReadyToClose`,
+ * below. The vote-deadline sweep (`closeEventsPastVoteDeadline`) ignores
+ * staleness entirely and closes with whatever ballots exist — "give the
+ * opportunity to revote, but the deadline still wins" per the bug report,
+ * not "block closing indefinitely until everyone revotes."
  *
  * `optionsChangedAt` of `null`/`undefined` means nothing's been added since
  * the Jio's own options were first set, so nothing can ever be stale.
@@ -187,4 +188,48 @@ export function isVoteStale(
   if (!optionsChangedAt) return false;
   if (!voteCastAt) return true;
   return new Date(voteCastAt).getTime() < new Date(optionsChangedAt).getTime();
+}
+
+/**
+ * "Every current participant has answered, and everyone who confirmed going
+ * has actually voted" — the exact condition this Jio used to auto-close on
+ * the instant it became true. A real bug report: a Jio anyone can still
+ * join via its own share link (or, for a Kaki-linked Jio, just by being a
+ * Kaki member) can never have a genuinely final population — someone opens
+ * the link, joins, votes, and if everyone *already* joined had answered,
+ * the Jio closed right then, locking out whoever was about to open that
+ * same link a moment later. There's no way to distinguish "everyone who
+ * will ever join has already voted" from "everyone who's joined so far has
+ * voted" from inside this check alone, so closing on it automatically was
+ * fundamentally unsafe for any Jio someone else could still join.
+ *
+ * This condition itself is still useful — just not as an auto-close
+ * trigger any more. It's surfaced as `EventDetail.readyToClose`, a plain
+ * signal the host's own page turns into a prompt ("Everyone's answered —
+ * ready to close?"), with the host tapping "Close with the vote" doing the
+ * actual close explicitly. See CHANGES log: "Jio keeps closing whilst new
+ * members trying to add their votes in."
+ */
+export function computeReadyToClose(
+  participants: string[],
+  rsvps: { user_id: string; response: string }[],
+  votes: EventVote[],
+  optionsChangedAt: string | null | undefined
+): boolean {
+  const rsvpByUser = new Map(rsvps.map((r) => [r.user_id, r.response]));
+
+  for (const userId of participants) {
+    const response = rsvpByUser.get(userId);
+    if (response !== "yes" && response !== "no") return false;
+  }
+
+  for (const userId of participants) {
+    if (rsvpByUser.get(userId) !== "yes") continue;
+    const ownVote = votes.find((v) => v.user_id === userId);
+    if (!ownVote || isVoteStale(ownVote.created_at, optionsChangedAt)) {
+      return false;
+    }
+  }
+
+  return true;
 }

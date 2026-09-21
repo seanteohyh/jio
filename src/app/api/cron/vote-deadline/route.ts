@@ -8,10 +8,14 @@ import { sendPushToUsers } from "@/lib/push";
 /**
  * Vote-deadline sweep — the enforcement half of the vote-deadline feature
  * (088_vote_deadline.sql). A host-set `vote_end_at` is meaningless unless
- * something actually checks it against a clock with nobody around to
- * trigger it by writing a vote/RSVP — `maybeAutoCloseEvent` only runs
- * reactively on those two writes, same limitation `event-reminders`
- * documents for its own "starting soon" nudge. Deliberately NOT in
+ * something actually checks it against a clock — full consensus is only
+ * ever surfaced reactively, as a prompt on the host's own page
+ * (`EventDetail.readyToClose`), not something that closes a Jio on its
+ * own any more (see `computeReadyToClose`'s doc comment in
+ * `src/lib/voting.ts`), so this sweep is the only thing that actually
+ * closes a Jio nobody's around to close by hand. Same limitation
+ * `event-reminders` documents for its own "starting soon" nudge — nothing
+ * here runs unless something hits this route. Deliberately NOT in
  * `vercel.json`: Hobby's cron runs at most once a day, but a deadline
  * needs checking every few minutes to actually fire close to on time.
  * Point an external scheduler (e.g. cron-job.org) at this route every ~5
