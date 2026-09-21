@@ -2256,6 +2256,27 @@ export const demoRepo: Repo = {
     return detail;
   },
 
+  async renameEvent(eventId, hostId, title) {
+    const s = store();
+    const index = s.events.findIndex((e) => e.id === eventId);
+    if (index === -1) throw new Error("Can't find that Jio — the link might be old.");
+    const event = s.events[index];
+
+    if (event.host_id !== hostId) {
+      throw new Error("Only the host can rename this Jio");
+    }
+    const trimmed = title.trim();
+    if (!trimmed) {
+      throw new Error("A Jio needs a name");
+    }
+
+    s.events[index] = { ...event, title: trimmed };
+
+    const detail = await demoRepo.getEvent(eventId);
+    if (!detail) throw new Error("That Jio vanished while renaming");
+    return detail;
+  },
+
   async editEventWinner(eventId, hostId, newPlaceId) {
     const s = store();
     const index = s.events.findIndex((e) => e.id === eventId);

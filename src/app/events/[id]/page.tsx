@@ -138,6 +138,8 @@ export default function EventDetailPage({
   // (reschedule) or only once closed (winner place).
   const [reschedulingOpen, setReschedulingOpen] = useState(false);
   const [rescheduleValue, setRescheduleValue] = useState("");
+  const [renamingOpen, setRenamingOpen] = useState(false);
+  const [renameValue, setRenameValue] = useState("");
   const [editingWinner, setEditingWinner] = useState(false);
   const [winnerQuery, setWinnerQuery] = useState("");
   const [editingReminder, setEditingReminder] = useState(false);
@@ -579,6 +581,17 @@ export default function EventDetailPage({
       });
       setReschedulingOpen(false);
       setRescheduleValue("");
+    });
+
+  // Purely cosmetic, host-only correction — available at any time,
+  // including once closed or cancelled (see renameEvent's own doc comment).
+  const rename = () =>
+    run(async () => {
+      const trimmed = renameValue.trim();
+      if (!trimmed) return;
+      await mutateJson(`/api/events/${id}`, "PATCH", { title: trimmed });
+      setRenamingOpen(false);
+      setRenameValue("");
     });
 
   // CHANGES_20260819c.md §2 — "where did you actually go?", host-only,
@@ -1848,35 +1861,36 @@ export default function EventDetailPage({
       {/*
         --- Edit this Jio --- (host only)
         CHANGES_20260819c.md §1/§2 — corrections a host can make after the
-        fact: the date/time (any time short of cancelled — even after
+        fact: the name (any time at all, even once cancelled — purely
+        cosmetic), the date/time (any time short of cancelled — even after
         closed, since a lunch's actual time can slip after it's decided),
         and once closed, which place it actually ended up at. Deliberately
         separate from "Close it" below: these are corrections to a Jio
         that's already settled one way or another, not part of settling it.
       */}
-      {viewer.isHost && !isCancelled && (
+      {viewer.isHost && (
         <Card className="space-y-3">
           <SectionHeading>Edit this Jio</SectionHeading>
 
-          {reschedulingOpen ? (
+          {renamingOpen ? (
             <div className="flex flex-wrap items-center gap-2">
               <input
-                type="datetime-local"
-                value={rescheduleValue}
-                onChange={(e) => setRescheduleValue(e.target.value)}
+                value={renameValue}
+                onChange={(e) => setRenameValue(e.target.value)}
                 className={`${inputClass} min-w-0`}
+                placeholder="Friday team lunch"
               />
               <Button
                 size="sm"
-                onClick={reschedule}
-                disabled={busy || !rescheduleValue}
+                onClick={rename}
+                disabled={busy || !renameValue.trim()}
               >
                 Save
               </Button>
               <Button
                 size="sm"
                 variant="ghost"
-                onClick={() => setReschedulingOpen(false)}
+                onClick={() => setRenamingOpen(false)}
               >
                 Cancel
               </Button>
@@ -1886,15 +1900,54 @@ export default function EventDetailPage({
               size="sm"
               variant="secondary"
               onClick={() => {
-                setRescheduleValue(
-                  `${sgtDateKey(event.scheduled_at)}T${sgtTimeOfDay(event.scheduled_at)}`
-                );
-                setReschedulingOpen(true);
+                setRenameValue(event.title);
+                setRenamingOpen(true);
               }}
             >
-              Change date &amp; time
+              Change name
             </Button>
           )}
+
+          {!isCancelled &&
+            (reschedulingOpen ? (
+              <div className="border-line flex flex-wrap items-center gap-2 border-t pt-3">
+                <input
+                  type="datetime-local"
+                  value={rescheduleValue}
+                  onChange={(e) => setRescheduleValue(e.target.value)}
+                  className={`${inputClass} min-w-0`}
+                />
+                <Button
+                  size="sm"
+                  onClick={reschedule}
+                  disabled={busy || !rescheduleValue}
+                >
+                  Save
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setReschedulingOpen(false)}
+                >
+                  Cancel
+                </Button>
+              </div>
+            ) : (
+              <div className="border-line border-t pt-3">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => {
+                    setRescheduleValue(
+                      `${sgtDateKey(event.scheduled_at)}T${sgtTimeOfDay(event.scheduled_at)}`
+                    );
+                    setReschedulingOpen(true);
+                  }}
+                >
+                  Change date &amp; time
+                </Button>
+              </div>
+            ))}
 
           {isOpen && (
             <div className="border-line space-y-2 border-t pt-3">
@@ -1988,7 +2041,7 @@ export default function EventDetailPage({
             </div>
           )}
 
-          {!isOpen && (
+          {!isOpen && !isCancelled && (
             <div className="border-line space-y-2 border-t pt-3">
               <p className="text-stone text-xs">Where did you actually go?</p>
               {editingWinner ? (

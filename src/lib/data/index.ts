@@ -588,6 +588,20 @@ export interface Repo {
     newScheduledAt: string
   ): Promise<EventDetail>;
   /**
+   * Host-only correction to a Jio's own name — same "available at any
+   * time, including once closed or cancelled" latitude as `rescheduleEvent`
+   * gets for the date, since a typo'd or since-changed title is exactly
+   * the kind of thing worth fixing on a Jio that's already settled, not
+   * just an open one. Purely cosmetic: nothing about invites, votes or the
+   * decided place depends on the title, so there's no state-machine
+   * restriction to gate this behind.
+   */
+  renameEvent(
+    eventId: string,
+    hostId: string,
+    title: string
+  ): Promise<EventDetail>;
+  /**
    * CHANGES_20260819c.md §2 — "where did you actually go?", host-only, only
    * once a Jio is `closed`. Deliberately small scope: corrects the Jio's
    * own record (`PastJios`, the lobang-send default, calendar export) but
@@ -1310,6 +1324,7 @@ export const REPO_METHODS = [
   "unclaimReminders",
   "cancelEvent",
   "rescheduleEvent",
+  "renameEvent",
   "editEventWinner",
   "reopenEvent",
   "setHideVotes",
