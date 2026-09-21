@@ -305,10 +305,21 @@ export default function EventDetailPage({
   // Group-scoped whenever this Jio itself came from a Kaki.
   const groupScoped = features.kakis && !!data?.event.kaki_id;
   const suggestFilterQS = suggestFilterParams(suggestFilters);
+  // This Jio's own office, not whoever's currently looking at it — without
+  // this, /api/suggest fell back to the *viewer's* own default_office_id
+  // (or DEFAULT_OFFICE), so the host and an invitee with a different office
+  // preference saw two different candidate pools for the exact same Jio,
+  // and a viewer whose own preference didn't match wherever this Jio
+  // actually is could end up with a walk-time-filtered pool narrowed down
+  // to almost nothing — indistinguishable from "stuck" no matter how many
+  // times the "Try:" refresh is tapped, since it was drawing from the right
+  // office's places filtered by the wrong one's distances. An explicit
+  // `?officeId=` here still loses to an active area override server-side,
+  // same as everywhere else that resolves one.
   const suggestQuery = data?.viewer.canAddOptions
     ? groupScoped
-      ? `/api/suggest?mode=group&kakiId=${data?.event.kaki_id}&limit=8${suggestFilterQS}`
-      : `/api/suggest?limit=8${suggestFilterQS}`
+      ? `/api/suggest?mode=group&kakiId=${data?.event.kaki_id}&officeId=${data.event.office_id}&limit=8${suggestFilterQS}`
+      : `/api/suggest?officeId=${data.event.office_id}&limit=8${suggestFilterQS}`
     : null;
   const { data: suggestData, mutate: rerollSuggest } = useSWR<{
     suggestions: ScoredPlace[];
