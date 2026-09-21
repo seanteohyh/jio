@@ -717,6 +717,16 @@ export default function EventDetailPage({
   const surprisePlaces = (suggestData?.surprises ?? [])
     .map((s) => s.place)
     .filter((p) => !event.options.some((o) => o.place_id === p.id));
+  // Bug report: "Try:" looked stuck on the same couple of places no matter
+  // how many times it was re-rolled — it wasn't broken, the underlying pool
+  // really was that small (a long-running standing rotation, or a group's
+  // accumulated exclusions, can genuinely leave almost nothing "not already
+  // an option" within the active filters). Once the fetch has actually
+  // resolved, say so plainly instead of letting a tiny, unchanging set of
+  // chips read as a bug.
+  const suggestPoolIsSmall =
+    Boolean(suggestData) &&
+    new Set([...suggestedCandidates, ...surprisePlaces].map((p) => p.id)).size <= 2;
 
   // CHANGES_20260819c.md §2 — not restricted to `event.options`, since the
   // whole point is correcting to wherever the group actually ended up.
@@ -1667,6 +1677,14 @@ export default function EventDetailPage({
               onPickSurprise={addOption}
               onReroll={() => rerollSuggest()}
             />
+
+            {suggestPoolIsSmall && (
+              <p className="text-stone text-xs">
+                {event.recurring_series_id
+                  ? "Almost everywhere nearby that fits your filters is already on this Jio's standing list — loosen a filter above for more, or edit the recurring series for real variety."
+                  : "Almost everywhere nearby that fits your filters is already an option here — try loosening a filter above."}
+              </p>
+            )}
 
             {suggestedCandidates.length > 0 && (
               <div>
