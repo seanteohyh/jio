@@ -64,6 +64,11 @@ export async function GET(request: NextRequest) {
     // place with no delivery link at all just fails these, no in-between.
     const hasFoodpanda = params.get("hasFoodpanda") === "true";
     const hasGrab = params.get("hasGrab") === "true";
+    // Places' own "Not tried" tab — the mirror of "Tried," everywhere the
+    // caller hasn't logged a visit to or attended a decided Jio at. Same
+    // broader-than-visits bar `listTriedPlaceIds` already applies elsewhere
+    // (a Jio you attended counts even with no review ever logged for it).
+    const excludeTried = params.get("excludeTried") === "true";
 
     // §12f / CHANGES_20260807c.md §2 — anything Kaki-rating-related needs the
     // requesting user's Kaki membership, which the repo's listPlaces has no
@@ -106,11 +111,27 @@ export async function GET(request: NextRequest) {
       kaki_rating: kakiRatingByPlace[place.id] ?? null,
     });
 
-    // A real sort or a real filter over kaki_rating both need the full
-    // matching set scored before slicing — neither can use the repo's own
-    // pagination.
-    if (sortBy === "kaki_rating" || kakiFavouritesOnly || hasFoodpanda || hasGrab) {
-      const { places: allPlaces } = await repo.listPlaces(baseFilters);
+    // A real sort or a real filter over kaki_rating (or now, excludeTried)
+    // both need the full matching set scored before slicing — neither can
+    // use the repo's own pagination.
+    if (
+      sortBy === "kaki_rating" ||
+      kakiFavouritesOnly ||
+      hasFoodpanda ||
+      hasGrab ||
+      excludeTried
+    ) {
+      // Same resolution the plain path below uses — a pre-existing gap this
+      // branch never had (hasFoodpanda/hasGrab/kakiFavouritesOnly silently
+      // ignored `sortBy=rating`/`newly_rated` before, falling through to
+      // whichever order `listPlaces` defaults to), worth fixing now that
+      // "Not tried" makes this branch a much more everyday path — its own
+      // sort control is the exact same one every other tab already uses.
+      const { places: allPlaces } = await repo.listPlaces({
+        ...baseFilters,
+        sortBy:
+          sortBy === "rating" || sortBy === "newly_rated" ? sortBy : "walk",
+      });
       let scored = allPlaces.map(attachKakiRating);
 
       if (kakiFavouritesOnly) {
@@ -118,6 +139,10 @@ export async function GET(request: NextRequest) {
       }
       if (hasFoodpanda) scored = scored.filter((p) => !!p.foodpanda_url);
       if (hasGrab) scored = scored.filter((p) => !!p.grab_url);
+      if (excludeTried) {
+        const triedIds = new Set(await repo.listTriedPlaceIds(user.id));
+        scored = scored.filter((p) => !triedIds.has(p.id));
+      }
       if (sortBy === "kaki_rating") {
         scored = [...scored].sort((a, b) => {
           const aR = typeof a.kaki_rating === "number" ? a.kaki_rating : -Infinity;
