@@ -329,6 +329,19 @@ export function groupRecommend(
       // group" reasoning `visits` itself already gets.
       additionalExcludedPlaceIds:
         member.triedPlaceIds ?? options.additionalExcludedPlaceIds,
+      // Unlimited on purpose: `options.limit` caps the *group's* final
+      // result, not any one member's own ranking. Truncating a member's
+      // list here before the intersection below meant a place could be
+      // dropped from the group's eligible set just for ranking outside
+      // one member's own top-N (walk distance, budget fit, rating —
+      // nothing to do with an actual exclusion), even though it was
+      // perfectly eligible for every member. A real report: a group's
+      // "Suggested"/"Try:" pool stuck at a couple of places no matter how
+      // many were loosened, because the true ~20-place eligible pool was
+      // being intersected down to whatever a `limit: 8` request left in
+      // everyone's own truncated top-8 — nowhere near the same thing as
+      // "excluded by a member."
+      limit: undefined,
     })
   );
 

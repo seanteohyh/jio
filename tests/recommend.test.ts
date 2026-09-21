@@ -409,6 +409,53 @@ describe("groupRecommend", () => {
     expect(ranked.map((s) => s.place.id)).toEqual(["both-ok"]);
   });
 
+  it("doesn't let the caller's own `limit` shrink the eligibility intersection", () => {
+    // A real production report: a group's "Suggested"/"Try:" pool stuck at
+    // a couple of places no matter how much a filter was loosened. Root
+    // cause — each member's own ranking was truncated to the caller's
+    // `limit` *before* the "must survive every member" intersection ran,
+    // so a place merely ranked outside one member's own top-N (nothing to
+    // do with an actual exclusion) silently dropped out of the group's
+    // eligible set entirely, even when it would otherwise have scored well
+    // enough for the group as a whole to make the final cut.
+    const decoys = Array.from({ length: 3 }, (_, i) =>
+      place({ id: `decoy${i}`, cuisine: ["decoy"], budget_tier: 6 })
+    );
+    const shared = place({ id: "shared", cuisine: ["neutral"], budget_tier: 2 });
+    const places = [...decoys, shared];
+
+    const ranked = groupRecommend(
+      [
+        // Loves "decoy" — outranks "shared" in this member's own personal
+        // top-3, without excluding "shared" outright (no dislike, no
+        // blocklist entry, just a lower score).
+        {
+          userId: "a",
+          visits: [],
+          prefs: prefs({ cuisine_likes: ["decoy"] }),
+          wishlistPlaceIds: [],
+        },
+        // Budget-capped at $$$ — every decoy (tier 6) scores a real
+        // out-of-range penalty for this member, while "shared" (tier 2)
+        // doesn't, without excluding any decoy outright either.
+        {
+          userId: "b",
+          visits: [],
+          prefs: prefs({ budget_min: 1, budget_max: 3 }),
+          wishlistPlaceIds: [],
+        },
+      ],
+      places,
+      { limit: 3 }
+    );
+
+    // "shared" is never excluded by either member, and its group-average
+    // score (decent for A, best-in-pool for B) beats at least one decoy's —
+    // so it belongs in the final top-3 of these 4 places once eligibility
+    // is computed correctly.
+    expect(ranked.map((s) => s.place.id)).toContain("shared");
+  });
+
   it("averages the members' scores rather than summing them", () => {
     const places = [place({ id: "p1" })];
     const solo = rankPlaces(places, [], null)[0];
@@ -421,6 +468,52 @@ describe("groupRecommend", () => {
     )[0];
 
     expect(group.score).toBeCloseTo(solo.score);
+  });
+});
+
+describe("groupRecommend + surprisePicks composition", () => {
+  // /api/suggest's own real bug (not in either function alone): its surprise
+  // picks used to be drawn straight from the caller's already limit=8'd
+  // `groupRecommend` result — correct for the "Suggested for the group"
+  // rail, but the randomizer needs the *entire* eligible set the same way
+  // the personal-mode path already re-ranks with `limit: undefined` for
+  // exactly this reason. A long-running recurring Jio whose standing list
+  // already covers most of a group's top-8 ranked places could then only
+  // ever "Try:" whatever was left of that top 8, no matter how many times
+  // it rerolled, even with plenty of other eligible places ranked 9th or
+  // lower still genuinely available.
+  it("a limit=8 group ranking can't reach a genuinely eligible 9th-plus place", () => {
+    const places = Array.from({ length: 20 }, (_, i) =>
+      place({ id: `p${i}`, walk_minutes: i + 1 })
+    );
+    const members = [
+      { userId: "a", visits: [], prefs: null, wishlistPlaceIds: [] },
+    ];
+
+    const limited = groupRecommend(members, places, { limit: 8 });
+    const unlimited = groupRecommend(members, places, { limit: undefined });
+
+    expect(limited).toHaveLength(8);
+    expect(unlimited).toHaveLength(20);
+    // The unlimited ranking can surface a place (walk_minutes-ranked 9th
+    // or later) that the limited one structurally never could.
+    const limitedIds = new Set(limited.map((s) => s.place.id));
+    const onlyInUnlimited = unlimited.filter((s) => !limitedIds.has(s.place.id));
+    expect(onlyInUnlimited.length).toBeGreaterThan(0);
+
+    // Simulate almost the whole limited top-8 already being on a
+    // long-running recurring Jio's standing list — one place left over.
+    const alreadyOnJio = new Set(limited.slice(0, 7).map((s) => s.place.id));
+    const surprisesFromLimited = surprisePicks(
+      limited.filter((s) => !alreadyOnJio.has(s.place.id)),
+      3
+    );
+    const surprisesFromUnlimited = surprisePicks(
+      unlimited.filter((s) => !alreadyOnJio.has(s.place.id)),
+      3
+    );
+    expect(surprisesFromLimited.length).toBeLessThan(3);
+    expect(surprisesFromUnlimited).toHaveLength(3);
   });
 });
 

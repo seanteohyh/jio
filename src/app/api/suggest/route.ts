@@ -128,6 +128,10 @@ export async function GET(request: NextRequest) {
     };
 
     let ranked: ScoredPlace[];
+    // Set only in group mode with a real kaki behind it — reused below to
+    // recompute the full, unlimited ranking for surprise picks without
+    // redoing every member's own visits/prefs/tried-places fetch.
+    let membersData: MemberData[] | null = null;
 
     if (mode === "group" && kakiId && isEnabled("kakis")) {
       const kaki = await repo.getKaki(kakiId);
@@ -140,7 +144,7 @@ export async function GET(request: NextRequest) {
           options
         );
       } else {
-        const membersData: MemberData[] = await Promise.all(
+        membersData = await Promise.all(
           kaki.members.map(async (member) => {
             const [memberVisits, memberPrefs, memberWishlist, memberTried] =
               await Promise.all([
@@ -177,10 +181,19 @@ export async function GET(request: NextRequest) {
     }
 
     // The surprise picks are drawn from the full eligible set, not the
-    // truncated top-N, or they would never surprise anyone.
+    // truncated top-N, or they would never surprise anyone. Group mode used
+    // to just reuse `ranked` here, which is itself capped at the request's
+    // own `limit` (8, from the Jio detail page) — so once that many of the
+    // top-ranked group places were already on a long-running recurring
+    // Jio's standing list, "Try:" could never reach the plenty of other
+    // eligible places ranked 9th or lower: refreshing endlessly reshuffled
+    // the same couple of leftover top-8 places rather than genuinely
+    // drawing from everywhere the group could eat.
     const fullRanking =
       mode === "group"
-        ? ranked
+        ? membersData
+          ? groupRecommend(membersData, places, { ...options, limit: undefined })
+          : rankPlaces(places, visits, prefs, [], { ...options, limit: undefined })
         : rankPlaces(
             places,
             visits,
