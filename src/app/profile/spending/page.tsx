@@ -1,6 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import useSWR from "swr";
 import {
   Button,
@@ -10,8 +12,12 @@ import {
   ErrorNote,
   Field,
   SectionHeading,
+  SkeletonDetail,
   inputClass,
 } from "@/components/ui";
+import BudgetTierInsights, {
+  emptyMetrics,
+} from "@/components/profile/BudgetTierInsights";
 import { fetcher, mutateJson } from "@/lib/fetcher";
 import {
   currentMonthKey,
@@ -25,7 +31,10 @@ import type {
   ExpenseEntry,
   ExpenseMonthSummary,
   Place,
+  UserMetrics,
 } from "@/types";
+
+type Tab = "insights" | "tracker";
 
 const PAGE_SIZE = 20;
 
@@ -462,13 +471,29 @@ function SummaryCard({ summary }: { summary: ExpenseMonthSummary }) {
   );
 }
 
-export default function SpendingPage() {
+function SpendingPageInner() {
+  // Insights first, on open — a budget-tier breakdown that needs nothing
+  // logged, so most people (who will never manually track a dollar
+  // amount) still land on something useful rather than an empty ledger.
+  // The personal $ tracker is a second, opt-in tab, not the default —
+  // except for someone who already uses it: the "Usual spend" tile on the
+  // profile page links straight in with `?tab=tracker` once it knows
+  // real entries exist, so an established tracker isn't demoted behind an
+  // extra tap every time.
+  const searchParams = useSearchParams();
+  const [tab, setTab] = useState<Tab>(
+    searchParams.get("tab") === "tracker" ? "tracker" : "insights"
+  );
   const [month, setMonth] = useState(currentMonthKey());
   const [page, setPage] = useState(1);
   const [showAdd, setShowAdd] = useState(false);
 
+  const { data: metricsData, isLoading: metricsLoading } = useSWR<{
+    user: UserMetrics;
+  }>(tab === "insights" ? "/api/metrics" : null, fetcher);
+
   const { data, mutate, isLoading } = useSWR<ExpensesResponse>(
-    `/api/expenses?month=${month}&page=${page}`,
+    tab === "tracker" ? `/api/expenses?month=${month}&page=${page}` : null,
     fetcher
   );
 
@@ -482,85 +507,136 @@ export default function SpendingPage() {
 
   return (
     <div className="space-y-5">
+      <Link href="/profile" className="text-ember text-sm underline">
+        ← Back to You
+      </Link>
+
       <header className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold tracking-tight">Spending</h1>
-        {!showAdd && (
+        {tab === "tracker" && !showAdd && (
           <Button size="sm" onClick={() => setShowAdd(true)}>
             + Add
           </Button>
         )}
       </header>
 
-      <div className="flex items-center justify-between">
+      <div className="border-line flex gap-1 rounded-full border p-1 text-sm">
         <button
           type="button"
-          onClick={() => changeMonth(-1)}
-          aria-label="Previous month"
-          className="tap-target-text text-stone hover:text-ink text-lg"
+          onClick={() => setTab("insights")}
+          aria-pressed={tab === "insights"}
+          className={
+            "flex-1 rounded-full px-3 py-1.5 transition-colors " +
+            (tab === "insights"
+              ? "bg-ember font-medium text-white"
+              : "text-stone hover:text-ink")
+          }
         >
-          &lsaquo;
+          Insights
         </button>
-        <span className="text-sm font-medium">{formatMonthKey(month)}</span>
         <button
           type="button"
-          onClick={() => changeMonth(1)}
-          disabled={isCurrentMonth}
-          aria-label="Next month"
-          className="tap-target-text text-stone hover:text-ink text-lg disabled:opacity-30"
+          onClick={() => setTab("tracker")}
+          aria-pressed={tab === "tracker"}
+          className={
+            "flex-1 rounded-full px-3 py-1.5 transition-colors " +
+            (tab === "tracker"
+              ? "bg-ember font-medium text-white"
+              : "text-stone hover:text-ink")
+          }
         >
-          &rsaquo;
+          My tracker
         </button>
       </div>
 
-      {showAdd && (
-        <QuickAddSheet
-          onClose={() => setShowAdd(false)}
-          onLogged={() => mutate()}
-        />
-      )}
-
-      {data?.summary && <SummaryCard summary={data.summary} />}
-
-      <section>
-        <SectionHeading>Entries</SectionHeading>
-        {isLoading ? null : (data?.entries.length ?? 0) === 0 ? (
-          <EmptyState
-            title="Nothing logged this month"
-            description="Add your first entry above."
-          />
+      {tab === "insights" ? (
+        metricsLoading ? (
+          <SkeletonDetail />
         ) : (
-          <ul className="space-y-2">
-            {data!.entries.map((entry) => (
-              <EntryRow
-                key={entry.id}
-                entry={entry}
-                onSaved={() => mutate()}
-                onDeleted={() => mutate()}
-              />
-            ))}
-          </ul>
-        )}
-
-        {totalPages > 1 && (
-          <div className="mt-3 flex items-center justify-center gap-1.5">
-            {Array.from({ length: totalPages }, (_, i) => i + 1).map((n) => (
-              <button
-                key={n}
-                type="button"
-                onClick={() => setPage(n)}
-                aria-current={n === page}
-                className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-medium ${
-                  n === page
-                    ? "bg-ember text-white"
-                    : "text-stone hover:bg-cream"
-                }`}
-              >
-                {n}
-              </button>
-            ))}
+          <BudgetTierInsights metrics={metricsData?.user ?? emptyMetrics()} />
+        )
+      ) : (
+        <>
+          <div className="flex items-center justify-between">
+            <button
+              type="button"
+              onClick={() => changeMonth(-1)}
+              aria-label="Previous month"
+              className="tap-target-text text-stone hover:text-ink text-lg"
+            >
+              &lsaquo;
+            </button>
+            <span className="text-sm font-medium">{formatMonthKey(month)}</span>
+            <button
+              type="button"
+              onClick={() => changeMonth(1)}
+              disabled={isCurrentMonth}
+              aria-label="Next month"
+              className="tap-target-text text-stone hover:text-ink text-lg disabled:opacity-30"
+            >
+              &rsaquo;
+            </button>
           </div>
-        )}
-      </section>
+
+          {showAdd && (
+            <QuickAddSheet
+              onClose={() => setShowAdd(false)}
+              onLogged={() => mutate()}
+            />
+          )}
+
+          {data?.summary && <SummaryCard summary={data.summary} />}
+
+          <section>
+            <SectionHeading>Entries</SectionHeading>
+            {isLoading ? null : (data?.entries.length ?? 0) === 0 ? (
+              <EmptyState
+                title="Nothing logged this month"
+                description="Add your first entry above."
+              />
+            ) : (
+              <ul className="space-y-2">
+                {data!.entries.map((entry) => (
+                  <EntryRow
+                    key={entry.id}
+                    entry={entry}
+                    onSaved={() => mutate()}
+                    onDeleted={() => mutate()}
+                  />
+                ))}
+              </ul>
+            )}
+
+            {totalPages > 1 && (
+              <div className="mt-3 flex items-center justify-center gap-1.5">
+                {Array.from({ length: totalPages }, (_, i) => i + 1).map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    onClick={() => setPage(n)}
+                    aria-current={n === page}
+                    className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-medium ${
+                      n === page
+                        ? "bg-ember text-white"
+                        : "text-stone hover:bg-cream"
+                    }`}
+                  >
+                    {n}
+                  </button>
+                ))}
+              </div>
+            )}
+          </section>
+        </>
+      )}
     </div>
+  );
+}
+
+export default function SpendingPage() {
+  return (
+    <Suspense fallback={<SkeletonDetail />}>
+      <SpendingPageInner />
+    </Suspense>
   );
 }

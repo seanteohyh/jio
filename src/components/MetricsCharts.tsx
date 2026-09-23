@@ -189,7 +189,14 @@ export function UserMetricsCharts({
               ? "avg. per entry"
               : `${metrics.currentVariety} places in 30 days`
           }
-          href="/profile/spending"
+          // Someone already using the personal tracker lands straight
+          // back on it; everyone else gets the no-setup insights tab
+          // first (that page's own default).
+          href={
+            expenseSummary?.hasLoggedExpenses
+              ? "/profile/spending?tab=tracker"
+              : "/profile/spending"
+          }
         />
       </div>
 

@@ -5,6 +5,7 @@ import Link from "next/link";
 import useSWR from "swr";
 import { Avatar, EmptyState, ErrorNote, Skeleton } from "@/components/ui";
 import HintCard from "@/components/HintCard";
+import LobangReactions from "@/components/LobangReactions";
 import { fetcher, mutateJson } from "@/lib/fetcher";
 import { mergeLobangFeed, relativeDayLabel } from "@/lib/utils";
 import type { Lobang } from "@/types";
@@ -12,11 +13,15 @@ import type { Lobang } from "@/types";
 /**
  * CHANGES_20260816.md §2 — a dedicated place to browse your lobangs, styled
  * like message bubbles: one reverse-chronological feed merging received and
- * sent, your own sends right-aligned. Deliberately "browse," not "chat" —
- * a lobang has no reply, and a group send has no one other person to file a
- * thread under, so this reads as a shared stream rather than a per-contact
- * conversation. No new schema or endpoint: both directions already come
- * from `/api/lobangs`, merged and sorted client-side.
+ * sent, your own sends right-aligned. A group send has no one other person
+ * to file a thread under, so this still reads as a shared stream rather
+ * than a per-contact conversation — but a received lobang here now carries
+ * the exact same reactions the profile inbox preview already offered
+ * (like, reply, start a Jio, via the shared `LobangReactions`), since this
+ * full feed had quietly become the one place you *couldn't* like, reply to,
+ * or act on a lobang you'd already scrolled past on your profile. A sent
+ * lobang's own bubble shows the recipient's reaction back, read-only, for
+ * the same reason — "all your interactions," not just the sends.
  */
 
 interface LobangsResponse {
@@ -33,6 +38,7 @@ export default function LobangsPage() {
     data: received,
     error: receivedError,
     isLoading: receivedLoading,
+    mutate: mutateReceived,
   } = useSWR<LobangsResponse>(
     `/api/lobangs?direction=received&limit=${FEED_LIMIT}`,
     fetcher
@@ -138,7 +144,13 @@ export default function LobangsPage() {
                   <p className="text-white/70 mt-1.5 text-xs">
                     {l.event_title && `From ${l.event_title} · `}
                     {l.created_at && relativeDayLabel(l.created_at)}
+                    {l.liked_at && " · liked"}
                   </p>
+                  {l.reply && (
+                    <p className="mt-1 text-xs text-white/90">
+                      They replied: <span className="italic">“{l.reply}”</span>
+                    </p>
+                  )}
                 </div>
               </li>
             ) : (
@@ -181,6 +193,10 @@ export default function LobangsPage() {
                       {l.event_title && `From ${l.event_title} · `}
                       {l.created_at && relativeDayLabel(l.created_at)}
                     </p>
+                    <LobangReactions
+                      lobang={l}
+                      onChanged={() => mutateReceived()}
+                    />
                   </div>
                 </div>
               </li>
