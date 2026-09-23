@@ -734,6 +734,10 @@ export interface Lobang {
    */
   public_token?: string | null;
   created_at?: string;
+  /** Throttle claim for the "someone commented" push (096_lobang_comments.sql)
+   *  — a plain field like `LunchEvent.last_vote_push_at`, not something a
+   *  client ever reads for its own sake. */
+  last_comment_push_at?: string | null;
 
   /** Derived. Populated only on a `listLobangsReceived` row, or a
    *  single-recipient `listLobangsSent` row. */
@@ -743,10 +747,13 @@ export interface Lobang {
   /** Derived, same "received row, or single-recipient sent row" scope as
    *  seen_at. Null until that recipient hearts it. */
   liked_at?: string | null;
-  /** Derived, same scope as liked_at — the recipient's freeform reply, if
-   *  they've sent one back. */
-  reply?: string | null;
-  reply_created_at?: string | null;
+  /** Derived — every comment on this lobang's shared thread (096_lobang_
+   *  comments.sql), visible to the sender and every recipient alike, not
+   *  scoped to one recipient's own copy the way `liked_at` still is. Only
+   *  a count, so a card can say "3 comments" without fetching the whole
+   *  thread; `listLobangComments` fetches the real messages, lazily, once
+   *  a thread is actually opened. */
+  comment_count?: number;
 
   /** Derived. */
   from_display_name?: string;
@@ -757,6 +764,21 @@ export interface Lobang {
   place?: Place;
   /** Derived. */
   event_title?: string | null;
+}
+
+/**
+ * One message in a lobang's shared comment thread (096_lobang_comments.sql)
+ * — the sender or any recipient may post, in order, back and forth. Replaces
+ * the old model of one private, overwrite-in-place `reply` per recipient.
+ */
+export interface LobangComment {
+  id: string;
+  lobang_id: string;
+  user_id: string;
+  text: string;
+  created_at: string;
+  /** Derived. */
+  display_name?: string;
 }
 
 /**

@@ -233,29 +233,63 @@ describe("lobangs", () => {
       ).rejects.toThrow(/recipient/i);
     });
 
-    it("records the recipient's freeform reply, visible to the sender", async () => {
+    it("posts a comment into the shared thread, visible via both sides' own lists", async () => {
       const lobang = await demoRepo.sendLobang(
         DEMO_TEAMMATE_A,
         toOne(DEMO_USER_ID),
         "demo-place-12"
       );
 
-      const result = await demoRepo.replyToLobang(
-        DEMO_USER_ID,
+      const posted = await demoRepo.postLobangComment(
         lobang.id,
+        DEMO_USER_ID,
         "Went there, so good!"
       );
-      expect(result.from_user_id).toBe(DEMO_TEAMMATE_A);
+      expect(posted.participant_ids).toEqual([DEMO_TEAMMATE_A]);
 
       const [received] = await demoRepo.listLobangsReceived(DEMO_USER_ID);
-      expect(received.reply).toBe("Went there, so good!");
+      expect(received.comment_count).toBe(1);
 
       const sent = await demoRepo.listLobangsSent(DEMO_TEAMMATE_A);
       const sentLobang = sent.find((l) => l.id === lobang.id);
-      expect(sentLobang?.reply).toBe("Went there, so good!");
+      expect(sentLobang?.comment_count).toBe(1);
     });
 
-    it("refuses an empty reply", async () => {
+    it("the sender can post back into the thread too — not one-way any more", async () => {
+      const lobang = await demoRepo.sendLobang(
+        DEMO_TEAMMATE_A,
+        toOne(DEMO_USER_ID),
+        "demo-place-12"
+      );
+      await demoRepo.postLobangComment(lobang.id, DEMO_USER_ID, "Went there!");
+      const senderReply = await demoRepo.postLobangComment(
+        lobang.id,
+        DEMO_TEAMMATE_A,
+        "Told you!"
+      );
+      expect(senderReply.participant_ids).toEqual([DEMO_USER_ID]);
+
+      const thread = await demoRepo.listLobangComments(lobang.id, DEMO_USER_ID);
+      expect(thread.map((c) => c.text)).toEqual(["Went there!", "Told you!"]);
+      expect(thread.map((c) => c.user_id)).toEqual([DEMO_USER_ID, DEMO_TEAMMATE_A]);
+    });
+
+    it("a group send shares one thread every recipient and the sender can read", async () => {
+      const lobang = await demoRepo.sendLobang(
+        DEMO_USER_ID,
+        { type: "kaki", kakiId: DEMO_KAKI_ID },
+        "demo-place-12"
+      );
+      await demoRepo.postLobangComment(lobang.id, DEMO_TEAMMATE_A, "Went last week!");
+
+      // Every recipient, and the original sender, see the same thread.
+      const forB = await demoRepo.listLobangComments(lobang.id, DEMO_TEAMMATE_B);
+      const forSender = await demoRepo.listLobangComments(lobang.id, DEMO_USER_ID);
+      expect(forB.map((c) => c.text)).toEqual(["Went last week!"]);
+      expect(forSender.map((c) => c.text)).toEqual(["Went last week!"]);
+    });
+
+    it("refuses an empty comment", async () => {
       const lobang = await demoRepo.sendLobang(
         DEMO_TEAMMATE_A,
         toOne(DEMO_USER_ID),
@@ -263,11 +297,11 @@ describe("lobangs", () => {
       );
 
       await expect(
-        demoRepo.replyToLobang(DEMO_USER_ID, lobang.id, "   ")
+        demoRepo.postLobangComment(lobang.id, DEMO_USER_ID, "   ")
       ).rejects.toThrow(/empty/i);
     });
 
-    it("refuses a reply from someone who isn't a recipient", async () => {
+    it("refuses a comment from someone who isn't the sender or a recipient", async () => {
       const lobang = await demoRepo.sendLobang(
         DEMO_TEAMMATE_A,
         toOne(DEMO_USER_ID),
@@ -275,8 +309,20 @@ describe("lobangs", () => {
       );
 
       await expect(
-        demoRepo.replyToLobang(DEMO_TEAMMATE_B, lobang.id, "Nice one")
-      ).rejects.toThrow(/recipient/i);
+        demoRepo.postLobangComment(lobang.id, DEMO_TEAMMATE_B, "Nice one")
+      ).rejects.toThrow(/sender or a recipient/i);
+    });
+
+    it("refuses reading the thread for someone who isn't the sender or a recipient", async () => {
+      const lobang = await demoRepo.sendLobang(
+        DEMO_TEAMMATE_A,
+        toOne(DEMO_USER_ID),
+        "demo-place-12"
+      );
+
+      await expect(
+        demoRepo.listLobangComments(lobang.id, DEMO_TEAMMATE_B)
+      ).rejects.toThrow(/sender or a recipient/i);
     });
   });
 

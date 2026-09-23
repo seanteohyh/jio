@@ -796,8 +796,8 @@ export default function PlaceDetailPage({
 
               {!editingVisitId && (
                 <Field
-                  label="How much did it cost?"
-                  hint="Optional — logs to your spending page too."
+                  label="How much did you personally spend?"
+                  hint="Optional, just for your own private spending tracker — not the group's bill, and never shown on the review."
                 >
                   <div className="relative">
                     <span className="text-stone pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-sm">

@@ -47,6 +47,7 @@ import type {
   KakiMember,
   KakiWishlistEntry,
   Lobang,
+  LobangComment,
   LobangTarget,
   LunchEvent,
   MemberData,
@@ -268,6 +269,7 @@ async function hydrateFlags(
 interface LobangCommon {
   placeById: Map<string, Place>;
   eventTitles: Map<string, string>;
+  commentCounts: Map<string, number>;
 }
 
 async function lobangCommon(
@@ -278,8 +280,9 @@ async function lobangCommon(
   const eventIds = Array.from(
     new Set(lobangs.map((l) => l.event_id).filter((id): id is string => Boolean(id)))
   );
+  const lobangIds = lobangs.map((l) => l.id);
 
-  const [{ data: placeRows }, eventTitles] = await Promise.all([
+  const [{ data: placeRows }, eventTitles, { data: commentRows }] = await Promise.all([
     client.from("places").select("*").in("id", placeIds),
     eventIds.length === 0
       ? Promise.resolve(new Map<string, string>())
@@ -294,6 +297,10 @@ async function lobangCommon(
             }
             return map;
           }),
+    // Just a count per lobang, for a "N comments" label without fetching
+    // every thread's full text up front — `listLobangComments` does that
+    // lazily, once a thread is actually opened.
+    client.from("lobang_comments").select("lobang_id").in("lobang_id", lobangIds),
   ]);
 
   const places = (placeRows ?? []) as Place[];
@@ -312,7 +319,12 @@ async function lobangCommon(
     })
   );
 
-  return { placeById, eventTitles };
+  const commentCounts = new Map<string, number>();
+  for (const row of (commentRows ?? []) as { lobang_id: string }[]) {
+    commentCounts.set(row.lobang_id, (commentCounts.get(row.lobang_id) ?? 0) + 1);
+  }
+
+  return { placeById, eventTitles, commentCounts };
 }
 
 /** Hydrates a lobang for one specific recipient's view (their own seen_at). */
@@ -323,13 +335,13 @@ async function hydrateReceivedLobangs(
 ): Promise<Lobang[]> {
   if (lobangs.length === 0) return [];
 
-  const [{ placeById, eventTitles }, names, { data: recipientRows }] =
+  const [{ placeById, eventTitles, commentCounts }, names, { data: recipientRows }] =
     await Promise.all([
       lobangCommon(client, lobangs),
       displayNameMap(client, [...lobangs.map((l) => l.from_user_id), viewerId]),
       client
         .from("lobang_recipients")
-        .select("lobang_id, seen_at, liked_at, reply, reply_created_at")
+        .select("lobang_id, seen_at, liked_at")
         .eq("user_id", viewerId)
         .in(
           "lobang_id",
@@ -343,8 +355,6 @@ async function hydrateReceivedLobangs(
         lobang_id: string;
         seen_at: string | null;
         liked_at: string | null;
-        reply: string | null;
-        reply_created_at: string | null;
       }[]
     ).map((r) => [r.lobang_id, r])
   );
@@ -356,8 +366,7 @@ async function hydrateReceivedLobangs(
     to_display_name: names.get(viewerId),
     seen_at: recipientById.get(l.id)?.seen_at ?? null,
     liked_at: recipientById.get(l.id)?.liked_at ?? null,
-    reply: recipientById.get(l.id)?.reply ?? null,
-    reply_created_at: recipientById.get(l.id)?.reply_created_at ?? null,
+    comment_count: commentCounts.get(l.id) ?? 0,
     place: placeById.get(l.place_id),
     event_title: l.event_id ? eventTitles.get(l.event_id) ?? null : null,
   }));
@@ -375,25 +384,26 @@ async function hydrateSentLobangs(
     new Set(lobangs.map((l) => l.kaki_id).filter((id): id is string => Boolean(id)))
   );
 
-  const [{ placeById, eventTitles }, { data: recipientRows }, { data: kakiRows }] =
-    await Promise.all([
-      lobangCommon(client, lobangs),
-      client
-        .from("lobang_recipients")
-        .select("lobang_id, user_id, seen_at, liked_at, reply, reply_created_at")
-        .in("lobang_id", lobangIds),
-      kakiIds.length === 0
-        ? Promise.resolve({ data: [] as { id: string; name: string }[] })
-        : client.from("kakis").select("id, name").in("id", kakiIds),
-    ]);
+  const [
+    { placeById, eventTitles, commentCounts },
+    { data: recipientRows },
+    { data: kakiRows },
+  ] = await Promise.all([
+    lobangCommon(client, lobangs),
+    client
+      .from("lobang_recipients")
+      .select("lobang_id, user_id, seen_at, liked_at")
+      .in("lobang_id", lobangIds),
+    kakiIds.length === 0
+      ? Promise.resolve({ data: [] as { id: string; name: string }[] })
+      : client.from("kakis").select("id, name").in("id", kakiIds),
+  ]);
 
   type RecipientRow = {
     lobang_id: string;
     user_id: string;
     seen_at: string | null;
     liked_at: string | null;
-    reply: string | null;
-    reply_created_at: string | null;
   };
   const recipientsByLobang = new Map<string, RecipientRow[]>();
   for (const row of (recipientRows ?? []) as RecipientRow[]) {
@@ -436,8 +446,7 @@ async function hydrateSentLobangs(
       to_display_name: toDisplayName,
       seen_at: singleRecipient?.seen_at ?? null,
       liked_at: singleRecipient?.liked_at ?? null,
-      reply: singleRecipient?.reply ?? null,
-      reply_created_at: singleRecipient?.reply_created_at ?? null,
+      comment_count: commentCounts.get(l.id) ?? 0,
       place: placeById.get(l.place_id),
       event_title: l.event_id ? eventTitles.get(l.event_id) ?? null : null,
     };
@@ -4127,41 +4136,85 @@ export const supabaseRepo: Repo = {
     };
   },
 
-  async replyToLobang(userId, lobangId, text) {
+  async listLobangComments(lobangId, userId) {
+    const client = await db();
+
+    // RLS (lobang_comments_select, 096_lobang_comments.sql) already scopes
+    // this to the sender or a recipient — a plain select surfaces nothing
+    // and no error for anyone else, so this fetches the lobang row first
+    // purely to give a real "does not exist" vs. silently-empty distinction.
+    const { data: lobangRow } = await client
+      .from("lobangs")
+      .select("id")
+      .eq("id", lobangId)
+      .maybeSingle();
+    if (!lobangRow) throw new Error("That lobang does not exist");
+
+    const { data, error } = await client
+      .from("lobang_comments")
+      .select("*")
+      .eq("lobang_id", lobangId)
+      .order("created_at", { ascending: true });
+    if (error) fail("Could not load that thread", error);
+
+    const rows = (data ?? []) as LobangComment[];
+    const names = await displayNameMap(client, rows.map((c) => c.user_id));
+    return rows.map((c) => ({ ...c, display_name: names.get(c.user_id) }));
+  },
+
+  async postLobangComment(lobangId, userId, text) {
     const trimmed = text.trim();
-    if (!trimmed) throw new Error("A reply can't be empty");
+    if (!trimmed) throw new Error("A comment can't be empty");
 
     const client = await db();
 
-    const { data: lobangRow, error: lobangError } = await client
-      .from("lobangs")
-      .select("from_user_id")
-      .eq("id", lobangId)
-      .maybeSingle();
-    if (lobangError) fail("Could not send that reply", lobangError);
+    const [{ data: lobangRow, error: lobangError }, { data: recipientRows }] =
+      await Promise.all([
+        client
+          .from("lobangs")
+          .select("from_user_id")
+          .eq("id", lobangId)
+          .maybeSingle(),
+        client.from("lobang_recipients").select("user_id").eq("lobang_id", lobangId),
+      ]);
+    if (lobangError) fail("Could not post that comment", lobangError);
     if (!lobangRow) throw new Error("That lobang does not exist");
 
-    const { data: recipientRow, error: recipientError } = await client
-      .from("lobang_recipients")
-      .select("user_id")
-      .eq("lobang_id", lobangId)
-      .eq("user_id", userId)
-      .maybeSingle();
-    if (recipientError) fail("Could not send that reply", recipientError);
-    if (!recipientRow) {
-      throw new Error("Only a recipient can reply to this lobang");
+    const fromUserId = (lobangRow as { from_user_id: string }).from_user_id;
+    const recipientIds = ((recipientRows ?? []) as { user_id: string }[]).map(
+      (r) => r.user_id
+    );
+    if (fromUserId !== userId && !recipientIds.includes(userId)) {
+      throw new Error("Only the sender or a recipient can comment here");
     }
 
-    const { error } = await client
-      .from("lobang_recipients")
-      .update({ reply: trimmed, reply_created_at: new Date().toISOString() })
-      .eq("lobang_id", lobangId)
-      .eq("user_id", userId);
-    if (error) fail("Could not send that reply", error);
+    const { data: inserted, error } = await client
+      .from("lobang_comments")
+      .insert({ lobang_id: lobangId, user_id: userId, text: trimmed })
+      .select("*")
+      .single();
+    if (error) fail("Could not post that comment", error);
+
+    const names = await displayNameMap(client, [userId]);
+    const participantIds = Array.from(new Set([fromUserId, ...recipientIds])).filter(
+      (id) => id !== userId
+    );
 
     return {
-      from_user_id: (lobangRow as { from_user_id: string }).from_user_id,
+      ...(inserted as LobangComment),
+      display_name: names.get(userId),
+      participant_ids: participantIds,
     };
+  },
+
+  async claimLobangCommentPushWindow(lobangId, windowSeconds = 600) {
+    const client = await db();
+    const { data, error } = await client.rpc(
+      "claim_lobang_comment_push_window",
+      { p_lobang_id: lobangId, p_window_seconds: windowSeconds }
+    );
+    if (error) fail("Could not claim that push window", error);
+    return Boolean(data);
   },
 
   async getPublicLobang(token) {

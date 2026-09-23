@@ -27,6 +27,7 @@ import type {
   KakiFoodIdentitySnapshot,
   KakiWishlistEntry,
   Lobang,
+  LobangComment,
   LobangTarget,
   LunchEvent,
   ModerationLogEntry,
@@ -884,16 +885,40 @@ export interface Repo {
     lobangId: string
   ): Promise<{ liked: boolean; from_user_id: string }>;
   /**
-   * A recipient's freeform text reply back to the sender — replaces any
-   * previous reply from the same recipient rather than threading multiple.
-   * `from_user_id` comes back for the same reason `toggleLobangLike` returns
-   * it. Throws if `userId` isn't a recipient, or `text` is empty.
+   * Every message in a lobang's shared comment thread (096_lobang_comments.sql),
+   * oldest first — visible to the sender and every recipient of a targeted
+   * send alike, not scoped to one recipient's own copy. Throws if `userId`
+   * is neither the sender nor a recipient.
    */
-  replyToLobang(
-    userId: string,
+  listLobangComments(
     lobangId: string,
+    userId: string
+  ): Promise<LobangComment[]>;
+  /**
+   * Posts one message into a lobang's shared thread — the sender or any
+   * recipient may post, replacing the old one-shot, per-recipient `reply`
+   * (a real user report: "tried to reply a reply," since only one message
+   * ever existed and the sender could never post back into it at all).
+   * `participant_ids` comes back as everyone else involved (the sender plus
+   * every recipient, minus whoever just posted) so the caller can push a
+   * "new comment" notification without a second lookup. Throws if `userId`
+   * is neither the sender nor a recipient, or `text` is empty.
+   */
+  postLobangComment(
+    lobangId: string,
+    userId: string,
     text: string
-  ): Promise<{ from_user_id: string }>;
+  ): Promise<LobangComment & { participant_ids: string[] }>;
+  /**
+   * Throttle claim for the "someone commented" push (096_lobang_comments.sql)
+   * — same shape as `claimVotePushWindow`, returns `true` at most once per
+   * `windowSeconds` (default 10 min) for a given lobang, regardless of which
+   * participant posted or how many others there are to notify.
+   */
+  claimLobangCommentPushWindow(
+    lobangId: string,
+    windowSeconds?: number
+  ): Promise<boolean>;
   /**
    * Resolves a public lobang's token to the same narrow, privacy-safe
    * shape `getPublicPlace` uses — `null` for an unknown token or one whose
@@ -1357,7 +1382,9 @@ export const REPO_METHODS = [
   "markLobangSeen",
   "dismissLobang",
   "toggleLobangLike",
-  "replyToLobang",
+  "listLobangComments",
+  "postLobangComment",
+  "claimLobangCommentPushWindow",
   "getPublicLobang",
   "suggestPlacesForFriend",
   "isAdmin",

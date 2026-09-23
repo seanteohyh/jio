@@ -25,7 +25,7 @@ function NewEventBody() {
   // else. Ignored if repeatFrom is also present; repeating an old Jio
   // already carries its own invitee list.
   const inviteUserId = params.get("invite");
-  // "Start a Jio from here" — a lobang's heart/reply/start-a-Jio row
+  // "Start a Jio from here" — a lobang's like/comment/start-a-Jio row
   // (CHANGES §3). Ignored alongside repeatFrom's own place list, same
   // "repeating an old Jio already carries its own" precedent.
   const placeId = params.get("placeId");
