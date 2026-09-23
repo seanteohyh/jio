@@ -84,6 +84,7 @@ import type {
   KakiMember,
   KakiWishlistEntry,
   Lobang,
+  LobangComment,
   LobangTarget,
   LunchEvent,
   MemberData,
@@ -148,9 +149,10 @@ interface DemoStore {
     user_id: string;
     seen_at: string | null;
     liked_at: string | null;
-    reply: string | null;
-    reply_created_at: string | null;
   }[];
+  /** A lobang's shared comment thread (096_lobang_comments.sql) — the
+   *  sender or any recipient may post, in order. */
+  lobangComments: LobangComment[];
   kakis: Kaki[];
   kakiMembers: KakiMember[];
   walkCache: WalkCacheEntry[];
@@ -243,9 +245,8 @@ function seed(): DemoStore {
     lobangRecipients: demoLobangRecipients.map((r) => ({
       ...r,
       liked_at: null,
-      reply: null,
-      reply_created_at: null,
     })),
+    lobangComments: [],
     kakis: demoKakis.map((k) => ({ ...k })),
     kakiMembers: demoKakiMembers.map((m) => ({ ...m })),
     walkCache: [],
@@ -427,8 +428,7 @@ function hydrateReceivedLobang(lobang: Lobang, viewerId: string): Lobang {
     to_display_name: displayNameFor(viewerId),
     seen_at: recipient?.seen_at ?? null,
     liked_at: recipient?.liked_at ?? null,
-    reply: recipient?.reply ?? null,
-    reply_created_at: recipient?.reply_created_at ?? null,
+    comment_count: s.lobangComments.filter((c) => c.lobang_id === lobang.id).length,
     place: place ? enrich(place) : undefined,
     event_title: event?.title ?? null,
   };
@@ -465,8 +465,7 @@ function hydrateSentLobang(lobang: Lobang): Lobang {
     to_display_name: toDisplayName,
     seen_at: singleRecipient?.seen_at ?? null,
     liked_at: singleRecipient?.liked_at ?? null,
-    reply: singleRecipient?.reply ?? null,
-    reply_created_at: singleRecipient?.reply_created_at ?? null,
+    comment_count: s.lobangComments.filter((c) => c.lobang_id === lobang.id).length,
     place: place ? enrich(place) : undefined,
     event_title: event?.title ?? null,
   };
@@ -3043,8 +3042,6 @@ export const demoRepo: Repo = {
         user_id: userId,
         seen_at: null,
         liked_at: null,
-        reply: null,
-        reply_created_at: null,
       });
     }
 
@@ -3119,22 +3116,72 @@ export const demoRepo: Repo = {
     return { liked, from_user_id: lobang.from_user_id };
   },
 
-  async replyToLobang(userId, lobangId, text) {
+  async listLobangComments(lobangId, userId) {
     const s = store();
     const lobang = s.lobangs.find((l) => l.id === lobangId);
     if (!lobang) throw new Error("That lobang does not exist");
-    if (!text.trim()) throw new Error("A reply can't be empty");
 
-    const recipient = s.lobangRecipients.find(
+    const isRecipient = s.lobangRecipients.some(
       (r) => r.lobang_id === lobangId && r.user_id === userId
     );
-    if (!recipient) {
-      throw new Error("Only a recipient can reply to this lobang");
+    if (lobang.from_user_id !== userId && !isRecipient) {
+      throw new Error("Only the sender or a recipient can see this thread");
     }
 
-    recipient.reply = text.trim();
-    recipient.reply_created_at = new Date().toISOString();
-    return { from_user_id: lobang.from_user_id };
+    return s.lobangComments
+      .filter((c) => c.lobang_id === lobangId)
+      .sort((a, b) => (a.created_at ?? "").localeCompare(b.created_at ?? ""))
+      .map((c) => ({ ...c, display_name: displayNameFor(c.user_id) }));
+  },
+
+  async postLobangComment(lobangId, userId, text) {
+    const s = store();
+    const lobang = s.lobangs.find((l) => l.id === lobangId);
+    if (!lobang) throw new Error("That lobang does not exist");
+    const trimmed = text.trim();
+    if (!trimmed) throw new Error("A comment can't be empty");
+
+    const recipients = s.lobangRecipients.filter((r) => r.lobang_id === lobangId);
+    const isRecipient = recipients.some((r) => r.user_id === userId);
+    if (lobang.from_user_id !== userId && !isRecipient) {
+      throw new Error("Only the sender or a recipient can comment here");
+    }
+
+    const comment: LobangComment = {
+      id: `demo-lobang-comment-${uuid().slice(0, 8)}`,
+      lobang_id: lobangId,
+      user_id: userId,
+      text: trimmed,
+      created_at: new Date().toISOString(),
+    };
+    s.lobangComments.push(comment);
+
+    const participantIds = Array.from(
+      new Set([lobang.from_user_id, ...recipients.map((r) => r.user_id)])
+    ).filter((id) => id !== userId);
+
+    return {
+      ...comment,
+      display_name: displayNameFor(userId),
+      participant_ids: participantIds,
+    };
+  },
+
+  async claimLobangCommentPushWindow(lobangId, windowSeconds = 600) {
+    const s = store();
+    const lobang = s.lobangs.find((l) => l.id === lobangId);
+    if (!lobang) return false;
+
+    const now = Date.now();
+    if (
+      lobang.last_comment_push_at &&
+      now - new Date(lobang.last_comment_push_at).getTime() < windowSeconds * 1000
+    ) {
+      return false;
+    }
+
+    lobang.last_comment_push_at = new Date(now).toISOString();
+    return true;
   },
 
   async getPublicLobang(token) {

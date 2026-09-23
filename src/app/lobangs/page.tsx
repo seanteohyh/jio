@@ -47,6 +47,7 @@ export default function LobangsPage() {
     data: sent,
     error: sentError,
     isLoading: sentLoading,
+    mutate: mutateSent,
   } = useSWR<LobangsResponse>(
     `/api/lobangs?direction=sent&limit=${FEED_LIMIT}`,
     fetcher
@@ -146,11 +147,12 @@ export default function LobangsPage() {
                     {l.created_at && relativeDayLabel(l.created_at)}
                     {l.liked_at && " · liked"}
                   </p>
-                  {l.reply && (
-                    <p className="mt-1 text-xs text-white/90">
-                      They replied: <span className="italic">“{l.reply}”</span>
-                    </p>
-                  )}
+                  <LobangReactions
+                    lobang={l}
+                    canReact={false}
+                    tone="dark"
+                    onChanged={() => mutateSent()}
+                  />
                 </div>
               </li>
             ) : (

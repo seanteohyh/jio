@@ -190,7 +190,12 @@ export default function LobangInbox() {
                     {l.place?.name ?? "a place"}
                   </span>
                   {l.liked_at && <span className="text-ember"> · liked</span>}
-                  {l.reply && <span className="text-ember"> · replied</span>}
+                  {!!l.comment_count && (
+                    <span className="text-ember">
+                      {" "}
+                      · {l.comment_count} comment{l.comment_count === 1 ? "" : "s"}
+                    </span>
+                  )}
                 </span>
                 <span className="shrink-0">
                   {l.created_at && relativeDayLabel(l.created_at)}
