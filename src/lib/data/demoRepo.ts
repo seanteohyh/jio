@@ -2103,6 +2103,37 @@ export const demoRepo: Repo = {
     return results;
   },
 
+  async listAndClaimUpcomingEventReminders() {
+    const REMINDER_WINDOW_MS = 30 * 60 * 1000;
+    const s = store();
+    const now = Date.now();
+
+    const due = s.events.filter((e) => {
+      if (e.status !== "open" || e.date_phase === "polling") return false;
+      if (e.reminder_sent_at) return false;
+      const msAway = new Date(e.scheduled_at).getTime() - now;
+      return msAway > 0 && msAway <= REMINDER_WINDOW_MS;
+    });
+
+    const results: Array<{ eventId: string; title: string; recipientIds: string[] }> = [];
+
+    for (const event of due) {
+      event.reminder_sent_at = new Date(now).toISOString();
+
+      const participants = resolveEventParticipants(event);
+      const responded = new Set<string>([
+        ...s.votes.filter((v) => v.event_id === event.id).map((v) => v.user_id),
+        ...s.rsvps.filter((r) => r.event_id === event.id).map((r) => r.user_id),
+      ]);
+      const recipientIds = participants.filter((id) => !responded.has(id));
+      if (recipientIds.length > 0) {
+        results.push({ eventId: event.id, title: event.title, recipientIds });
+      }
+    }
+
+    return results;
+  },
+
   async getEventReminderOverride(eventId, userId) {
     const s = store();
     const row = s.eventReminders.find(

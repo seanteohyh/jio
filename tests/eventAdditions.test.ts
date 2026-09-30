@@ -616,6 +616,102 @@ describe("starting-soon reminder (remindDueEvents)", () => {
   });
 });
 
+describe("starting-soon reminder, cron-driven (listAndClaimUpcomingEventReminders)", () => {
+  // The scheduled counterpart to remindDueEvents above — a real report
+  // confirmed the lazy, page-load-only trigger as unreliable in practice
+  // (a Jio's reminder never arrived until someone happened to open the app
+  // well after it was due), so this runs the identical scan and shares its
+  // one-shot reminder_sent_at claim, just system-wide rather than scoped to
+  // whoever's page load triggered it.
+  function inMinutes(minutes: number): string {
+    return new Date(Date.now() + minutes * 60_000).toISOString();
+  }
+
+  async function makeSoonEvent(options?: {
+    minutesAway?: number;
+    inviteeIds?: string[];
+  }) {
+    return demoRepo.createEvent(
+      DEMO_USER_ID,
+      "Starting soon lunch",
+      inMinutes(options?.minutesAway ?? 20),
+      DEFAULT_OFFICE.id,
+      ["demo-place-01"],
+      null,
+      options?.inviteeIds ?? []
+    );
+  }
+
+  it("nudges an invitee who has not voted or RSVP'd, inside the window, with no page load involved", async () => {
+    const event = await makeSoonEvent({ inviteeIds: [DEMO_TEAMMATE_A] });
+
+    const due = await demoRepo.listAndClaimUpcomingEventReminders();
+
+    expect(due).toHaveLength(1);
+    expect(due[0].eventId).toBe(event.id);
+    expect(due[0].recipientIds).toContain(DEMO_TEAMMATE_A);
+    expect(due[0].recipientIds).toContain(DEMO_USER_ID);
+  });
+
+  it("excludes anyone who already voted or RSVP'd", async () => {
+    const event = await makeSoonEvent({
+      inviteeIds: [DEMO_TEAMMATE_A, DEMO_TEAMMATE_B],
+    });
+    await demoRepo.castBallot(event.id, DEMO_TEAMMATE_A, ["demo-place-01"]);
+    await demoRepo.rsvp(event.id, DEMO_TEAMMATE_B, "yes");
+
+    const [due] = await demoRepo.listAndClaimUpcomingEventReminders();
+
+    expect(due.recipientIds).not.toContain(DEMO_TEAMMATE_A);
+    expect(due.recipientIds).not.toContain(DEMO_TEAMMATE_B);
+    expect(due.recipientIds).toContain(DEMO_USER_ID);
+  });
+
+  it("ignores an event more than 30 minutes away", async () => {
+    await makeSoonEvent({ minutesAway: 90 });
+    expect(await demoRepo.listAndClaimUpcomingEventReminders()).toHaveLength(0);
+  });
+
+  it("ignores an event that already happened", async () => {
+    await makeSoonEvent({ minutesAway: -10 });
+    expect(await demoRepo.listAndClaimUpcomingEventReminders()).toHaveLength(0);
+  });
+
+  it("only ever fires once per event", async () => {
+    await makeSoonEvent({ inviteeIds: [DEMO_TEAMMATE_A] });
+
+    const first = await demoRepo.listAndClaimUpcomingEventReminders();
+    const second = await demoRepo.listAndClaimUpcomingEventReminders();
+
+    expect(first).toHaveLength(1);
+    expect(second).toHaveLength(0);
+  });
+
+  it("shares its one-shot claim with the lazy page-load trigger — whichever runs first wins", async () => {
+    await makeSoonEvent({ inviteeIds: [DEMO_TEAMMATE_A] });
+
+    const lazy = await demoRepo.remindDueEvents(DEMO_USER_ID);
+    const scheduled = await demoRepo.listAndClaimUpcomingEventReminders();
+
+    expect(lazy).toHaveLength(1);
+    expect(scheduled).toHaveLength(0);
+  });
+
+  it("skips a Flexi Jio still polling for a date", async () => {
+    const event = await demoRepo.createFlexiEvent(
+      DEMO_USER_ID,
+      "Flexi lunch",
+      DEFAULT_OFFICE.id,
+      [inMinutes(20).slice(0, 10), inMinutes(60 * 24 * 10).slice(0, 10)],
+      null,
+      [DEMO_TEAMMATE_A]
+    );
+    expect(event.date_phase).toBe("polling");
+
+    expect(await demoRepo.listAndClaimUpcomingEventReminders()).toHaveLength(0);
+  });
+});
+
 describe("ballots", () => {
   it("replaces a previous ballot rather than appending to it", async () => {
     const event = await makeEvent({
