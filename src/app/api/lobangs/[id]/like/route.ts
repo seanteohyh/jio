@@ -24,8 +24,10 @@ export async function POST(_request: NextRequest, { params }: Params) {
 
     if (result.liked && result.from_user_id !== user.id) {
       try {
+        const names = await repo.getDisplayNames([user.id]);
+        const likerName = names.get(user.id) ?? "Someone";
         await sendPushToUsers(repo, [result.from_user_id], {
-          title: "Someone liked your lobang",
+          title: `${likerName} liked your lobang`,
           body: "They appreciated the tip-off.",
           url: "/profile",
         });
