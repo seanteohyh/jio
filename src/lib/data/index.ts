@@ -568,6 +568,22 @@ export interface Repo {
     pairs: Array<{ eventId: string; userId: string }>
   ): Promise<void>;
   /**
+   * The scheduled counterpart to `remindDueEvents` above — same "starting
+   * soon, you haven't voted or RSVP'd yet" nudge and the same one-shot
+   * `reminder_sent_at` flag (039_close_reminder.sql), but driven by the
+   * external scheduler instead of depending on someone's page load landing
+   * near the right time. 039's own comment already named that as a known
+   * limitation; a real report confirmed it as a bug in practice — a Jio's
+   * reminder simply never arrived until someone happened to open the app
+   * well after it was due. Scans every open, non-polling Jio system-wide.
+   * The lazy page-load path stays in place alongside this as a same-instant
+   * fast path when it happens to fire first — whichever claims
+   * `reminder_sent_at` first wins, so the two can never double-send.
+   */
+  listAndClaimUpcomingEventReminders(): Promise<
+    Array<{ eventId: string; title: string; recipientIds: string[] }>
+  >;
+  /**
    * Calls off an open Jio — a new terminal state, not a reuse of `closed`
    * (CHANGES_20260801.md §9). Host only, and only from `open`; see
    * 030_cancel_event.sql for why this goes through a dedicated function
@@ -1345,6 +1361,7 @@ export const REPO_METHODS = [
   "setEventReminderOverride",
   "listAndClaimDueReminders",
   "unclaimReminders",
+  "listAndClaimUpcomingEventReminders",
   "cancelEvent",
   "rescheduleEvent",
   "renameEvent",

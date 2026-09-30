@@ -32,7 +32,14 @@ async function notifyInvitees(
 /**
  * "Starting soon" reminder to anyone with a stake in `userId`'s own Jios who
  * hasn't voted or RSVP'd yet — lazy, page-load-triggered, same shape as
- * `generateDueOccurrences` just above. See 039_close_reminder.sql for why.
+ * `generateDueOccurrences` just above (see 039_close_reminder.sql for why
+ * this was originally lazy-only). A real report confirmed that as
+ * unreliable on its own — nothing fires until someone happens to open the
+ * app — so `/api/cron/event-reminders` now runs the same scan on a
+ * schedule too; this stays in place purely as a same-instant fast path for
+ * whoever's already loading the list right as the window opens. The
+ * shared `reminder_sent_at` one-shot claim means whichever path gets there
+ * first is the one that actually sends it.
  */
 async function remindUpcoming(repo: Repo, userId: string): Promise<void> {
   try {

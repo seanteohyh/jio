@@ -2622,6 +2622,71 @@ export const supabaseRepo: Repo = {
     return results;
   },
 
+  /**
+   * Scheduled counterpart to `remindDueEvents` (see the interface doc
+   * comment) — runs with no user session, same service-role reasoning as
+   * `listAndClaimDueReminders` just below.
+   */
+  async listAndClaimUpcomingEventReminders() {
+    const { createServiceRoleClient } = await import(
+      "@/lib/supabase/serviceClient"
+    );
+    const admin = createServiceRoleClient();
+
+    const REMINDER_WINDOW_MS = 30 * 60 * 1000;
+    const now = new Date();
+    const cutoff = new Date(now.getTime() + REMINDER_WINDOW_MS).toISOString();
+    const { data: eventRows, error } = await admin
+      .from("lunch_events")
+      .select("id, title, host_id, kaki_id")
+      .eq("status", "open")
+      .neq("date_phase", "polling")
+      .is("reminder_sent_at", null)
+      .gt("scheduled_at", now.toISOString())
+      .lte("scheduled_at", cutoff);
+    if (error) fail("Could not scan for starting-soon reminders", error);
+
+    const events = (eventRows ?? []) as {
+      id: string;
+      title: string;
+      host_id: string;
+      kaki_id: string | null;
+    }[];
+    const results: Array<{ eventId: string; title: string; recipientIds: string[] }> = [];
+
+    for (const event of events) {
+      // Same one-shot claim `reminder_sent_at` already provides
+      // (039_close_reminder.sql) — a direct conditional update here since
+      // the service-role client bypasses RLS anyway, same style
+      // `listAndClaimVoteDeadlineReminders` uses rather than the
+      // authenticated-session `claim_event_reminder` RPC.
+      const { data: claimed } = await admin
+        .from("lunch_events")
+        .update({ reminder_sent_at: new Date().toISOString() })
+        .eq("id", event.id)
+        .is("reminder_sent_at", null)
+        .select("id");
+      if (!claimed || claimed.length === 0) continue;
+
+      const [participantIds, { data: voteRows }, { data: rsvpRows }] =
+        await Promise.all([
+          resolveEventParticipants(admin, event),
+          admin.from("event_votes").select("user_id").eq("event_id", event.id),
+          admin.from("event_rsvps").select("user_id").eq("event_id", event.id),
+        ]);
+      const responded = new Set<string>([
+        ...((voteRows ?? []) as { user_id: string }[]).map((r) => r.user_id),
+        ...((rsvpRows ?? []) as { user_id: string }[]).map((r) => r.user_id),
+      ]);
+      const recipientIds = participantIds.filter((id) => !responded.has(id));
+      if (recipientIds.length > 0) {
+        results.push({ eventId: event.id, title: event.title, recipientIds });
+      }
+    }
+
+    return results;
+  },
+
   async getEventReminderOverride(eventId, userId) {
     const client = await db();
     const { data, error } = await client

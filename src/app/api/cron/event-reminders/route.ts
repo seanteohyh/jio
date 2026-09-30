@@ -5,13 +5,18 @@ import { featureGate } from "@/lib/config";
 import { sendPushToUsers } from "@/lib/push";
 
 /**
- * The "starting soon" reminder scan — CHANGES_20260821c.md §1. Deliberately
- * NOT in `vercel.json`: Hobby's cron runs at most once a day, but a
- * per-person, per-Jio configurable lead time needs to be checked far more
- * often than that to actually fire close to on time. Per the README's
- * documented pattern for anything needing to run more than once a day,
- * this is meant to be hit every few minutes by an external scheduler (e.g.
- * cron-job.org) with the same bearer token Vercel's own crons use.
+ * Two "starting soon" reminder scans in one route, hit by the same external
+ * scheduler tick: `listAndClaimDueReminders` (CHANGES_20260821c.md §1, the
+ * per-person, per-Jio configurable lead time for confirmed-going attendees)
+ * and `listAndClaimUpcomingEventReminders` (the "you haven't voted or
+ * RSVP'd yet" nudge, formerly page-load-only per 039_close_reminder.sql —
+ * folded in here once that lazy trigger was confirmed unreliable in
+ * practice). Deliberately NOT in `vercel.json`: Hobby's cron runs at most
+ * once a day, but either reminder needs to be checked far more often than
+ * that to actually fire close to on time. Per the README's documented
+ * pattern for anything needing to run more than once a day, this is meant
+ * to be hit every few minutes by an external scheduler (e.g. cron-job.org)
+ * with the same bearer token Vercel's own crons use.
  */
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -78,9 +83,38 @@ export async function GET(request: NextRequest) {
     await repo.unclaimReminders(toUnclaim);
   }
 
+  // The other "starting soon" nudge — anyone with a stake in a Jio who
+  // hasn't voted or RSVP'd yet, previously fired only as a side effect of
+  // someone's own page load (`remindDueEvents`, 039_close_reminder.sql). A
+  // real report confirmed that lazy trigger as unreliable in practice — a
+  // Jio's reminder simply never arrived until someone happened to open the
+  // app well after it was due. Running it here too means it now actually
+  // fires close to on time regardless of whether anyone has the app open;
+  // the lazy path stays as a same-instant fast path alongside it (whichever
+  // claims `reminder_sent_at` first wins, so they can't double-send).
+  const upcoming = await repo.listAndClaimUpcomingEventReminders();
+  let upcomingSent = 0;
+  for (const { eventId, title, recipientIds } of upcoming) {
+    try {
+      await sendPushToUsers(repo, recipientIds, {
+        title: "Starting soon",
+        body: `${title} is in 30 minutes — you haven't voted or RSVP'd yet`,
+        url: `/events/${eventId}`,
+      });
+      upcomingSent += 1;
+    } catch (error) {
+      // No unclaim path here — `reminder_sent_at` is a one-shot per-event
+      // flag with no per-user retry table, same limitation the lazy
+      // trigger already had. Logged so a systemic push failure is visible.
+      console.log(`[cron/event-reminders] upcoming-nudge send failed for event ${eventId}:`, error);
+    }
+  }
+
   return json({
     sent: due.length - toUnclaim.length,
     unclaimed: toUnclaim.length,
     events: userIdsByEvent.size,
+    upcomingNudgesSent: upcomingSent,
+    upcomingNudgesScanned: upcoming.length,
   });
 }
