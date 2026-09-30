@@ -1456,6 +1456,30 @@ the other half of the gate.
    entirely per the UX review. The colour tokens in `globals.css` are single
    light-only values with no dark variant computed for any of them; don't
    silently reintroduce this without revisiting that decision first.
+3. **Name-mode account claiming isn't protected by an attached email —
+   discussed, deliberately deferred, not forgotten.** Today, typing an
+   existing display name and confirming "is this you?" merges-and-deletes
+   the matched account onto your new session (`nameAuth`'s claim flow),
+   with **no check for whether that matched account already has a verified
+   email attached** — so linking an email today buys portability across
+   devices, not protection from a stranger claiming your name. This is
+   already the one caveat README's own name-mode section names as "fixed
+   only by switching to full email mode." The recommended fix, if this
+   becomes worth building: once a `profiles` row has a verified email, flip
+   the claim flow from "confirm you're this person" (a click) to "prove
+   it" — challenge the claimed email with the 6-digit OTP `attach-email`
+   already sends (**OTP as the primary path, magic link only as a
+   secondary convenience** — a tapped magic-link opens Safari, not an
+   installed iOS Home Screen icon, which is a separate storage partition;
+   an OTP is typed back into whatever context is already open, so it
+   can't fragment sessions the way a link click can). No verified email on
+   the matched account → today's trust-based claim behavior stays
+   unchanged. Open design question: what happens to the person who typed a
+   taken, email-verified name — flat deny, or auto-suggest a variant.
+   Deliberately not built now — the user base is small enough that this
+   isn't worth the added claim-flow friction yet. Revisit if this comes up
+   again, or once name-squatting/impersonation is a real incident rather
+   than a theoretical one.
 
 ---
 
