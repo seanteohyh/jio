@@ -274,22 +274,26 @@ export default function EventDetailPage({
   // could never actually be ranked (CHANGES_20260804.md §3). Once touched,
   // this still doesn't reset the voter's order, but it does merge in any
   // option id it hasn't seen yet, appended at the end, unranked.
+  //
+  // Bug report: that merge only ever ran once `ballotTouched` was already
+  // true — before the first touch, every `data` refresh re-seeded `ballot`
+  // straight from `myVote`, discarding any option added since that vote
+  // was cast. A voter whose ballot held exactly one place had no way to
+  // ever touch it at all (both reorder arrows are disabled with only one
+  // row), so a newly added option could never appear in "Your ranking" —
+  // not "hasn't merged in yet," genuinely stuck. The untouched branch now
+  // merges the same way the touched one already does, just against
+  // `myVote` as the base instead of the live `prev` state.
   useEffect(() => {
     if (!data) return;
-    if (!ballotTouched) {
-      setBallot(
-        data.viewer.myVote.length > 0
-          ? data.viewer.myVote
-          : data.event.options.map((o) => o.place_id)
-      );
-      return;
-    }
+    const base = ballotTouched ? null : data.viewer.myVote;
     setBallot((prev) => {
-      const known = new Set(prev);
+      const known = new Set(base ?? prev);
       const arrived = data.event.options
         .map((o) => o.place_id)
         .filter((id) => !known.has(id));
-      return arrived.length > 0 ? [...prev, ...arrived] : prev;
+      const merged = [...(base ?? prev), ...arrived];
+      return base || arrived.length > 0 ? merged : prev;
     });
   }, [data, ballotTouched]);
 
