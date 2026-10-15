@@ -3138,6 +3138,44 @@ export const supabaseRepo: Repo = {
     return closed;
   },
 
+  /**
+   * Lazy, single-event counterpart to the sweep above (see the interface
+   * doc comment). Runs inside an ordinary authenticated request — any
+   * viewer's page load, not necessarily the host's — so unlike the cron
+   * sweep this can't reach for the service-role client for the write;
+   * `lunch_events_update` (007_rls.sql) is host-only. Votes/options are
+   * read with the normal client (a viewer can already see these on the
+   * Jio page itself), and the actual close write goes through
+   * `close_event_if_past_vote_deadline` (097_lazy_vote_deadline_close.sql),
+   * a `SECURITY DEFINER` function that independently re-checks every guard
+   * condition before writing anything, same reasoning as
+   * `claim_event_reminder`.
+   */
+  async closeEventIfPastVoteDeadline(eventId) {
+    const client = await db();
+
+    const [{ data: voteRows }, { data: optionRows }] = await Promise.all([
+      client.from("event_votes").select("*").eq("event_id", eventId),
+      client.from("event_options").select("place_id").eq("event_id", eventId),
+    ]);
+    const votes = (voteRows ?? []) as EventVote[];
+    const optionIds = ((optionRows ?? []) as { place_id: string }[]).map(
+      (o) => o.place_id
+    );
+    const winner = computeWinner(votes, optionIds).winnerId;
+
+    const { error } = await client.rpc("close_event_if_past_vote_deadline", {
+      p_event_id: eventId,
+      p_winner_place_id: winner,
+    });
+    if (error) {
+      console.log(
+        `[events/${eventId}] could not lazily close past vote deadline:`,
+        error.message
+      );
+    }
+  },
+
   async listAndClaimVoteDeadlineReminders(leadMinutes) {
     const { createServiceRoleClient } = await import(
       "@/lib/supabase/serviceClient"

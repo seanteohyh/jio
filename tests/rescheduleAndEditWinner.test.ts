@@ -383,7 +383,11 @@ describe("reopenEvent", () => {
     ).rejects.toThrow();
   });
 
-  it("refuses once the Jio's scheduled time has already passed", async () => {
+  it("still allows reopening once the Jio's scheduled time has already passed", async () => {
+    // 098_reopen_any_time.sql — a closed Jio past its own scheduled time
+    // doesn't necessarily mean the lunch itself happened (the lazy
+    // vote-deadline close bug report showed exactly that), so the host
+    // always has a way back into voting.
     const past = new Date(Date.now() - 86400000).toISOString();
     const event = await demoRepo.createEvent(
       DEMO_USER_ID,
@@ -395,8 +399,7 @@ describe("reopenEvent", () => {
       []
     );
     await demoRepo.closeEvent(event.id, DEMO_USER_ID, "demo-place-01");
-    await expect(
-      demoRepo.reopenEvent(event.id, DEMO_USER_ID)
-    ).rejects.toThrow();
+    const reopened = await demoRepo.reopenEvent(event.id, DEMO_USER_ID);
+    expect(reopened.status).toBe("open");
   });
 });

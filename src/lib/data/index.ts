@@ -632,10 +632,16 @@ export interface Repo {
     newPlaceId: string
   ): Promise<EventDetail>;
   /**
-   * Undoes a close — host-only, only from `closed`, and only while the
-   * scheduled time is still in the future (reopening a lunch that's already
-   * happened doesn't mean anything). Existing ballots are left exactly as
-   * they were, same as `cancelEvent` leaves everything else about the row
+   * Undoes a close — host-only, only from `closed`. Available at any time,
+   * including once the Jio's own scheduled time has passed
+   * (098_reopen_any_time.sql) — the original "only while scheduled_at is
+   * still in the future" restriction assumed a closed Jio past its
+   * scheduled time always meant the lunch itself had already happened,
+   * which 097_lazy_vote_deadline_close.sql's own bug report showed isn't
+   * true (a Jio can end up stuck closed past its scheduled time for
+   * reasons unrelated to the lunch happening); the host should always have
+   * a way back into voting. Existing ballots are left exactly as they
+   * were, same as `cancelEvent` leaves everything else about the row
    * alone: a vote already persists until its owner recasts it, so "reopen"
    * just means "accept new/changed ballots again," not "start over." Clears
    * `winner_place_id` and `closed_at` since neither describes reality once
@@ -704,6 +710,23 @@ export interface Repo {
    * (`closeEvent`) or this sweep.
    */
   closeEventsPastVoteDeadline(): Promise<number>;
+  /**
+   * Lazy, single-event counterpart to the sweep above, called from
+   * `GET /api/events/[id]` (097_lazy_vote_deadline_close.sql) — same "lazy
+   * fallback alongside the cron, not instead of it" shape as
+   * `remindDueEvents` next to `listAndClaimDueReminders`. Bug report:
+   * without the external scheduler actually configured, a Jio past its own
+   * `vote_end_at` just sits open forever — the countdown already reads
+   * "Voting: Closed" (a pure client-side comparison), but nothing has
+   * force-closed it, so a voter can't tell whether they can still vote and
+   * the host has no "Reopen" button to reach for since there's nothing yet
+   * to reopen. A no-op if the event isn't open, is still polling, has no
+   * deadline, or the deadline hasn't passed — same guard conditions as the
+   * sweep, re-checked inside the `SECURITY DEFINER` write itself (not just
+   * trusted from here) since any authenticated caller can reach it
+   * directly.
+   */
+  closeEventIfPastVoteDeadline(eventId: string): Promise<void>;
   /**
    * Claims (atomically, same "claim before acting" shape
    * `listAndClaimDueReminders` uses) every `open`, non-polling event whose
@@ -1370,6 +1393,7 @@ export const REPO_METHODS = [
   "setHideVotes",
   "setVoteDeadlineOffset",
   "closeEventsPastVoteDeadline",
+  "closeEventIfPastVoteDeadline",
   "listAndClaimVoteDeadlineReminders",
   "createRecurringSeries",
   "listRecurringSeries",
