@@ -2407,9 +2407,6 @@ export const demoRepo: Repo = {
     if (event.status !== "closed") {
       throw new Error("Only a closed Jio can be reopened for voting");
     }
-    if (new Date(event.scheduled_at).getTime() <= Date.now()) {
-      throw new Error("Can't reopen voting for a Jio that's already happened");
-    }
 
     s.events[index] = {
       ...event,

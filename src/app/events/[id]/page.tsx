@@ -337,8 +337,12 @@ export default function EventDetailPage({
   const isCancelled = event.status === "cancelled";
   const isDatePolling = event.date_phase === "polling";
   const isClosed = event.status === "closed";
-  const canReopen =
-    isClosed && new Date(event.scheduled_at).getTime() > Date.now();
+  // Always available to the host once closed, regardless of whether the
+  // Jio's own scheduled time has passed — a Jio can end up stuck well past
+  // its lunch time for reasons that have nothing to do with the lunch
+  // itself having happened (097_lazy_vote_deadline_close.sql's own bug
+  // report), and the host should always have a way back into voting.
+  const canReopen = isClosed;
   const isUpcoming = new Date(event.scheduled_at).getTime() > Date.now();
 
   const myAvailability = new Set(

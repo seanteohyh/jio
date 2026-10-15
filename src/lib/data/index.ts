@@ -632,10 +632,16 @@ export interface Repo {
     newPlaceId: string
   ): Promise<EventDetail>;
   /**
-   * Undoes a close — host-only, only from `closed`, and only while the
-   * scheduled time is still in the future (reopening a lunch that's already
-   * happened doesn't mean anything). Existing ballots are left exactly as
-   * they were, same as `cancelEvent` leaves everything else about the row
+   * Undoes a close — host-only, only from `closed`. Available at any time,
+   * including once the Jio's own scheduled time has passed
+   * (098_reopen_any_time.sql) — the original "only while scheduled_at is
+   * still in the future" restriction assumed a closed Jio past its
+   * scheduled time always meant the lunch itself had already happened,
+   * which 097_lazy_vote_deadline_close.sql's own bug report showed isn't
+   * true (a Jio can end up stuck closed past its scheduled time for
+   * reasons unrelated to the lunch happening); the host should always have
+   * a way back into voting. Existing ballots are left exactly as they
+   * were, same as `cancelEvent` leaves everything else about the row
    * alone: a vote already persists until its owner recasts it, so "reopen"
    * just means "accept new/changed ballots again," not "start over." Clears
    * `winner_place_id` and `closed_at` since neither describes reality once
