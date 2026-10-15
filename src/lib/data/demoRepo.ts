@@ -2454,6 +2454,30 @@ export const demoRepo: Repo = {
     return closed;
   },
 
+  async closeEventIfPastVoteDeadline(eventId) {
+    const s = store();
+    const event = s.events.find((e) => e.id === eventId);
+    if (!event) return;
+    if (event.status !== "open") return;
+    if (event.date_phase === "polling") return;
+    if (!event.vote_end_at) return;
+    if (new Date(event.vote_end_at).getTime() > Date.now()) return;
+
+    const optionIds = s.options
+      .filter((o) => o.event_id === eventId)
+      .map((o) => o.place_id);
+    const votes = s.votes.filter((v) => v.event_id === eventId);
+    const winner = computeWinner(votes, optionIds).winnerId;
+
+    const index = s.events.findIndex((e) => e.id === eventId);
+    s.events[index] = {
+      ...event,
+      status: "closed",
+      winner_place_id: winner,
+      closed_at: new Date().toISOString(),
+    };
+  },
+
   async listAndClaimVoteDeadlineReminders(leadMinutes) {
     const s = store();
     const now = Date.now();

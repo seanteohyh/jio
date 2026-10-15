@@ -705,6 +705,23 @@ export interface Repo {
    */
   closeEventsPastVoteDeadline(): Promise<number>;
   /**
+   * Lazy, single-event counterpart to the sweep above, called from
+   * `GET /api/events/[id]` (097_lazy_vote_deadline_close.sql) — same "lazy
+   * fallback alongside the cron, not instead of it" shape as
+   * `remindDueEvents` next to `listAndClaimDueReminders`. Bug report:
+   * without the external scheduler actually configured, a Jio past its own
+   * `vote_end_at` just sits open forever — the countdown already reads
+   * "Voting: Closed" (a pure client-side comparison), but nothing has
+   * force-closed it, so a voter can't tell whether they can still vote and
+   * the host has no "Reopen" button to reach for since there's nothing yet
+   * to reopen. A no-op if the event isn't open, is still polling, has no
+   * deadline, or the deadline hasn't passed — same guard conditions as the
+   * sweep, re-checked inside the `SECURITY DEFINER` write itself (not just
+   * trusted from here) since any authenticated caller can reach it
+   * directly.
+   */
+  closeEventIfPastVoteDeadline(eventId: string): Promise<void>;
+  /**
    * Claims (atomically, same "claim before acting" shape
    * `listAndClaimDueReminders` uses) every `open`, non-polling event whose
    * `vote_end_at` falls within `leadMinutes` from now and hasn't already
@@ -1370,6 +1387,7 @@ export const REPO_METHODS = [
   "setHideVotes",
   "setVoteDeadlineOffset",
   "closeEventsPastVoteDeadline",
+  "closeEventIfPastVoteDeadline",
   "listAndClaimVoteDeadlineReminders",
   "createRecurringSeries",
   "listRecurringSeries",

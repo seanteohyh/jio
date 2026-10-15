@@ -18,6 +18,14 @@ export async function GET(_request: NextRequest, { params }: Params) {
     const { id } = await params;
     const repo = await getRepoAsync();
 
+    // Lazy fallback for the vote-deadline cron sweep (097_lazy_vote_deadline_
+    // close.sql) — bug report: without the external scheduler actually
+    // configured, a Jio past its own vote_end_at just sat open forever,
+    // showing a "Voting: Closed" countdown with nothing having actually
+    // force-closed it. A no-op unless this one event is open, non-polling,
+    // and genuinely past its deadline.
+    await repo.closeEventIfPastVoteDeadline(id);
+
     const event = await repo.getEvent(id);
     if (!event) return notFound("That Jio does not exist");
 
