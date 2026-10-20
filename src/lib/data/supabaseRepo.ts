@@ -3494,9 +3494,14 @@ export const supabaseRepo: Repo = {
 
     if (error) fail("Could not check recurring Jios", error);
     const due = (seriesRows ?? []) as RecurringSeries[];
-    if (due.length === 0) return 0;
+    if (due.length === 0) return [];
 
-    let generated = 0;
+    const generated: Array<{
+      eventId: string;
+      title: string;
+      voteEndAt: string | null;
+      inviteeIds: string[];
+    }> = [];
     const today = sgtToday();
 
     for (const series of due) {
@@ -3574,7 +3579,12 @@ export const supabaseRepo: Repo = {
         .update({ recurring_series_id: series.id })
         .eq("id", created.id);
 
-      generated += 1;
+      generated.push({
+        eventId: created.id,
+        title: created.title,
+        voteEndAt: created.vote_end_at ?? null,
+        inviteeIds: [...inviteeSet],
+      });
     }
 
     return generated;

@@ -71,7 +71,23 @@ export async function GET() {
     // Lazy generation: whoever hosts a recurring series triggers its next
     // occurrence just by loading their own Jios list. See
     // 031_recurring_series.sql for why this isn't cron-driven.
-    await repo.generateDueOccurrences(user.id);
+    //
+    // Bug report ("didn't see the invite"): generating here creates the
+    // event and its invitees directly through the repo layer, bypassing
+    // `POST /api/events`'s own notifyInvitees call entirely — a recurring
+    // occurrence never pushed anyone at all, kaki member or individually
+    // invited, unlike a one-off Jio. Each newly generated occurrence now
+    // gets the identical "You're invited to a Jio" push.
+    const newOccurrences = await repo.generateDueOccurrences(user.id);
+    for (const occurrence of newOccurrences) {
+      await notifyInvitees(
+        repo,
+        occurrence.inviteeIds,
+        occurrence.eventId,
+        occurrence.title,
+        occurrence.voteEndAt
+      );
+    }
     // Same lazy trigger, for the "starting soon" reminder — see
     // 039_close_reminder.sql.
     await remindUpcoming(repo, user.id);
