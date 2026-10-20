@@ -783,10 +783,24 @@ export interface Repo {
    * one falls due within the lookahead window — see 031_recurring_series.sql
    * for why this is lazy (host-triggered, on page load) rather than cron- or
    * SECURITY-DEFINER-driven. Never backfills more than one occurrence per
-   * series per call. Returns how many were generated, for callers that want
-   * to know whether to refresh anything.
+   * series per call. Returns one entry per occurrence actually created,
+   * with enough to notify its invitees (`GET /api/events` is the caller) —
+   * a real report ("didn't see the invite") found that a recurring
+   * occurrence never sent the "You're invited to a Jio" push at all,
+   * unlike a manually created Jio: this repo-layer method creates the
+   * event and its invitee rows directly, bypassing `POST /api/events`'s
+   * own `notifyInvitees` call entirely, so nobody — kaki member or
+   * individually invited — was ever actually notified of a new occurrence,
+   * only able to stumble onto it by opening the app.
    */
-  generateDueOccurrences(hostId: string): Promise<number>;
+  generateDueOccurrences(hostId: string): Promise<
+    Array<{
+      eventId: string;
+      title: string;
+      voteEndAt: string | null;
+      inviteeIds: string[];
+    }>
+  >;
 
   // ---- Wishlist ("Want to try") ----
   listWishlist(userId: string): Promise<WishlistEntry[]>;

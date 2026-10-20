@@ -88,8 +88,8 @@ describe("generateDueOccurrences", () => {
     vi.setSystemTime(new Date("2026-08-05T09:00:00")); // a Wednesday
 
     await demoRepo.createRecurringSeries(seriesInput());
-    const count = await demoRepo.generateDueOccurrences(DEMO_USER_ID);
-    expect(count).toBe(1);
+    const occurrences = await demoRepo.generateDueOccurrences(DEMO_USER_ID);
+    expect(occurrences).toHaveLength(1);
 
     const events = await demoRepo.listEvents(DEMO_USER_ID);
     const generated = events.find((e) => e.recurring_series_id);
@@ -175,8 +175,8 @@ describe("generateDueOccurrences", () => {
     vi.setSystemTime(new Date("2026-08-06T09:00:00")); // a Thursday
 
     await demoRepo.createRecurringSeries(seriesInput());
-    const count = await demoRepo.generateDueOccurrences(DEMO_USER_ID);
-    expect(count).toBe(0);
+    const occurrences = await demoRepo.generateDueOccurrences(DEMO_USER_ID);
+    expect(occurrences).toHaveLength(0);
   });
 
   it("does not regenerate the same occurrence twice", async () => {
@@ -187,8 +187,8 @@ describe("generateDueOccurrences", () => {
     const first = await demoRepo.generateDueOccurrences(DEMO_USER_ID);
     const second = await demoRepo.generateDueOccurrences(DEMO_USER_ID);
 
-    expect(first).toBe(1);
-    expect(second).toBe(0);
+    expect(first).toHaveLength(1);
+    expect(second).toHaveLength(0);
   });
 
   it("does not create a duplicate occurrence from two overlapping calls (a second tab, an SWR refetch)", async () => {
@@ -208,7 +208,7 @@ describe("generateDueOccurrences", () => {
       demoRepo.generateDueOccurrences(DEMO_USER_ID),
     ]);
 
-    expect(first + second).toBe(1);
+    expect(first.length + second.length).toBe(1);
 
     const events = await demoRepo.listEvents(DEMO_USER_ID);
     expect(events.filter((e) => e.recurring_series_id)).toHaveLength(1);
@@ -221,8 +221,8 @@ describe("generateDueOccurrences", () => {
     const series = await demoRepo.createRecurringSeries(seriesInput());
     await demoRepo.cancelRecurringSeries(series.id, DEMO_USER_ID);
 
-    const count = await demoRepo.generateDueOccurrences(DEMO_USER_ID);
-    expect(count).toBe(0);
+    const occurrences = await demoRepo.generateDueOccurrences(DEMO_USER_ID);
+    expect(occurrences).toHaveLength(0);
   });
 
   it("generates the configured time as its Singapore instant, not the runtime's own local hour", async () => {
@@ -253,8 +253,8 @@ describe("generateDueOccurrences", () => {
     vi.setSystemTime(new Date("2026-08-05T20:00:00Z"));
 
     await demoRepo.createRecurringSeries(seriesInput({ weekday: 3 })); // Wednesday
-    const count = await demoRepo.generateDueOccurrences(DEMO_USER_ID);
-    expect(count).toBe(0);
+    const occurrences = await demoRepo.generateDueOccurrences(DEMO_USER_ID);
+    expect(occurrences).toHaveLength(0);
   });
 
   it("expands invitees fresh from current kaki membership", async () => {
@@ -282,6 +282,31 @@ describe("generateDueOccurrences", () => {
     expect(
       stillOnlyOriginal?.invitees.map((i) => i.user_id)
     ).not.toContain(DEMO_TEAMMATE_B);
+  });
+
+  it("returns enough per occurrence to notify every invitee — bug report: a generated occurrence never pushed anyone at all", async () => {
+    // generateDueOccurrences runs inside GET /api/events, bypassing
+    // POST /api/events's own notifyInvitees call entirely — a real report
+    // ("didn't see the invite") traced back to a generated occurrence
+    // never sending the "You're invited to a Jio" push to anyone, kaki
+    // member or individually invited. The caller needs eventId/title/
+    // voteEndAt/inviteeIds back to send that push itself.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-05T09:00:00"));
+
+    const kaki = await demoRepo.createKaki(DEMO_USER_ID, "Standing lunch crew");
+    await demoRepo.joinKaki(kaki.invite_token, DEMO_TEAMMATE_A);
+
+    await demoRepo.createRecurringSeries(
+      seriesInput({ kaki_id: kaki.id, invitee_ids: [DEMO_TEAMMATE_B] })
+    );
+    const [occurrence] = await demoRepo.generateDueOccurrences(DEMO_USER_ID);
+
+    expect(occurrence.title).toBe("Standing Wednesday lunch");
+    expect(occurrence.eventId).toBeTruthy();
+    expect(occurrence.inviteeIds).toContain(DEMO_TEAMMATE_A);
+    expect(occurrence.inviteeIds).toContain(DEMO_TEAMMATE_B);
+    expect(occurrence.inviteeIds).not.toContain(DEMO_USER_ID); // the host
   });
 });
 

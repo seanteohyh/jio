@@ -2662,9 +2662,14 @@ export const demoRepo: Repo = {
     const due = s.recurringSeries.filter(
       (series) => series.host_id === hostId && series.status === "active"
     );
-    if (due.length === 0) return 0;
+    if (due.length === 0) return [];
 
-    let generated = 0;
+    const generated: Array<{
+      eventId: string;
+      title: string;
+      voteEndAt: string | null;
+      inviteeIds: string[];
+    }> = [];
     const today = sgtToday();
 
     for (const series of due) {
@@ -2725,7 +2730,12 @@ export const demoRepo: Repo = {
       );
       created.recurring_series_id = series.id;
 
-      generated += 1;
+      generated.push({
+        eventId: created.id,
+        title: created.title,
+        voteEndAt: created.vote_end_at ?? null,
+        inviteeIds: [...inviteeSet],
+      });
     }
 
     return generated;
