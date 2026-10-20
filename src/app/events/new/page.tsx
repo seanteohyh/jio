@@ -6,7 +6,7 @@ import useSWR from "swr";
 import JioForm from "@/components/events/JioForm";
 import { Skeleton, SkeletonDetail, Spinner } from "@/components/ui";
 import { fetcher } from "@/lib/fetcher";
-import type { EventDetail, Place } from "@/types";
+import type { EventDetail, KakiDetail, Place } from "@/types";
 
 /**
  * The full-page way to start a Jio.
@@ -29,6 +29,11 @@ function NewEventBody() {
   // (CHANGES §3). Ignored alongside repeatFrom's own place list, same
   // "repeating an old Jio already carries its own" precedent.
   const placeId = params.get("placeId");
+  // "Start a Jio" button on a Kaki's own page — pre-selects that group,
+  // same precedent as `invite` above. Ignored alongside repeatFrom/placeId
+  // for the same reason: whichever source is present already carries its
+  // own invite list.
+  const kakiId = params.get("kakiId");
 
   const { data, isLoading } = useSWR<{ event: EventDetail }>(
     repeatFrom ? `/api/events/${repeatFrom}` : null,
@@ -37,8 +42,18 @@ function NewEventBody() {
   const { data: placeData, isLoading: placeLoading } = useSWR<{
     place: Place;
   }>(placeId && !repeatFrom ? `/api/places/${placeId}` : null, fetcher);
+  const { data: kakiData, isLoading: kakiLoading } = useSWR<{
+    kaki: KakiDetail;
+  }>(
+    kakiId && !repeatFrom && !placeId ? `/api/kakis/${kakiId}` : null,
+    fetcher
+  );
 
-  if ((repeatFrom && isLoading) || (placeId && !repeatFrom && placeLoading)) {
+  if (
+    (repeatFrom && isLoading) ||
+    (placeId && !repeatFrom && placeLoading) ||
+    (kakiId && !repeatFrom && !placeId && kakiLoading)
+  ) {
     return (
       <div className="space-y-5">
         <header>
@@ -63,7 +78,9 @@ function NewEventBody() {
       }
     : inviteUserId
       ? { userIds: [inviteUserId], kakiIds: [] }
-      : undefined;
+      : kakiData?.kaki
+        ? { userIds: [], kakiIds: [kakiData.kaki.id] }
+        : undefined;
 
   return (
     <div className="space-y-5">
@@ -74,12 +91,14 @@ function NewEventBody() {
             ? `Prefilled from "${source.title}" — change anything before it's real.`
             : placeData?.place
               ? `Prefilled with ${placeData.place.name} — change anything before it's real.`
-              : "Pick a few options. Everyone ranks them, and the Borda count settles it."}
+              : kakiData?.kaki
+                ? `Prefilled for ${kakiData.kaki.name} — change anything before it's real.`
+                : "Pick a few options. Everyone ranks them, and the Borda count settles it."}
         </p>
       </header>
 
       <JioForm
-        key={repeatFrom ?? placeId ?? ""}
+        key={repeatFrom ?? placeId ?? kakiId ?? ""}
         variant="page"
         initialTitle={source?.title}
         initialPlaceIds={initialPlaceIds}

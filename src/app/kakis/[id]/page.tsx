@@ -8,6 +8,7 @@ import {
   Button,
   Card,
   ErrorNote,
+  LinkButton,
   SectionHeading,
   SkeletonKakiDetail,
   Stars,
@@ -214,6 +215,12 @@ export default function KakiDetailPage({
           {kaki.created_at && ` · since ${formatDate(kaki.created_at)}`}
         </p>
       </header>
+
+      {viewer.isMember && (
+        <LinkButton href={`/events/new?kakiId=${id}`} className="w-full">
+          Start a Jio with this group
+        </LinkButton>
+      )}
 
       {actionError && <ErrorNote>{actionError}</ErrorNote>}
 
