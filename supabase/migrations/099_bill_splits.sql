@@ -298,13 +298,24 @@ create policy "bill_item_assignees_write" on bill_item_assignees
 -- the browser, not this policy directly. Object paths are now
 -- `<uploader_id>/<uuid>.jpg` (scanning happens before any split row
 -- exists, so there's no bill_split_id or event_id to key off yet).
+--
+-- This section is unchanged from the original 099 and is safe to
+-- re-run even if it already applied once — `on conflict do nothing` for
+-- the bucket, `drop policy if exists` before each `create policy` for
+-- the three below — since Supabase blocks a raw `delete` against
+-- `storage.objects`/`storage.buckets` (a `protect_delete()` trigger;
+-- use the Storage API/dashboard if the bucket itself ever needs
+-- recreating, never SQL).
 insert into storage.buckets (id, name, public)
 values ('receipts', 'receipts', false)
 on conflict (id) do nothing;
 
+drop policy if exists "receipts_select" on storage.objects;
 create policy "receipts_select" on storage.objects
   for select to authenticated using (bucket_id = 'receipts');
+drop policy if exists "receipts_insert" on storage.objects;
 create policy "receipts_insert" on storage.objects
   for insert to authenticated with check (bucket_id = 'receipts');
+drop policy if exists "receipts_delete" on storage.objects;
 create policy "receipts_delete" on storage.objects
   for delete to authenticated using (bucket_id = 'receipts');
