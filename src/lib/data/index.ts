@@ -6,6 +6,7 @@ import type {
   AdminUserDetail,
   AdminUserSegmentKey,
   AdminUsersData,
+  BillSplit,
   CuisineMergePreview,
   CuisineOption,
   DuplicateProfileGroup,
@@ -65,6 +66,26 @@ import type {
  * `tests/repoConformance.test.ts` asserts that every implementation exposes
  * the same method set with the same arity, so a partial port fails loudly.
  */
+/** Shared shape for `createBillSplit`/`updateBillSplit` — see their own
+ *  doc comments on `Repo`. */
+export interface BillSplitInput {
+  /** Defaults to `hostId` when omitted. */
+  payerUserId?: string;
+  receiptImagePath?: string | null;
+  items: Array<{
+    label: string;
+    amountCents: number;
+    /** User ids sharing this item — empty is valid (flagged, not
+     *  charged to anyone) rather than rejected. */
+    assigneeIds: string[];
+  }>;
+  subtotalCents: number;
+  gstCents: number;
+  serviceChargeCents: number;
+  gstIncluded: boolean;
+  serviceChargeIncluded: boolean;
+}
+
 export interface Repo {
   // ---- Places ----
   /**
@@ -740,6 +761,65 @@ export interface Repo {
     leadMinutes: number
   ): Promise<{ eventId: string; title: string; pendingUserIds: string[] }[]>;
 
+  // ---- Bill splitting (099_bill_splits.sql) ----
+  /**
+   * Uploads a receipt photo to storage for this Jio and returns the
+   * object path — host-only. Returns `null` in an environment with no
+   * real storage backend (demo mode) rather than failing; the caller
+   * (the API route) still runs OCR on the image itself regardless, since
+   * extraction doesn't depend on the upload having succeeded.
+   */
+  uploadReceiptImage(
+    eventId: string,
+    hostId: string,
+    imageBase64: string,
+    mediaType: string
+  ): Promise<string | null>;
+  /**
+   * Creates this Jio's bill split in one shot — host-only, and only once
+   * the Jio is `closed` (splitting a bill before the lunch happened
+   * doesn't mean anything). Deliberately one call, not a draft-then-
+   * finalize dance: the review-and-assign step happens entirely in the
+   * client's own state (seeded from OCR or typed by hand), so the server
+   * only ever sees the finished item list. Replaces any existing split
+   * for this event rather than stacking a history — see `EventDetail.
+   * billSplit`'s own doc comment. Computes `owed_cents` per participant:
+   * each item's cost divides evenly across its assignees, GST/service
+   * charge (if toggled on) divides across each person proportional to
+   * their own item subtotal. An item with no assignees contributes to
+   * nobody's total and is reported back as-is so the caller can flag it,
+   * rather than being silently dropped or charged to the payer.
+   */
+  createBillSplit(
+    eventId: string,
+    hostId: string,
+    input: BillSplitInput
+  ): Promise<BillSplit>;
+  /** Re-saves an existing split with a fresh item list — same shape and
+   *  guards as `createBillSplit`, keeps the same id/created_at. */
+  updateBillSplit(
+    billSplitId: string,
+    hostId: string,
+    input: BillSplitInput
+  ): Promise<BillSplit>;
+  deleteBillSplit(billSplitId: string, hostId: string): Promise<void>;
+  /** Ad hoc per split, not a profile field — see `BillSplitParticipant`'s
+   *  own doc comment. `null` clears it. */
+  setBillSplitParticipantPhone(
+    billSplitId: string,
+    hostId: string,
+    userId: string,
+    phoneNumber: string | null
+  ): Promise<BillSplit>;
+  /** Host-marked only, for now — see the feature's "out of scope for v1"
+   *  note on a self-serve "I've paid" tap. */
+  setBillSplitPaid(
+    billSplitId: string,
+    hostId: string,
+    userId: string,
+    paid: boolean
+  ): Promise<BillSplit>;
+
   // ---- Recurring series ("Recurring Jios", CHANGES_20260801.md §10) ----
   createRecurringSeries(
     data: Omit<
@@ -1409,6 +1489,12 @@ export const REPO_METHODS = [
   "closeEventsPastVoteDeadline",
   "closeEventIfPastVoteDeadline",
   "listAndClaimVoteDeadlineReminders",
+  "uploadReceiptImage",
+  "createBillSplit",
+  "updateBillSplit",
+  "deleteBillSplit",
+  "setBillSplitParticipantPhone",
+  "setBillSplitPaid",
   "createRecurringSeries",
   "listRecurringSeries",
   "cancelRecurringSeries",

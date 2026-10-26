@@ -584,6 +584,56 @@ export interface EventRsvp {
   display_name?: string;
 }
 
+/**
+ * Receipt bill-splitting (099_bill_splits.sql). One `BillSplit` per
+ * uploaded/entered receipt for a Jio — `items`/`participants` are always
+ * hydrated by the repo, never fetched separately, since a receipt is
+ * small enough that a second round trip buys nothing.
+ */
+export interface BillItem {
+  id: string;
+  bill_split_id: string;
+  label: string;
+  amount_cents: number;
+  position: number;
+  /** Who shares this item — splits its cost evenly across however many. */
+  assignee_ids: string[];
+}
+
+export interface BillSplitParticipant {
+  user_id: string;
+  phone_number?: string | null;
+  /** Host-marked. */
+  paid_at?: string | null;
+  /** Derived. */
+  display_name?: string;
+  /** Derived — this person's total share, including their cut of GST/
+   *  service charge if those are toggled on. Computed by the repo, not
+   *  the client, same "server computes the tally" precedent as
+   *  EventDetail.tally. */
+  owed_cents: number;
+}
+
+export interface BillSplit {
+  id: string;
+  event_id: string;
+  created_by: string;
+  payer_user_id: string;
+  receipt_image_path?: string | null;
+  /** Derived — a short-lived signed URL, resolved by the repo at read
+   *  time rather than handed to the client as a raw storage path. */
+  receipt_image_url?: string | null;
+  subtotal_cents: number;
+  gst_cents: number;
+  service_charge_cents: number;
+  gst_included: boolean;
+  service_charge_included: boolean;
+  status: "draft" | "finalized";
+  created_at: string;
+  items: BillItem[];
+  participants: BillSplitParticipant[];
+}
+
 export interface EventInvitee {
   event_id: string;
   user_id: string;
@@ -618,6 +668,11 @@ export interface EventDetail extends LunchEvent {
    * turned out to be unsafe for a Jio anyone can still join.
    */
   readyToClose: boolean;
+  /** The most recent bill split for this Jio, if the host has started
+   *  one — `null` once none exists yet. Only ever one at a time; starting
+   *  a new one (a re-scan, a corrected receipt) replaces it rather than
+   *  stacking a history. */
+  billSplit?: BillSplit | null;
 }
 
 /**

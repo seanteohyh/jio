@@ -33,6 +33,7 @@ import { useToast } from "@/components/Toast";
 import ShareLink from "@/components/ShareLink";
 import ShareResultCard from "@/components/ShareResultCard";
 import InvitePicker, { type InviteSelection } from "@/components/InvitePicker";
+import BillSplitCard from "@/components/events/BillSplitCard";
 import SuggestFilterControls, {
   DEFAULT_SUGGEST_FILTERS,
   suggestFilterParams,
@@ -2170,6 +2171,10 @@ export default function EventDetailPage({
             </div>
           )}
         </Card>
+      )}
+
+      {viewer.isHost && isClosed && (
+        <BillSplitCard event={event} viewerId={viewer.id} onChanged={() => mutate()} />
       )}
 
       {/* --- Host controls --- */}
