@@ -6,6 +6,7 @@ import type {
   AdminUserDetail,
   AdminUserSegmentKey,
   AdminUsersData,
+  BillSplit,
   CuisineMergePreview,
   CuisineOption,
   DuplicateProfileGroup,
@@ -46,6 +47,8 @@ import type {
   RecurringSeries,
   RsvpResponse,
   ScoredPlace,
+  SplitInput,
+  SplitSummary,
   TeamUser,
   UserFoodIdentitySnapshot,
   UserPrefs,
@@ -740,6 +743,81 @@ export interface Repo {
     leadMinutes: number
   ): Promise<{ eventId: string; title: string; pendingUserIds: string[] }[]>;
 
+  // ---- Bill splitting (099_bill_splits.sql) ----
+  /**
+   * Uploads a receipt photo to storage for this Jio and returns the
+   * object path — host-only. Returns `null` in an environment with no
+   * real storage backend (demo mode) rather than failing; the caller
+   * (the API route) still runs OCR on the image itself regardless, since
+   * extraction doesn't depend on the upload having succeeded.
+   */
+  /** Object path is uploader-scoped (`<viewerId>/<uuid>.jpg`) — scanning
+   *  always happens before any split row exists, so there's no split or
+   *  event id to key off yet. */
+  uploadReceiptImage(
+    viewerId: string,
+    imageBase64: string,
+    mediaType: string
+  ): Promise<string | null>;
+  /** Everyone's splits — ones the viewer created, plus ones they're a
+   *  participant in (registered, not guest). For the `/splits` list
+   *  page. */
+  listSplits(viewerId: string): Promise<SplitSummary[]>;
+  /** `null` means "not found, or not yours to see" (used for a 404) —
+   *  the viewer must be the creator, a registered participant, or (when
+   *  linked) that Jio's host/kaki-member/invitee. */
+  getSplit(splitId: string, viewerId: string): Promise<BillSplit | null>;
+  /**
+   * Creates a split in one shot — standalone by default, or linked to a
+   * Jio via `input.eventId` (that Jio must be `closed` and hosted by
+   * `viewerId` — splitting a bill before the lunch happened doesn't mean
+   * anything). Deliberately one call, not a draft-then-finalize dance:
+   * the review-and-assign step happens entirely in the client's own
+   * state (seeded from OCR, typed by hand, or pre-filled from a linked
+   * Jio's participants), so the server only ever sees the finished item
+   * list. When `eventId` is given and that Jio already has a linked
+   * split, the old one and its children are replaced rather than
+   * stacked — see `EventDetail.billSplit`'s own doc comment; a
+   * standalone split has no such limit. Computes `owed_cents` per
+   * participant: each item's cost divides evenly across its assignees,
+   * GST/service charge (if toggled on) divides across each person
+   * proportional to their own item subtotal. An item with no assignees
+   * contributes to nobody's total and is reported back as-is so the
+   * caller can flag it, rather than being silently dropped or charged to
+   * the payer. Participants are resolved from `input.participants` — a
+   * `participantId` keeps/edits an existing row (never touching
+   * `paid_at`), a bare `userId` upserts a registered person, a bare
+   * `guestName` creates a new guest; any previously-existing participant
+   * left out of the new list is removed from the split.
+   */
+  createSplit(viewerId: string, input: SplitInput): Promise<BillSplit>;
+  /** Re-saves an existing split with a fresh item/participant list —
+   *  same resolution rules and guards as `createSplit`, keeps the same
+   *  id/created_at. Viewer must be the creator (standalone) or that
+   *  Jio's host (linked). */
+  updateSplit(
+    splitId: string,
+    viewerId: string,
+    input: SplitInput
+  ): Promise<BillSplit>;
+  deleteSplit(splitId: string, viewerId: string): Promise<void>;
+  /** Ad hoc per split, not a profile field — see `BillSplitParticipant`'s
+   *  own doc comment. `null` clears it. */
+  setSplitParticipantPhone(
+    splitId: string,
+    viewerId: string,
+    participantId: string,
+    phoneNumber: string | null
+  ): Promise<BillSplit>;
+  /** Host-marked only, for now — see the feature's "out of scope" note
+   *  on a self-serve "I've paid" tap. */
+  setSplitPaid(
+    splitId: string,
+    viewerId: string,
+    participantId: string,
+    paid: boolean
+  ): Promise<BillSplit>;
+
   // ---- Recurring series ("Recurring Jios", CHANGES_20260801.md §10) ----
   createRecurringSeries(
     data: Omit<
@@ -1409,6 +1487,14 @@ export const REPO_METHODS = [
   "closeEventsPastVoteDeadline",
   "closeEventIfPastVoteDeadline",
   "listAndClaimVoteDeadlineReminders",
+  "uploadReceiptImage",
+  "listSplits",
+  "getSplit",
+  "createSplit",
+  "updateSplit",
+  "deleteSplit",
+  "setSplitParticipantPhone",
+  "setSplitPaid",
   "createRecurringSeries",
   "listRecurringSeries",
   "cancelRecurringSeries",

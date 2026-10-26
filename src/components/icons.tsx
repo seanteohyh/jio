@@ -113,6 +113,23 @@ export function YouIcon(props: IconProps) {
 }
 
 /**
+ * Nav: Splits. A receipt — the classic jagged-bottom silhouette — with
+ * two item lines inside. The signature dot is grounded as the price
+ * marker at the end of the second line, standing in for "here's the
+ * number that gets split."
+ */
+export function SplitIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M6 3h12v16.5l-2-1.3-2 1.3-2-1.3-2 1.3-2-1.3-2 1.3V3Z" />
+      <path d="M8.5 8h7" />
+      <path d="M8.5 11.5h4.5" />
+      <circle cx="15.5" cy="11.5" r="1" fill="currentColor" stroke="none" />
+    </Svg>
+  );
+}
+
+/**
  * "A place" — nav: Places, and any location-pin context for one specific
  * place (an option's Google Maps link, a card's address). Corrected per
  * visual QA to a standard pin orientation — round top, point down — with

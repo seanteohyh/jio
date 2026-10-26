@@ -28,6 +28,7 @@ const ACTION_LABELS: Record<string, string> = {
   "kaki.created": "Created a Kaki",
   "report.filed": "Filed a report",
   "place.flagged": "Flagged a place",
+  "split.created": "Split a bill",
 };
 
 /**

@@ -20,7 +20,8 @@ export type ActionType =
   | "kaki.wishlisted"
   | "expense.logged"
   | "report.filed"
-  | "place.flagged";
+  | "place.flagged"
+  | "split.created";
 
 /**
  * Fire-and-forget action-log write — §4 is explicit that logging must
