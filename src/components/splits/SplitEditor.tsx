@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import InvitePicker, { type InviteSelection } from "@/components/InvitePicker";
 import { Avatar, Button, Card, Field, inputClass } from "@/components/ui";
 import { AlertIcon } from "@/components/icons";
@@ -8,6 +8,64 @@ import { mutateJson, fetcher } from "@/lib/fetcher";
 import { formatCents } from "@/lib/expenses";
 import { cn } from "@/lib/utils";
 import type { BillSplit, KakiDetail, TeamUser } from "@/types";
+
+// Typical Singapore F&B rates — a starting estimate, not a per-split
+// setting: ticking "Split GST"/"Split service charge" on auto-fills the
+// amount from these (service charge off subtotal, GST off subtotal plus
+// service charge if that's also included, matching how a real receipt
+// stacks them), but only when the field is still at zero, so it never
+// clobbers a typed-in or OCR-scanned amount. Always freely editable
+// afterward — a particular restaurant's actual rate can differ.
+const GST_RATE = 0.09;
+const SERVICE_CHARGE_RATE = 0.1;
+
+/**
+ * A plain decimal-text input that never fights what's being typed. A
+ * `type="number"` field re-formats to a fixed "X.XX" on every keystroke,
+ * which makes clearing a "0.00" placeholder and typing over it unreliable
+ * on mobile (nothing to cleanly select, cursor jumps on each render).
+ * This tracks the exact string being typed as its own state, only
+ * reporting a parsed cents value upward, and re-syncs from the outside
+ * (an auto-calculated GST, a freshly scanned amount) only while not
+ * focused, so it never overwrites an in-progress edit.
+ */
+function MoneyInput({
+  cents,
+  onChangeCents,
+  className,
+}: {
+  cents: number;
+  onChangeCents: (cents: number) => void;
+  className?: string;
+}) {
+  const [text, setText] = useState(cents === 0 ? "" : (cents / 100).toFixed(2));
+  const [focused, setFocused] = useState(false);
+
+  useEffect(() => {
+    if (!focused) setText(cents === 0 ? "" : (cents / 100).toFixed(2));
+  }, [cents, focused]);
+
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      placeholder="0.00"
+      value={text}
+      onFocus={() => setFocused(true)}
+      onBlur={() => {
+        setFocused(false);
+        setText(cents === 0 ? "" : (cents / 100).toFixed(2));
+      }}
+      onChange={(e) => {
+        const raw = e.target.value;
+        if (!/^\d*\.?\d{0,2}$/.test(raw)) return;
+        setText(raw);
+        onChangeCents(Math.round((Number(raw) || 0) * 100));
+      }}
+      className={className}
+    />
+  );
+}
 
 /**
  * The review-and-assign screen — shared by starting a brand-new split
@@ -165,6 +223,20 @@ export default function SplitEditor({
     roster.every((p) => item.assigneeRefs.includes(p.ref));
   const toggleShared = (key: string, shared: boolean) => {
     updateItem(key, { assigneeRefs: shared ? roster.map((p) => p.ref) : [] });
+  };
+
+  const toggleGstIncluded = (checked: boolean) => {
+    setGstIncluded(checked);
+    if (checked && gstCents === 0) {
+      const base = itemsSumCents + (serviceChargeIncluded ? serviceChargeCents : 0);
+      setGstCents(Math.round(base * GST_RATE));
+    }
+  };
+  const toggleServiceChargeIncluded = (checked: boolean) => {
+    setServiceChargeIncluded(checked);
+    if (checked && serviceChargeCents === 0) {
+      setServiceChargeCents(Math.round(itemsSumCents * SERVICE_CHARGE_RATE));
+    }
   };
 
   const confirmAddFromPicker = async () => {
@@ -479,16 +551,9 @@ export default function SplitEditor({
                     className={cn(inputClass, "min-w-0 flex-1")}
                   />
                   <div className="w-20 shrink-0">
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={(item.amountCents / 100).toFixed(2)}
-                      onChange={(e) =>
-                        updateItem(item.key, {
-                          amountCents: Math.round((Number(e.target.value) || 0) * 100),
-                        })
-                      }
+                    <MoneyInput
+                      cents={item.amountCents}
+                      onChangeCents={(amountCents) => updateItem(item.key, { amountCents })}
                       className={cn(inputClass, "min-w-0")}
                     />
                   </div>
@@ -547,22 +612,24 @@ export default function SplitEditor({
           )}
 
           <div className="border-line space-y-2 border-t pt-3">
+            <p className="text-stone text-xs">
+              Ticking either one fills in Singapore&apos;s usual rate (9% GST, 10% service
+              charge) — leave unticked if this receipt doesn&apos;t have one, or edit the amount
+              if it's different.
+            </p>
             <div className="flex items-center gap-2">
               <label className="flex flex-1 items-center gap-1.5 text-xs">
                 <input
                   type="checkbox"
                   checked={gstIncluded}
-                  onChange={(e) => setGstIncluded(e.target.checked)}
+                  onChange={(e) => toggleGstIncluded(e.target.checked)}
                 />
                 Split GST
               </label>
               <div className="w-20 shrink-0">
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={(gstCents / 100).toFixed(2)}
-                  onChange={(e) => setGstCents(Math.round((Number(e.target.value) || 0) * 100))}
+                <MoneyInput
+                  cents={gstCents}
+                  onChangeCents={setGstCents}
                   className={cn(inputClass, "min-w-0")}
                 />
               </div>
@@ -572,19 +639,14 @@ export default function SplitEditor({
                 <input
                   type="checkbox"
                   checked={serviceChargeIncluded}
-                  onChange={(e) => setServiceChargeIncluded(e.target.checked)}
+                  onChange={(e) => toggleServiceChargeIncluded(e.target.checked)}
                 />
                 Split service charge
               </label>
               <div className="w-20 shrink-0">
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={(serviceChargeCents / 100).toFixed(2)}
-                  onChange={(e) =>
-                    setServiceChargeCents(Math.round((Number(e.target.value) || 0) * 100))
-                  }
+                <MoneyInput
+                  cents={serviceChargeCents}
+                  onChangeCents={setServiceChargeCents}
                   className={cn(inputClass, "min-w-0")}
                 />
               </div>
@@ -594,14 +656,9 @@ export default function SplitEditor({
       ) : (
         <Field label="Total to split evenly" hint="Already inclusive of GST/service charge, if any.">
           <div className="w-32">
-            <input
-              type="number"
-              step="0.01"
-              min="0"
-              value={(evenTotalCents / 100).toFixed(2)}
-              onChange={(e) =>
-                setEvenTotalCents(Math.round((Number(e.target.value) || 0) * 100))
-              }
+            <MoneyInput
+              cents={evenTotalCents}
+              onChangeCents={setEvenTotalCents}
               className={cn(inputClass, "min-w-0")}
             />
           </div>
