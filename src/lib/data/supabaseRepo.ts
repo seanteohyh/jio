@@ -19,7 +19,7 @@ import { pickCommitteeSuggestions } from "@/lib/suggestCommittee";
 import { DISCOVERY_CONFIG } from "@/lib/discoveryConfig";
 import { buildExpenseMonthSummary, nextMonthKey, previousMonthKey } from "@/lib/expenses";
 import { createAuthServerClient } from "@/lib/supabase/serverAuth";
-import type { Repo, BillSplitInput } from "./index";
+import type { Repo } from "./index";
 import type {
   AdminAnalytics,
   AdminEngagementWeights,
@@ -60,6 +60,8 @@ import type {
   Profile,
   PublicEventPreview,
   RecurringSeries,
+  SplitInput,
+  SplitSummary,
   TeamUser,
   UserFoodIdentitySnapshot,
   UserPrefs,
@@ -242,8 +244,9 @@ async function resolveEventParticipants(
 
 type BillSplitRow = {
   id: string;
-  event_id: string;
+  event_id: string | null;
   created_by: string;
+  title: string;
   payer_user_id: string;
   receipt_image_path: string | null;
   subtotal_cents: number;
@@ -262,28 +265,26 @@ type BillItemRow = {
   position: number;
 };
 type BillSplitParticipantRow = {
+  id: string;
   bill_split_id: string;
-  user_id: string;
+  user_id: string | null;
+  guest_name: string | null;
   phone_number: string | null;
   paid_at: string | null;
 };
 
-/**
- * Hydrates the most recent bill split for an event — `null` once the
- * Jio has none yet. See `BillSplitInput`'s doc comment (`./index.ts`)
- * for the split math this computes.
- */
-async function hydrateBillSplit(
+/** Hydrates one split, by id — see `SplitInput`'s doc comment
+ *  (`@/types`) for the split math this computes. */
+async function hydrateSplit(
   client: SupabaseClient,
-  eventId: string
+  splitId: string
 ): Promise<BillSplit | null> {
-  const { data: splitRows } = await client
+  const { data: splitRow } = await client
     .from("bill_splits")
     .select("*")
-    .eq("event_id", eventId)
-    .order("created_at", { ascending: false })
-    .limit(1);
-  const split = ((splitRows ?? []) as BillSplitRow[])[0];
+    .eq("id", splitId)
+    .maybeSingle();
+  const split = splitRow as BillSplitRow | null;
   if (!split) return null;
 
   const [itemsRes, participantsRes] = await Promise.all([
@@ -297,12 +298,12 @@ async function hydrateBillSplit(
   const { data: assigneeRows } =
     itemIds.length > 0
       ? await client.from("bill_item_assignees").select("*").in("item_id", itemIds)
-      : { data: [] as { item_id: string; user_id: string }[] };
+      : { data: [] as { item_id: string; participant_id: string }[] };
 
   const assigneesByItem = new Map<string, string[]>();
-  for (const row of (assigneeRows ?? []) as { item_id: string; user_id: string }[]) {
+  for (const row of (assigneeRows ?? []) as { item_id: string; participant_id: string }[]) {
     const list = assigneesByItem.get(row.item_id) ?? [];
-    list.push(row.user_id);
+    list.push(row.participant_id);
     assigneesByItem.set(row.item_id, list);
   }
 
@@ -315,38 +316,47 @@ async function hydrateBillSplit(
     assignee_ids: assigneesByItem.get(i.id) ?? [],
   }));
 
-  const itemsCentsByUser = new Map<string, number>();
+  const itemsCentsByParticipant = new Map<string, number>();
   let totalAssignedCents = 0;
   for (const item of items) {
     if (item.assignee_ids.length === 0) continue;
     totalAssignedCents += item.amount_cents;
     const share = item.amount_cents / item.assignee_ids.length;
-    for (const userId of item.assignee_ids) {
-      itemsCentsByUser.set(userId, (itemsCentsByUser.get(userId) ?? 0) + share);
+    for (const participantId of item.assignee_ids) {
+      itemsCentsByParticipant.set(
+        participantId,
+        (itemsCentsByParticipant.get(participantId) ?? 0) + share
+      );
     }
   }
 
   const participantIds = new Set<string>([
-    ...participantRows.map((p) => p.user_id),
-    ...itemsCentsByUser.keys(),
+    ...participantRows.map((p) => p.id),
+    ...itemsCentsByParticipant.keys(),
   ]);
-  const names = await displayNameMap(client, Array.from(participantIds));
+  const names = await displayNameMap(
+    client,
+    participantRows.filter((p) => p.user_id).map((p) => p.user_id as string)
+  );
 
-  const participants = Array.from(participantIds).map((userId) => {
-    const itemsCents = itemsCentsByUser.get(userId) ?? 0;
+  const participants = Array.from(participantIds).map((participantId) => {
+    const itemsCents = itemsCentsByParticipant.get(participantId) ?? 0;
     const proportion = totalAssignedCents > 0 ? itemsCents / totalAssignedCents : 0;
     const gstShare = split.gst_included ? split.gst_cents * proportion : 0;
     const serviceShare = split.service_charge_included
       ? split.service_charge_cents * proportion
       : 0;
-    const row = participantRows.find((p) => p.user_id === userId);
+    const row = participantRows.find((p) => p.id === participantId);
     return {
-      user_id: userId,
-      display_name: names.get(userId),
+      id: participantId,
+      user_id: row?.user_id ?? null,
+      guest_name: row?.guest_name ?? null,
+      display_name:
+        row?.guest_name ?? (row?.user_id ? names.get(row.user_id) : undefined) ?? "Someone",
       phone_number: row?.phone_number ?? null,
       paid_at: row?.paid_at ?? null,
       // Independently rounded per person — see this same note in
-      // demoRepo's hydrateBillSplit.
+      // demoRepo's hydrateSplit.
       owed_cents: Math.round(itemsCents + gstShare + serviceShare),
     };
   });
@@ -366,6 +376,7 @@ async function hydrateBillSplit(
     id: split.id,
     event_id: split.event_id,
     created_by: split.created_by,
+    title: split.title,
     payer_user_id: split.payer_user_id,
     receipt_image_path: split.receipt_image_path,
     receipt_image_url: receiptImageUrl,
@@ -381,19 +392,161 @@ async function hydrateBillSplit(
   };
 }
 
+/** Most recent split LINKED to this event, for `EventDetail.billSplit`
+ *  — `null` once the Jio has none. */
+async function hydrateSplitForEvent(
+  client: SupabaseClient,
+  eventId: string
+): Promise<BillSplit | null> {
+  const { data: splitRows } = await client
+    .from("bill_splits")
+    .select("id")
+    .eq("event_id", eventId)
+    .order("created_at", { ascending: false })
+    .limit(1);
+  const split = ((splitRows ?? []) as { id: string }[])[0];
+  return split ? hydrateSplit(client, split.id) : null;
+}
+
+/** Can this viewer write (edit/delete/mark-paid) this split? Standalone
+ *  → the creator; linked → that Jio's host. Shared by every mutating
+ *  split method so the gate is defined once. */
+async function isSplitWriterSb(
+  client: SupabaseClient,
+  split: BillSplitRow,
+  viewerId: string
+): Promise<boolean> {
+  if (!split.event_id) return split.created_by === viewerId;
+  const { data: eventRow } = await client
+    .from("lunch_events")
+    .select("host_id")
+    .eq("id", split.event_id)
+    .maybeSingle();
+  return !!eventRow && (eventRow as { host_id: string }).host_id === viewerId;
+}
+
 /**
- * Shared by `createBillSplit`/`updateBillSplit` — wholesale-replaces a
- * split's items/assignees/participants, same "whole-list replace" shape
- * `castBallot` already uses for a ballot rather than a diff. Preserves
- * any existing phone number/paid status for a participant who was
- * already in the split before this save.
+ * Shared by `createSplit`/`updateSplit` — wholesale-replaces a split's
+ * items/assignees and resolves its participant roster, same "whole-list
+ * replace" shape `castBallot` already uses for a ballot rather than a
+ * diff. A given `participantId` keeps/edits an existing row (never
+ * touching `paid_at`); a bare `userId` upserts a registered person; a
+ * bare `guestName` creates a new guest. Anyone previously in the split
+ * but absent from the new input is removed.
  */
-async function writeBillSplitItems(
+async function writeSplitParticipantsAndItems(
   client: SupabaseClient,
   billSplitId: string,
   payerUserId: string,
-  items: BillSplitInput["items"]
+  input: SplitInput
 ): Promise<void> {
+  const { data: existingParticipants } = await client
+    .from("bill_split_participants")
+    .select("*")
+    .eq("bill_split_id", billSplitId);
+  const existingRows = (existingParticipants ?? []) as BillSplitParticipantRow[];
+  const existingById = new Map(existingRows.map((p) => [p.id, p]));
+  const existingByUser = new Map(
+    existingRows.filter((p) => p.user_id).map((p) => [p.user_id as string, p])
+  );
+
+  const refToParticipantId = new Map<string, string>();
+  const keepIds = new Set<string>();
+  const presentUserIds = new Set<string>();
+
+  for (const p of input.participants) {
+    if (p.participantId) {
+      const existing = existingById.get(p.participantId);
+      if (!existing) throw new Error("That person isn't part of this bill split");
+      const patch: Record<string, unknown> = {};
+      if (p.userId !== undefined) patch.user_id = p.userId;
+      if (p.guestName !== undefined) patch.guest_name = p.guestName;
+      if (p.phoneNumber !== undefined) patch.phone_number = p.phoneNumber;
+      if (Object.keys(patch).length > 0) {
+        const { error } = await client
+          .from("bill_split_participants")
+          .update(patch)
+          .eq("id", existing.id);
+        if (error) fail("Could not save a participant", error);
+      }
+      keepIds.add(existing.id);
+      refToParticipantId.set(p.ref, existing.id);
+      if (p.userId ?? existing.user_id) presentUserIds.add((p.userId ?? existing.user_id)!);
+      continue;
+    }
+    if (p.userId) {
+      const existing = existingByUser.get(p.userId);
+      if (existing) {
+        if (p.phoneNumber !== undefined) {
+          const { error } = await client
+            .from("bill_split_participants")
+            .update({ phone_number: p.phoneNumber })
+            .eq("id", existing.id);
+          if (error) fail("Could not save a participant", error);
+        }
+        keepIds.add(existing.id);
+        refToParticipantId.set(p.ref, existing.id);
+        presentUserIds.add(p.userId);
+        continue;
+      }
+      const { data: inserted, error } = await client
+        .from("bill_split_participants")
+        .insert({
+          bill_split_id: billSplitId,
+          user_id: p.userId,
+          guest_name: null,
+          phone_number: p.phoneNumber ?? null,
+        })
+        .select("id")
+        .single();
+      if (error) fail("Could not save who's in this split", error);
+      const id = (inserted as { id: string }).id;
+      keepIds.add(id);
+      refToParticipantId.set(p.ref, id);
+      presentUserIds.add(p.userId);
+      continue;
+    }
+    if (p.guestName) {
+      const { data: inserted, error } = await client
+        .from("bill_split_participants")
+        .insert({
+          bill_split_id: billSplitId,
+          user_id: null,
+          guest_name: p.guestName,
+          phone_number: p.phoneNumber ?? null,
+        })
+        .select("id")
+        .single();
+      if (error) fail("Could not save who's in this split", error);
+      const id = (inserted as { id: string }).id;
+      keepIds.add(id);
+      refToParticipantId.set(p.ref, id);
+      continue;
+    }
+    throw new Error("Every participant needs either a person or a guest name");
+  }
+
+  const toRemove = existingRows.filter((p) => !keepIds.has(p.id)).map((p) => p.id);
+  if (toRemove.length > 0) {
+    const { error } = await client.from("bill_split_participants").delete().in("id", toRemove);
+    if (error) fail("Could not update who's in this split", error);
+  }
+
+  // The payer always has a participant row, even with zero items
+  // assigned — same "always present" guarantee the original per-event
+  // design had.
+  if (!presentUserIds.has(payerUserId)) {
+    const { error } = await client.from("bill_split_participants").insert({
+      bill_split_id: billSplitId,
+      user_id: payerUserId,
+      guest_name: null,
+      phone_number: null,
+    });
+    if (error) fail("Could not save the payer", error);
+  }
+
+  // Items: full replace, same as before — nothing on an item is worth
+  // preserving across a save.
   const { data: existingItems } = await client
     .from("bill_items")
     .select("id")
@@ -404,11 +557,11 @@ async function writeBillSplitItems(
   }
   await client.from("bill_items").delete().eq("bill_split_id", billSplitId);
 
-  if (items.length > 0) {
+  if (input.items.length > 0) {
     const { data: insertedItems, error: itemsError } = await client
       .from("bill_items")
       .insert(
-        items.map((item, position) => ({
+        input.items.map((item, position) => ({
           bill_split_id: billSplitId,
           label: item.label,
           amount_cents: item.amountCents,
@@ -419,11 +572,13 @@ async function writeBillSplitItems(
     if (itemsError) fail("Could not save the bill's items", itemsError);
 
     const insertedRows = (insertedItems ?? []) as { id: string; position: number }[];
-    const assigneeRows: { item_id: string; user_id: string }[] = [];
+    const assigneeRows: { item_id: string; participant_id: string }[] = [];
     for (const row of insertedRows) {
-      const source = items[row.position];
-      for (const userId of source.assigneeIds) {
-        assigneeRows.push({ item_id: row.id, user_id: userId });
+      const source = input.items[row.position];
+      for (const ref of source.assigneeRefs) {
+        const participantId = refToParticipantId.get(ref);
+        if (!participantId) throw new Error("Unknown participant reference");
+        assigneeRows.push({ item_id: row.id, participant_id: participantId });
       }
     }
     if (assigneeRows.length > 0) {
@@ -433,33 +588,6 @@ async function writeBillSplitItems(
       if (assigneeError) fail("Could not save who shared each item", assigneeError);
     }
   }
-
-  const { data: existingParticipants } = await client
-    .from("bill_split_participants")
-    .select("*")
-    .eq("bill_split_id", billSplitId);
-  const existingByUser = new Map(
-    ((existingParticipants ?? []) as BillSplitParticipantRow[]).map((p) => [p.user_id, p])
-  );
-
-  const participantIds = new Set<string>([
-    payerUserId,
-    ...items.flatMap((item) => item.assigneeIds),
-  ]);
-  await client.from("bill_split_participants").delete().eq("bill_split_id", billSplitId);
-  const participantRows = Array.from(participantIds).map((userId) => {
-    const existing = existingByUser.get(userId);
-    return {
-      bill_split_id: billSplitId,
-      user_id: userId,
-      phone_number: existing?.phone_number ?? null,
-      paid_at: existing?.paid_at ?? null,
-    };
-  });
-  const { error: participantsError } = await client
-    .from("bill_split_participants")
-    .insert(participantRows);
-  if (participantsError) fail("Could not save who's in this split", participantsError);
 }
 
 /** Hydrates place flags with the place's name and the flagger's display name. */
@@ -1967,7 +2095,7 @@ export const supabaseRepo: Repo = {
       dateVotes,
       tally,
       readyToClose,
-      billSplit: await hydrateBillSplit(client, event.id),
+      billSplit: await hydrateSplitForEvent(client, event.id),
     };
 
     return detail;
@@ -3467,19 +3595,10 @@ export const supabaseRepo: Repo = {
 
   // ---- Bill splitting (099_bill_splits.sql) ----
 
-  async uploadReceiptImage(eventId, hostId, imageBase64, mediaType) {
+  async uploadReceiptImage(viewerId, imageBase64, mediaType) {
     const client = await db();
 
-    const { data: eventRow } = await client
-      .from("lunch_events")
-      .select("host_id")
-      .eq("id", eventId)
-      .maybeSingle();
-    if (!eventRow || (eventRow as { host_id: string }).host_id !== hostId) {
-      throw new Error("Only the host can upload a receipt for this Jio");
-    }
-
-    const path = `${eventId}/${generateToken()}.jpg`;
+    const path = `${viewerId}/${generateToken()}.jpg`;
     const { error } = await client.storage
       .from("receipts")
       .upload(path, Buffer.from(imageBase64, "base64"), {
@@ -3487,38 +3606,144 @@ export const supabaseRepo: Repo = {
         upsert: true,
       });
     if (error) {
-      console.log(`[bill-split] receipt upload failed for event ${eventId}:`, error.message);
+      console.log(`[bill-split] receipt upload failed for ${viewerId}:`, error.message);
       return null;
     }
     return path;
   },
 
-  async createBillSplit(eventId, hostId, input) {
+  async listSplits(viewerId) {
     const client = await db();
 
-    const { data: eventRow } = await client
-      .from("lunch_events")
-      .select("status, host_id")
-      .eq("id", eventId)
-      .maybeSingle();
-    const event = eventRow as { status: string; host_id: string } | null;
-    if (!event) throw new Error("Can't find that Jio — the link might be old.");
-    if (event.host_id !== hostId) throw new Error("Only the host can split the bill");
-    if (event.status !== "closed") {
-      throw new Error("Only a closed Jio's bill can be split");
+    const [{ data: createdRows }, { data: participantRows }] = await Promise.all([
+      client.from("bill_splits").select("*").eq("created_by", viewerId),
+      client.from("bill_split_participants").select("bill_split_id").eq("user_id", viewerId),
+    ]);
+    const created = (createdRows ?? []) as BillSplitRow[];
+    const participantSplitIds = Array.from(
+      new Set(
+        ((participantRows ?? []) as { bill_split_id: string }[]).map((p) => p.bill_split_id)
+      )
+    ).filter((id) => !created.some((c) => c.id === id));
+
+    let participantOnly: BillSplitRow[] = [];
+    if (participantSplitIds.length > 0) {
+      const { data } = await client.from("bill_splits").select("*").in("id", participantSplitIds);
+      participantOnly = (data ?? []) as BillSplitRow[];
     }
 
-    // True "replace," not just relying on `hydrateBillSplit`'s most-recent
-    // sort — two creates close enough together could share the same
-    // millisecond `created_at`. Cascades to items/assignees/participants.
-    await client.from("bill_splits").delete().eq("event_id", eventId);
+    const rows = [
+      ...created.map((b) => ({ b, role: "creator" as const })),
+      ...participantOnly.map((b) => ({ b, role: "participant" as const })),
+    ];
+    rows.sort((x, y) => y.b.created_at.localeCompare(x.b.created_at));
 
-    const payerUserId = input.payerUserId ?? hostId;
+    const eventIds = Array.from(
+      new Set(rows.map((r) => r.b.event_id).filter((id): id is string => !!id))
+    );
+    const eventTitleById = new Map<string, string>();
+    if (eventIds.length > 0) {
+      const { data: eventRows } = await client
+        .from("lunch_events")
+        .select("id, title")
+        .in("id", eventIds);
+      for (const row of (eventRows ?? []) as { id: string; title: string }[]) {
+        eventTitleById.set(row.id, row.title);
+      }
+    }
+
+    const result: SplitSummary[] = [];
+    for (const { b, role } of rows) {
+      let yourOwedCents: number | undefined;
+      if (role === "participant") {
+        const detail = await hydrateSplit(client, b.id);
+        yourOwedCents = detail?.participants.find((p) => p.user_id === viewerId)?.owed_cents;
+      }
+      result.push({
+        id: b.id,
+        title: b.title,
+        status: b.status,
+        created_at: b.created_at,
+        event_id: b.event_id,
+        event_title: b.event_id ? (eventTitleById.get(b.event_id) ?? null) : null,
+        role,
+        your_owed_cents: yourOwedCents,
+      });
+    }
+    return result;
+  },
+
+  async getSplit(splitId, viewerId) {
+    const client = await db();
+
+    const { data: splitRow } = await client
+      .from("bill_splits")
+      .select("*")
+      .eq("id", splitId)
+      .maybeSingle();
+    const split = splitRow as BillSplitRow | null;
+    if (!split) return null;
+
+    let authorized = split.created_by === viewerId;
+    if (!authorized) {
+      const { data: participantRow } = await client
+        .from("bill_split_participants")
+        .select("id")
+        .eq("bill_split_id", splitId)
+        .eq("user_id", viewerId)
+        .maybeSingle();
+      authorized = !!participantRow;
+    }
+    if (!authorized && split.event_id) {
+      const { data: eventRow } = await client
+        .from("lunch_events")
+        .select("id, host_id, kaki_id")
+        .eq("id", split.event_id)
+        .maybeSingle();
+      if (eventRow) {
+        const participants = await resolveEventParticipants(
+          client,
+          eventRow as { id: string; host_id: string; kaki_id?: string | null }
+        );
+        authorized = participants.includes(viewerId);
+      }
+    }
+    if (!authorized) return null;
+
+    return hydrateSplit(client, splitId);
+  },
+
+  async createSplit(viewerId, input) {
+    const client = await db();
+
+    if (input.eventId) {
+      const { data: eventRow } = await client
+        .from("lunch_events")
+        .select("status, host_id")
+        .eq("id", input.eventId)
+        .maybeSingle();
+      const event = eventRow as { status: string; host_id: string } | null;
+      if (!event) throw new Error("Can't find that Jio — the link might be old.");
+      if (event.host_id !== viewerId) {
+        throw new Error("Only the host can split the bill for this Jio");
+      }
+      if (event.status !== "closed") {
+        throw new Error("Only a closed Jio's bill can be split");
+      }
+
+      // True "replace" — only the event-linked case has this
+      // one-at-a-time limit. Cascades to items/assignees/participants.
+      await client.from("bill_splits").delete().eq("event_id", input.eventId);
+    }
+
+    const payerUserId = input.payerUserId ?? viewerId;
+    const title = input.title.trim() || "Bill split";
     const { data: splitRow, error: splitError } = await client
       .from("bill_splits")
       .insert({
-        event_id: eventId,
-        created_by: hostId,
+        event_id: input.eventId ?? null,
+        created_by: viewerId,
+        title,
         payer_user_id: payerUserId,
         receipt_image_path: input.receiptImagePath ?? null,
         subtotal_cents: input.subtotalCents,
@@ -3532,37 +3757,34 @@ export const supabaseRepo: Repo = {
       .single();
     if (splitError) fail("Could not save the bill split", splitError);
 
-    await writeBillSplitItems(client, (splitRow as { id: string }).id, payerUserId, input.items);
+    const splitId = (splitRow as { id: string }).id;
+    await writeSplitParticipantsAndItems(client, splitId, payerUserId, input);
 
-    const detail = await hydrateBillSplit(client, eventId);
+    const detail = await hydrateSplit(client, splitId);
     if (!detail) throw new Error("The bill split vanished while saving it");
     return detail;
   },
 
-  async updateBillSplit(billSplitId, hostId, input) {
+  async updateSplit(splitId, viewerId, input) {
     const client = await db();
 
     const { data: splitRow } = await client
       .from("bill_splits")
-      .select("event_id")
-      .eq("id", billSplitId)
+      .select("*")
+      .eq("id", splitId)
       .maybeSingle();
-    if (!splitRow) throw new Error("Can't find that bill split — the link might be old.");
-    const eventId = (splitRow as { event_id: string }).event_id;
-
-    const { data: eventRow } = await client
-      .from("lunch_events")
-      .select("host_id")
-      .eq("id", eventId)
-      .maybeSingle();
-    if (!eventRow || (eventRow as { host_id: string }).host_id !== hostId) {
+    const existing = splitRow as BillSplitRow | null;
+    if (!existing) throw new Error("Can't find that bill split — the link might be old.");
+    if (!(await isSplitWriterSb(client, existing, viewerId))) {
       throw new Error("Only the host can edit the bill split");
     }
 
-    const payerUserId = input.payerUserId ?? hostId;
+    const payerUserId = input.payerUserId ?? existing.created_by;
+    const title = input.title.trim() || "Bill split";
     const { error: updateError } = await client
       .from("bill_splits")
       .update({
+        title,
         payer_user_id: payerUserId,
         receipt_image_path: input.receiptImagePath ?? null,
         subtotal_cents: input.subtotalCents,
@@ -3571,108 +3793,90 @@ export const supabaseRepo: Repo = {
         gst_included: input.gstIncluded,
         service_charge_included: input.serviceChargeIncluded,
       })
-      .eq("id", billSplitId);
+      .eq("id", splitId);
     if (updateError) fail("Could not save the bill split", updateError);
 
-    await writeBillSplitItems(client, billSplitId, payerUserId, input.items);
+    await writeSplitParticipantsAndItems(client, splitId, payerUserId, input);
 
-    const detail = await hydrateBillSplit(client, eventId);
+    const detail = await hydrateSplit(client, splitId);
     if (!detail) throw new Error("The bill split vanished while saving it");
     return detail;
   },
 
-  async deleteBillSplit(billSplitId, hostId) {
+  async deleteSplit(splitId, viewerId) {
     const client = await db();
 
     const { data: splitRow } = await client
       .from("bill_splits")
-      .select("event_id")
-      .eq("id", billSplitId)
+      .select("*")
+      .eq("id", splitId)
       .maybeSingle();
-    if (!splitRow) return;
-    const eventId = (splitRow as { event_id: string }).event_id;
-
-    const { data: eventRow } = await client
-      .from("lunch_events")
-      .select("host_id")
-      .eq("id", eventId)
-      .maybeSingle();
-    if (!eventRow || (eventRow as { host_id: string }).host_id !== hostId) {
+    const existing = splitRow as BillSplitRow | null;
+    if (!existing) return;
+    if (!(await isSplitWriterSb(client, existing, viewerId))) {
       throw new Error("Only the host can remove the bill split");
     }
 
-    const { error } = await client.from("bill_splits").delete().eq("id", billSplitId);
+    const { error } = await client.from("bill_splits").delete().eq("id", splitId);
     if (error) fail("Could not remove the bill split", error);
   },
 
-  async setBillSplitParticipantPhone(billSplitId, hostId, userId, phoneNumber) {
+  async setSplitParticipantPhone(splitId, viewerId, participantId, phoneNumber) {
     const client = await db();
 
     const { data: splitRow } = await client
       .from("bill_splits")
-      .select("event_id")
-      .eq("id", billSplitId)
+      .select("*")
+      .eq("id", splitId)
       .maybeSingle();
-    if (!splitRow) throw new Error("Can't find that bill split — the link might be old.");
-    const eventId = (splitRow as { event_id: string }).event_id;
-
-    const { data: eventRow } = await client
-      .from("lunch_events")
-      .select("host_id")
-      .eq("id", eventId)
-      .maybeSingle();
-    if (!eventRow || (eventRow as { host_id: string }).host_id !== hostId) {
+    const existing = splitRow as BillSplitRow | null;
+    if (!existing) throw new Error("Can't find that bill split — the link might be old.");
+    if (!(await isSplitWriterSb(client, existing, viewerId))) {
       throw new Error("Only the host can set a phone number for the split");
     }
 
     const { data: updated, error } = await client
       .from("bill_split_participants")
       .update({ phone_number: phoneNumber })
-      .eq("bill_split_id", billSplitId)
-      .eq("user_id", userId)
-      .select("user_id");
+      .eq("bill_split_id", splitId)
+      .eq("id", participantId)
+      .select("id");
     if (error) fail("Could not save that phone number", error);
     if (!updated || updated.length === 0) {
       throw new Error("That person isn't part of this bill split");
     }
 
-    const detail = await hydrateBillSplit(client, eventId);
+    const detail = await hydrateSplit(client, splitId);
     if (!detail) throw new Error("The bill split vanished while saving it");
     return detail;
   },
 
-  async setBillSplitPaid(billSplitId, hostId, userId, paid) {
+  async setSplitPaid(splitId, viewerId, participantId, paid) {
     const client = await db();
 
     const { data: splitRow } = await client
       .from("bill_splits")
-      .select("event_id")
-      .eq("id", billSplitId)
+      .select("*")
+      .eq("id", splitId)
       .maybeSingle();
-    if (!splitRow) throw new Error("Can't find that bill split — the link might be old.");
-    const eventId = (splitRow as { event_id: string }).event_id;
-
-    const { data: eventRow } = await client
-      .from("lunch_events")
-      .select("host_id")
-      .eq("id", eventId)
-      .maybeSingle();
-    if (!eventRow || (eventRow as { host_id: string }).host_id !== hostId) {
+    const existing = splitRow as BillSplitRow | null;
+    if (!existing) throw new Error("Can't find that bill split — the link might be old.");
+    if (!(await isSplitWriterSb(client, existing, viewerId))) {
       throw new Error("Only the host can mark the split as paid");
     }
 
     const { data: updated, error } = await client
       .from("bill_split_participants")
       .update({ paid_at: paid ? new Date().toISOString() : null })
-      .eq("bill_split_id", billSplitId)
-      .eq("user_id", userId)
-      .select("user_id");
+      .eq("bill_split_id", splitId)
+      .eq("id", participantId)
+      .select("id");
     if (error) fail("Could not update paid status", error);
     if (!updated || updated.length === 0) {
       throw new Error("That person isn't part of this bill split");
     }
 
-    const detail = await hydrateBillSplit(client, eventId);
+    const detail = await hydrateSplit(client, splitId);
     if (!detail) throw new Error("The bill split vanished while saving it");
     return detail;
   },

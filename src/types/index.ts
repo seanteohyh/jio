@@ -585,10 +585,12 @@ export interface EventRsvp {
 }
 
 /**
- * Receipt bill-splitting (099_bill_splits.sql). One `BillSplit` per
- * uploaded/entered receipt for a Jio — `items`/`participants` are always
- * hydrated by the repo, never fetched separately, since a receipt is
- * small enough that a second round trip buys nothing.
+ * Bill-splitting (099_bill_splits.sql). A `BillSplit` stands on its own —
+ * it does not require a Jio — and can optionally be linked to one
+ * (`event_id`) purely as a convenience at creation time. `items`/
+ * `participants` are always hydrated by the repo, never fetched
+ * separately, since a receipt is small enough that a second round trip
+ * buys nothing.
  */
 export interface BillItem {
   id: string;
@@ -596,16 +598,23 @@ export interface BillItem {
   label: string;
   amount_cents: number;
   position: number;
-  /** Who shares this item — splits its cost evenly across however many. */
+  /** Who shares this item — participant ids (registered or guest),
+   *  splitting its cost evenly across however many. */
   assignee_ids: string[];
 }
 
 export interface BillSplitParticipant {
-  user_id: string;
+  /** Stable within this split — what items actually assign to. */
+  id: string;
+  /** Set for a registered Jio user; null for a guest. Exactly one of
+   *  `user_id`/`guest_name` is ever set. */
+  user_id?: string | null;
+  /** Set for a guest — someone who was never a Jio user at all. */
+  guest_name?: string | null;
   phone_number?: string | null;
   /** Host-marked. */
   paid_at?: string | null;
-  /** Derived. */
+  /** Derived — the registered user's display name, or `guest_name`. */
   display_name?: string;
   /** Derived — this person's total share, including their cut of GST/
    *  service charge if those are toggled on. Computed by the repo, not
@@ -616,8 +625,12 @@ export interface BillSplitParticipant {
 
 export interface BillSplit {
   id: string;
-  event_id: string;
+  /** Null for a standalone split with no Jio attached. */
+  event_id?: string | null;
   created_by: string;
+  /** What this split is for — the Jio's title when linked, host-entered
+   *  otherwise. */
+  title: string;
   payer_user_id: string;
   receipt_image_path?: string | null;
   /** Derived — a short-lived signed URL, resolved by the repo at read
@@ -632,6 +645,55 @@ export interface BillSplit {
   created_at: string;
   items: BillItem[];
   participants: BillSplitParticipant[];
+}
+
+/** A row in `listSplits` — enough to render a "your splits" list without
+ *  hydrating every item/participant. */
+export interface SplitSummary {
+  id: string;
+  title: string;
+  status: "draft" | "finalized";
+  created_at: string;
+  event_id?: string | null;
+  event_title?: string | null;
+  /** Whether the viewer started this split or is just in it. */
+  role: "creator" | "participant";
+  /** The viewer's own share, when they're a participant (not the payer). */
+  your_owed_cents?: number;
+}
+
+/** One person to resolve into a `bill_split_participants` row on save —
+ *  `ref` wires this entry to `SplitItemInput.assigneeRefs` for this one
+ *  save, and is never persisted itself. */
+export interface SplitParticipantInput {
+  ref: string;
+  /** Set when keeping/editing an EXISTING row (registered or guest). */
+  participantId?: string;
+  /** Set for a registered person (new or existing). */
+  userId?: string;
+  /** Set for a guest (new or existing). */
+  guestName?: string;
+  phoneNumber?: string | null;
+}
+
+export interface SplitItemInput {
+  label: string;
+  amountCents: number;
+  assigneeRefs: string[];
+}
+
+export interface SplitInput {
+  title: string;
+  eventId?: string | null;
+  payerUserId?: string;
+  receiptImagePath?: string | null;
+  participants: SplitParticipantInput[];
+  items: SplitItemInput[];
+  subtotalCents: number;
+  gstCents: number;
+  serviceChargeCents: number;
+  gstIncluded: boolean;
+  serviceChargeIncluded: boolean;
 }
 
 export interface EventInvitee {
@@ -668,10 +730,11 @@ export interface EventDetail extends LunchEvent {
    * turned out to be unsafe for a Jio anyone can still join.
    */
   readyToClose: boolean;
-  /** The most recent bill split for this Jio, if the host has started
-   *  one — `null` once none exists yet. Only ever one at a time; starting
-   *  a new one (a re-scan, a corrected receipt) replaces it rather than
-   *  stacking a history. */
+  /** The bill split linked to this Jio, if the host has started or
+   *  linked one — `null` once none exists yet. Only ever one linked at a
+   *  time; starting a new one for this Jio replaces it rather than
+   *  stacking a history. Splits don't require a Jio at all — see
+   *  `/splits` for the general, standalone case. */
   billSplit?: BillSplit | null;
 }
 

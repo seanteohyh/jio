@@ -4,7 +4,7 @@ import { getRepoAsync } from "@/lib/data/repo";
 import { badRequest, errorResponse, json, readJson } from "@/lib/api";
 import { featureGate } from "@/lib/config";
 
-type Params = { params: Promise<{ id: string; billSplitId: string; userId: string }> };
+type Params = { params: Promise<{ id: string; participantId: string }> };
 
 interface ParticipantBody {
   /** Present (including explicit `null` to clear it) vs. absent
@@ -19,15 +19,16 @@ interface ParticipantBody {
  * Host-only, two independent optional fields in one body so the UI can
  * fire either (or both) in a single request — the phone-number field and
  * the "mark as paid" toggle sit right next to each other on the same
- * breakdown row.
+ * breakdown row. Works identically for a registered participant or a
+ * guest — both are just a `bill_split_participants` row.
  */
 export async function PATCH(request: NextRequest, { params }: Params) {
-  const blocked = featureGate("events");
+  const blocked = featureGate("splits");
   if (blocked) return blocked as NextResponse;
 
   try {
     const user = await requireUser();
-    const { billSplitId, userId } = await params;
+    const { id, participantId } = await params;
     const repo = await getRepoAsync();
 
     const body = await readJson<ParticipantBody>(request);
@@ -35,20 +36,15 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       return badRequest("Nothing to update");
     }
 
-    let billSplit;
+    let split;
     if (body.phone_number !== undefined) {
-      billSplit = await repo.setBillSplitParticipantPhone(
-        billSplitId,
-        user.id,
-        userId,
-        body.phone_number
-      );
+      split = await repo.setSplitParticipantPhone(id, user.id, participantId, body.phone_number);
     }
     if (body.paid !== undefined) {
-      billSplit = await repo.setBillSplitPaid(billSplitId, user.id, userId, body.paid);
+      split = await repo.setSplitPaid(id, user.id, participantId, body.paid);
     }
 
-    return json({ billSplit });
+    return json({ split });
   } catch (error) {
     return errorResponse(error);
   }

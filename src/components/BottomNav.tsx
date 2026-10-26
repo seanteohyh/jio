@@ -8,6 +8,7 @@ import {
   KakiIcon,
   MapIcon,
   PlaceIcon,
+  SplitIcon,
   YouIcon,
 } from "@/components/icons";
 import { cn } from "@/lib/utils";
@@ -49,6 +50,7 @@ export default function BottomNav() {
       enabled: features.events,
     },
     { href: "/kakis", label: "Kakis", icon: <KakiIcon />, enabled: features.kakis },
+    { href: "/splits", label: "Split", icon: <SplitIcon />, enabled: features.splits },
     {
       href: "/places",
       label: "Places",

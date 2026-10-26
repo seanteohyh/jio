@@ -54,7 +54,7 @@ import {
   demoUserPrefs,
   demoWishlist,
 } from "./demoData";
-import type { Repo, BillSplitInput } from "./index";
+import type { Repo } from "./index";
 import type {
   AdminEngagementWeights,
   BillSplit,
@@ -98,6 +98,8 @@ import type {
   PushTarget,
   RecurringSeries,
   RsvpResponse,
+  SplitInput,
+  SplitSummary,
   TeamUser,
   UserFoodIdentitySnapshot,
   UserPrefs,
@@ -215,14 +217,17 @@ interface DemoStore {
     first_seen_at: string;
     last_seen_at: string;
   }[];
-  /** Receipt bill-splitting — 099_bill_splits.sql. One row per uploaded/
-   *  entered receipt; `getEvent` hydrates only the most recent per event
-   *  into `EventDetail.billSplit`, same "replaces rather than stacks a
-   *  history" shape its own doc comment describes. */
+  /** Bill-splitting — 099_bill_splits.sql. One row per split; a split
+   *  doesn't require a Jio (`event_id` nullable) and `getEvent` hydrates
+   *  only the most recent LINKED split per event into
+   *  `EventDetail.billSplit`, same "replaces rather than stacks a
+   *  history" shape its own doc comment describes — a standalone split
+   *  has no such limit. */
   billSplits: {
     id: string;
-    event_id: string;
+    event_id: string | null;
     created_by: string;
+    title: string;
     payer_user_id: string;
     receipt_image_path: string | null;
     subtotal_cents: number;
@@ -240,10 +245,15 @@ interface DemoStore {
     amount_cents: number;
     position: number;
   }[];
-  billItemAssignees: { item_id: string; user_id: string }[];
+  billItemAssignees: { item_id: string; participant_id: string }[];
+  /** One row per person actually in the split — registered (`user_id`
+   *  set) or a guest who was never a Jio user (`guest_name` set).
+   *  Exactly one of the two is ever set. */
   billSplitParticipants: {
+    id: string;
     bill_split_id: string;
-    user_id: string;
+    user_id: string | null;
+    guest_name: string | null;
     phone_number: string | null;
     paid_at: string | null;
   }[];
@@ -612,21 +622,31 @@ function resolveEventParticipants(event: LunchEvent): string[] {
   return Array.from(ids);
 }
 
+/** Can this viewer write (edit/delete/mark-paid) this split? Standalone
+ *  → the creator; linked → that Jio's host. Shared by every mutating
+ *  split method so the gate is defined once. */
+function isSplitWriter(
+  s: DemoStore,
+  split: DemoStore["billSplits"][number],
+  viewerId: string
+): boolean {
+  if (!split.event_id) return split.created_by === viewerId;
+  const event = s.events.find((e) => e.id === split.event_id);
+  return !!event && event.host_id === viewerId;
+}
+
 /**
- * Hydrates the most recent bill split for an event into the shape
- * `EventDetail.billSplit` expects — `null` once the Jio has none yet.
- * See `BillSplitInput`'s doc comment (src/lib/data/index.ts) for the
- * split math: each item's cost divides evenly across its own assignees;
- * GST/service charge (if toggled on) divides across everyone
- * proportional to their own item subtotal, not evenly — someone who had
- * the $80 steak should carry more of the service charge than someone who
- * had a $4 kopi, same as a real bill would.
+ * Hydrates one split into the shape `BillSplit` expects. See
+ * `SplitInput`'s doc comment (src/types/index.ts) for the split math:
+ * each item's cost divides evenly across its own assignees; GST/service
+ * charge (if toggled on) divides across everyone proportional to their
+ * own item subtotal, not evenly — someone who had the $80 steak should
+ * carry more of the service charge than someone who had a $4 kopi, same
+ * as a real bill would.
  */
-function hydrateBillSplit(eventId: string): BillSplit | null {
+function hydrateSplit(splitId: string): BillSplit | null {
   const s = store();
-  const split = s.billSplits
-    .filter((b) => b.event_id === eventId)
-    .sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
+  const split = s.billSplits.find((b) => b.id === splitId);
   if (!split) return null;
 
   const items = s.billItems
@@ -640,17 +660,20 @@ function hydrateBillSplit(eventId: string): BillSplit | null {
       position: i.position,
       assignee_ids: s.billItemAssignees
         .filter((a) => a.item_id === i.id)
-        .map((a) => a.user_id),
+        .map((a) => a.participant_id),
     }));
 
-  const itemsCentsByUser = new Map<string, number>();
+  const itemsCentsByParticipant = new Map<string, number>();
   let totalAssignedCents = 0;
   for (const item of items) {
     if (item.assignee_ids.length === 0) continue;
     totalAssignedCents += item.amount_cents;
     const share = item.amount_cents / item.assignee_ids.length;
-    for (const userId of item.assignee_ids) {
-      itemsCentsByUser.set(userId, (itemsCentsByUser.get(userId) ?? 0) + share);
+    for (const participantId of item.assignee_ids) {
+      itemsCentsByParticipant.set(
+        participantId,
+        (itemsCentsByParticipant.get(participantId) ?? 0) + share
+      );
     }
   }
 
@@ -658,21 +681,23 @@ function hydrateBillSplit(eventId: string): BillSplit | null {
     (p) => p.bill_split_id === split.id
   );
   const participantIds = new Set<string>([
-    ...participantRows.map((p) => p.user_id),
-    ...itemsCentsByUser.keys(),
+    ...participantRows.map((p) => p.id),
+    ...itemsCentsByParticipant.keys(),
   ]);
 
-  const participants = Array.from(participantIds).map((userId) => {
-    const itemsCents = itemsCentsByUser.get(userId) ?? 0;
+  const participants = Array.from(participantIds).map((participantId) => {
+    const itemsCents = itemsCentsByParticipant.get(participantId) ?? 0;
     const proportion = totalAssignedCents > 0 ? itemsCents / totalAssignedCents : 0;
     const gstShare = split.gst_included ? split.gst_cents * proportion : 0;
     const serviceShare = split.service_charge_included
       ? split.service_charge_cents * proportion
       : 0;
-    const row = participantRows.find((p) => p.user_id === userId);
+    const row = participantRows.find((p) => p.id === participantId);
     return {
-      user_id: userId,
-      display_name: displayNameFor(userId),
+      id: participantId,
+      user_id: row?.user_id ?? null,
+      guest_name: row?.guest_name ?? null,
+      display_name: row?.guest_name ?? (row?.user_id ? displayNameFor(row.user_id) : "Someone"),
       phone_number: row?.phone_number ?? null,
       paid_at: row?.paid_at ?? null,
       // Independently rounded per person, same as any other bill-split
@@ -687,11 +712,12 @@ function hydrateBillSplit(eventId: string): BillSplit | null {
     id: split.id,
     event_id: split.event_id,
     created_by: split.created_by,
+    title: split.title,
     payer_user_id: split.payer_user_id,
     receipt_image_path: split.receipt_image_path,
     // No real storage backend in demo mode — just echo the path back
-    // rather than a resolvable URL; BillSplitCard treats a missing image
-    // as "no photo" either way.
+    // rather than a resolvable URL; the UI treats a missing image as
+    // "no photo" either way.
     receipt_image_url: null,
     subtotal_cents: split.subtotal_cents,
     gst_cents: split.gst_cents,
@@ -705,23 +731,37 @@ function hydrateBillSplit(eventId: string): BillSplit | null {
   };
 }
 
-/** Shared by `createBillSplit`/`updateBillSplit` — see their own doc
- *  comments on `Repo`. */
-function writeBillSplit(
+/** Most recent split LINKED to this event, for `EventDetail.billSplit`
+ *  — `null` once the Jio has none. */
+function hydrateSplitForEvent(eventId: string): BillSplit | null {
+  const s = store();
+  const split = s.billSplits
+    .filter((b) => b.event_id === eventId)
+    .sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
+  return split ? hydrateSplit(split.id) : null;
+}
+
+/** Shared by `createSplit`/`updateSplit` — see their own doc comments on
+ *  `Repo`. `eventId` is passed explicitly (not read off `input`) so an
+ *  update can never silently re-link or unlink a split — only
+ *  `createSplit` decides that, once, at creation time. */
+function writeSplit(
   s: DemoStore,
-  billSplitId: string,
-  eventId: string,
-  hostId: string,
-  input: BillSplitInput,
+  splitId: string,
+  createdBy: string,
+  eventId: string | null,
+  input: SplitInput,
   createdAt: string
 ): void {
-  const payerUserId = input.payerUserId ?? hostId;
+  const payerUserId = input.payerUserId ?? createdBy;
+  const title = input.title.trim() || "Bill split";
 
-  s.billSplits = s.billSplits.filter((b) => b.id !== billSplitId);
+  s.billSplits = s.billSplits.filter((b) => b.id !== splitId);
   s.billSplits.push({
-    id: billSplitId,
+    id: splitId,
     event_id: eventId,
-    created_by: hostId,
+    created_by: createdBy,
+    title,
     payer_user_id: payerUserId,
     receipt_image_path: input.receiptImagePath ?? null,
     subtotal_cents: input.subtotalCents,
@@ -733,45 +773,110 @@ function writeBillSplit(
     created_at: createdAt,
   });
 
-  s.billItems = s.billItems.filter((i) => i.bill_split_id !== billSplitId);
-  s.billItemAssignees = s.billItemAssignees.filter(
-    (a) => !s.billItems.some((i) => i.bill_split_id === billSplitId && i.id === a.item_id)
+  // Resolve participants: a given `participantId` keeps/edits an
+  // existing row (never touching `paid_at`); a bare `userId` upserts a
+  // registered person; a bare `guestName` inserts a new guest. Anything
+  // previously in this split but absent from the new input is removed.
+  const refToParticipantId = new Map<string, string>();
+  const keepIds = new Set<string>();
+
+  for (const p of input.participants) {
+    if (p.participantId) {
+      const existing = s.billSplitParticipants.find(
+        (ep) => ep.bill_split_id === splitId && ep.id === p.participantId
+      );
+      if (!existing) throw new Error("That person isn't part of this bill split");
+      if (p.userId !== undefined) existing.user_id = p.userId;
+      if (p.guestName !== undefined) existing.guest_name = p.guestName;
+      if (p.phoneNumber !== undefined) existing.phone_number = p.phoneNumber;
+      keepIds.add(existing.id);
+      refToParticipantId.set(p.ref, existing.id);
+      continue;
+    }
+    if (p.userId) {
+      const existing = s.billSplitParticipants.find(
+        (ep) => ep.bill_split_id === splitId && ep.user_id === p.userId
+      );
+      if (existing) {
+        if (p.phoneNumber !== undefined) existing.phone_number = p.phoneNumber;
+        keepIds.add(existing.id);
+        refToParticipantId.set(p.ref, existing.id);
+        continue;
+      }
+      const participantId = uuid();
+      s.billSplitParticipants.push({
+        id: participantId,
+        bill_split_id: splitId,
+        user_id: p.userId,
+        guest_name: null,
+        phone_number: p.phoneNumber ?? null,
+        paid_at: null,
+      });
+      keepIds.add(participantId);
+      refToParticipantId.set(p.ref, participantId);
+      continue;
+    }
+    if (p.guestName) {
+      const participantId = uuid();
+      s.billSplitParticipants.push({
+        id: participantId,
+        bill_split_id: splitId,
+        user_id: null,
+        guest_name: p.guestName,
+        phone_number: p.phoneNumber ?? null,
+        paid_at: null,
+      });
+      keepIds.add(participantId);
+      refToParticipantId.set(p.ref, participantId);
+      continue;
+    }
+    throw new Error("Every participant needs either a person or a guest name");
+  }
+
+  s.billSplitParticipants = s.billSplitParticipants.filter(
+    (p) => p.bill_split_id !== splitId || keepIds.has(p.id)
   );
+
+  // The payer always has a participant row, even with zero items
+  // assigned — same "always present" guarantee the original per-event
+  // design had.
+  const payerHasRow = s.billSplitParticipants.some(
+    (p) => p.bill_split_id === splitId && p.user_id === payerUserId
+  );
+  if (!payerHasRow) {
+    s.billSplitParticipants.push({
+      id: uuid(),
+      bill_split_id: splitId,
+      user_id: payerUserId,
+      guest_name: null,
+      phone_number: null,
+      paid_at: null,
+    });
+  }
+
+  // Items: full replace, same as before — nothing on an item is worth
+  // preserving across a save.
+  const oldItemIds = new Set(
+    s.billItems.filter((i) => i.bill_split_id === splitId).map((i) => i.id)
+  );
+  s.billItems = s.billItems.filter((i) => i.bill_split_id !== splitId);
+  s.billItemAssignees = s.billItemAssignees.filter((a) => !oldItemIds.has(a.item_id));
+
   input.items.forEach((item, position) => {
     const itemId = uuid();
     s.billItems.push({
       id: itemId,
-      bill_split_id: billSplitId,
+      bill_split_id: splitId,
       label: item.label,
       amount_cents: item.amountCents,
       position,
     });
-    for (const userId of item.assigneeIds) {
-      s.billItemAssignees.push({ item_id: itemId, user_id: userId });
+    for (const ref of item.assigneeRefs) {
+      const participantId = refToParticipantId.get(ref);
+      if (!participantId) throw new Error("Unknown participant reference");
+      s.billItemAssignees.push({ item_id: itemId, participant_id: participantId });
     }
   });
-
-  const existingPhones = new Map(
-    s.billSplitParticipants
-      .filter((p) => p.bill_split_id === billSplitId)
-      .map((p) => [p.user_id, p])
-  );
-  s.billSplitParticipants = s.billSplitParticipants.filter(
-    (p) => p.bill_split_id !== billSplitId
-  );
-  const participantIds = new Set<string>([
-    payerUserId,
-    ...input.items.flatMap((item) => item.assigneeIds),
-  ]);
-  for (const userId of participantIds) {
-    const existing = existingPhones.get(userId);
-    s.billSplitParticipants.push({
-      bill_split_id: billSplitId,
-      user_id: userId,
-      phone_number: existing?.phone_number ?? null,
-      paid_at: existing?.paid_at ?? null,
-    });
-  }
 }
 
 /**
@@ -1681,7 +1786,7 @@ export const demoRepo: Repo = {
               event.options_changed_at
             )
           : false,
-      billSplit: hydrateBillSplit(event.id),
+      billSplit: hydrateSplitForEvent(event.id),
     };
   },
 
@@ -2716,90 +2821,147 @@ export const demoRepo: Repo = {
 
   // ---- Bill splitting (099_bill_splits.sql) ----
 
-  async uploadReceiptImage(_eventId, _hostId, _imageBase64, _mediaType) {
+  async uploadReceiptImage(_viewerId, _imageBase64, _mediaType) {
     // No real storage backend in demo mode — see this method's own doc
     // comment on `Repo`. The caller still runs OCR on the image itself.
     return null;
   },
 
-  async createBillSplit(eventId, hostId, input) {
+  async listSplits(viewerId) {
     const s = store();
-    const event = s.events.find((e) => e.id === eventId);
-    if (!event) throw new Error("Can't find that Jio — the link might be old.");
-    if (event.host_id !== hostId) {
-      throw new Error("Only the host can split the bill");
+    const participantSplitIds = new Set(
+      s.billSplitParticipants
+        .filter((p) => p.user_id === viewerId)
+        .map((p) => p.bill_split_id)
+    );
+    const rows: { b: DemoStore["billSplits"][number]; role: "creator" | "participant" }[] = [];
+    for (const b of s.billSplits) {
+      if (b.created_by === viewerId) rows.push({ b, role: "creator" });
+      else if (participantSplitIds.has(b.id)) rows.push({ b, role: "participant" });
     }
-    if (event.status !== "closed") {
-      throw new Error("Only a closed Jio's bill can be split");
+    rows.sort((x, y) => y.b.created_at.localeCompare(x.b.created_at));
+
+    return rows.map(({ b, role }) => {
+      const event = b.event_id ? s.events.find((e) => e.id === b.event_id) : undefined;
+      let yourOwedCents: number | undefined;
+      if (role === "participant") {
+        const detail = hydrateSplit(b.id);
+        yourOwedCents = detail?.participants.find((p) => p.user_id === viewerId)?.owed_cents;
+      }
+      return {
+        id: b.id,
+        title: b.title,
+        status: b.status,
+        created_at: b.created_at,
+        event_id: b.event_id,
+        event_title: event?.title ?? null,
+        role,
+        your_owed_cents: yourOwedCents,
+      };
+    });
+  },
+
+  async getSplit(splitId, viewerId) {
+    const s = store();
+    const split = s.billSplits.find((b) => b.id === splitId);
+    if (!split) return null;
+
+    const authorized =
+      split.created_by === viewerId ||
+      s.billSplitParticipants.some(
+        (p) => p.bill_split_id === splitId && p.user_id === viewerId
+      ) ||
+      (split.event_id
+        ? (() => {
+            const event = s.events.find((e) => e.id === split.event_id);
+            return !!event && resolveEventParticipants(event).includes(viewerId);
+          })()
+        : false);
+    if (!authorized) return null;
+
+    return hydrateSplit(splitId);
+  },
+
+  async createSplit(viewerId, input) {
+    const s = store();
+    let event: LunchEvent | undefined;
+    if (input.eventId) {
+      event = s.events.find((e) => e.id === input.eventId);
+      if (!event) throw new Error("Can't find that Jio — the link might be old.");
+      if (event.host_id !== viewerId) {
+        throw new Error("Only the host can split the bill for this Jio");
+      }
+      if (event.status !== "closed") {
+        throw new Error("Only a closed Jio's bill can be split");
+      }
+
+      // True "replace," not just relying on hydration's most-recent sort
+      // — two creates close enough together share the same millisecond
+      // `created_at`, which a sort can't break a tie on reliably. Only
+      // the event-linked case has this one-at-a-time limit.
+      for (const old of s.billSplits.filter((b) => b.event_id === event!.id)) {
+        const oldItemIds = new Set(
+          s.billItems.filter((i) => i.bill_split_id === old.id).map((i) => i.id)
+        );
+        s.billItems = s.billItems.filter((i) => i.bill_split_id !== old.id);
+        s.billItemAssignees = s.billItemAssignees.filter((a) => !oldItemIds.has(a.item_id));
+        s.billSplitParticipants = s.billSplitParticipants.filter(
+          (p) => p.bill_split_id !== old.id
+        );
+      }
+      s.billSplits = s.billSplits.filter((b) => b.event_id !== event!.id);
     }
 
-    // True "replace," not just relying on `hydrateBillSplit`'s most-recent
-    // sort — two creates close enough together share the same millisecond
-    // `created_at`, which a sort can't break a tie on reliably.
-    for (const old of s.billSplits.filter((b) => b.event_id === eventId)) {
-      const oldItemIds = new Set(
-        s.billItems.filter((i) => i.bill_split_id === old.id).map((i) => i.id)
-      );
-      s.billItems = s.billItems.filter((i) => i.bill_split_id !== old.id);
-      s.billItemAssignees = s.billItemAssignees.filter((a) => !oldItemIds.has(a.item_id));
-      s.billSplitParticipants = s.billSplitParticipants.filter(
-        (p) => p.bill_split_id !== old.id
-      );
-    }
-    s.billSplits = s.billSplits.filter((b) => b.event_id !== eventId);
-
-    writeBillSplit(s, uuid(), eventId, hostId, input, new Date().toISOString());
-    const detail = hydrateBillSplit(eventId);
+    const splitId = uuid();
+    writeSplit(s, splitId, viewerId, input.eventId ?? null, input, new Date().toISOString());
+    const detail = hydrateSplit(splitId);
     if (!detail) throw new Error("The bill split vanished while saving it");
     return detail;
   },
 
-  async updateBillSplit(billSplitId, hostId, input) {
+  async updateSplit(splitId, viewerId, input) {
     const s = store();
-    const existing = s.billSplits.find((b) => b.id === billSplitId);
+    const existing = s.billSplits.find((b) => b.id === splitId);
     if (!existing) throw new Error("Can't find that bill split — the link might be old.");
-    const event = s.events.find((e) => e.id === existing.event_id);
-    if (!event || event.host_id !== hostId) {
+    if (!isSplitWriter(s, existing, viewerId)) {
       throw new Error("Only the host can edit the bill split");
     }
 
-    writeBillSplit(s, billSplitId, existing.event_id, hostId, input, existing.created_at);
-    const detail = hydrateBillSplit(existing.event_id);
+    writeSplit(s, splitId, existing.created_by, existing.event_id, input, existing.created_at);
+    const detail = hydrateSplit(splitId);
     if (!detail) throw new Error("The bill split vanished while saving it");
     return detail;
   },
 
-  async deleteBillSplit(billSplitId, hostId) {
+  async deleteSplit(splitId, viewerId) {
     const s = store();
-    const existing = s.billSplits.find((b) => b.id === billSplitId);
+    const existing = s.billSplits.find((b) => b.id === splitId);
     if (!existing) return;
-    const event = s.events.find((e) => e.id === existing.event_id);
-    if (!event || event.host_id !== hostId) {
+    if (!isSplitWriter(s, existing, viewerId)) {
       throw new Error("Only the host can remove the bill split");
     }
 
     const itemIds = new Set(
-      s.billItems.filter((i) => i.bill_split_id === billSplitId).map((i) => i.id)
+      s.billItems.filter((i) => i.bill_split_id === splitId).map((i) => i.id)
     );
-    s.billItems = s.billItems.filter((i) => i.bill_split_id !== billSplitId);
+    s.billItems = s.billItems.filter((i) => i.bill_split_id !== splitId);
     s.billItemAssignees = s.billItemAssignees.filter((a) => !itemIds.has(a.item_id));
     s.billSplitParticipants = s.billSplitParticipants.filter(
-      (p) => p.bill_split_id !== billSplitId
+      (p) => p.bill_split_id !== splitId
     );
-    s.billSplits = s.billSplits.filter((b) => b.id !== billSplitId);
+    s.billSplits = s.billSplits.filter((b) => b.id !== splitId);
   },
 
-  async setBillSplitParticipantPhone(billSplitId, hostId, userId, phoneNumber) {
+  async setSplitParticipantPhone(splitId, viewerId, participantId, phoneNumber) {
     const s = store();
-    const existing = s.billSplits.find((b) => b.id === billSplitId);
+    const existing = s.billSplits.find((b) => b.id === splitId);
     if (!existing) throw new Error("Can't find that bill split — the link might be old.");
-    const event = s.events.find((e) => e.id === existing.event_id);
-    if (!event || event.host_id !== hostId) {
+    if (!isSplitWriter(s, existing, viewerId)) {
       throw new Error("Only the host can set a phone number for the split");
     }
 
     const index = s.billSplitParticipants.findIndex(
-      (p) => p.bill_split_id === billSplitId && p.user_id === userId
+      (p) => p.bill_split_id === splitId && p.id === participantId
     );
     if (index === -1) {
       throw new Error("That person isn't part of this bill split");
@@ -2809,22 +2971,21 @@ export const demoRepo: Repo = {
       phone_number: phoneNumber,
     };
 
-    const detail = hydrateBillSplit(existing.event_id);
+    const detail = hydrateSplit(splitId);
     if (!detail) throw new Error("The bill split vanished while saving it");
     return detail;
   },
 
-  async setBillSplitPaid(billSplitId, hostId, userId, paid) {
+  async setSplitPaid(splitId, viewerId, participantId, paid) {
     const s = store();
-    const existing = s.billSplits.find((b) => b.id === billSplitId);
+    const existing = s.billSplits.find((b) => b.id === splitId);
     if (!existing) throw new Error("Can't find that bill split — the link might be old.");
-    const event = s.events.find((e) => e.id === existing.event_id);
-    if (!event || event.host_id !== hostId) {
+    if (!isSplitWriter(s, existing, viewerId)) {
       throw new Error("Only the host can mark the split as paid");
     }
 
     const index = s.billSplitParticipants.findIndex(
-      (p) => p.bill_split_id === billSplitId && p.user_id === userId
+      (p) => p.bill_split_id === splitId && p.id === participantId
     );
     if (index === -1) {
       throw new Error("That person isn't part of this bill split");
@@ -2834,7 +2995,7 @@ export const demoRepo: Repo = {
       paid_at: paid ? new Date().toISOString() : null,
     };
 
-    const detail = hydrateBillSplit(existing.event_id);
+    const detail = hydrateSplit(splitId);
     if (!detail) throw new Error("The bill split vanished while saving it");
     return detail;
   },

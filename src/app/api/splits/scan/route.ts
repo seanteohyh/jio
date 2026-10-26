@@ -5,11 +5,9 @@ import { badRequest, errorResponse, json, readJson } from "@/lib/api";
 import { featureGate } from "@/lib/config";
 import { extractReceipt } from "@/lib/receiptOcr";
 
-type Params = { params: Promise<{ id: string }> };
-
 // Decoded-size cap on the uploaded image — a defensive bound on both the
 // vision API payload and storage usage, not a hard technical limit.
-// Client-side downscaling (BillSplitCard) keeps a normal phone photo well
+// Client-side downscaling (SplitEditor) keeps a normal phone photo well
 // under this; this just stops an unusually large file from being sent at
 // all rather than failing confusingly partway through.
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
@@ -19,19 +17,20 @@ const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
  * `bill_splits` yet — 099_bill_splits.sql's review-and-assign step
  * happens entirely in the client's own state, seeded from whatever this
  * returns, so the server only ever sees the finished item list once the
- * host actually saves (`POST /api/events/[id]/bill-split`). The upload
- * still happens here (not discarded) so a saved split can show the real
- * photo back; an abandoned scan just leaves one unreferenced object in
- * storage, the same "harmless if unused" trade-off this app already
- * accepts elsewhere rather than building cleanup for it.
+ * host actually saves (`POST /api/splits`). No split exists yet at scan
+ * time (it may never — the host could cancel), so the upload is scoped
+ * to the uploader, not any split or Jio. The upload still happens here
+ * (not discarded) so a saved split can show the real photo back; an
+ * abandoned scan just leaves one unreferenced object in storage, the
+ * same "harmless if unused" trade-off this app already accepts
+ * elsewhere rather than building cleanup for it.
  */
-export async function POST(request: NextRequest, { params }: Params) {
-  const blocked = featureGate("events");
+export async function POST(request: NextRequest) {
+  const blocked = featureGate("splits");
   if (blocked) return blocked as NextResponse;
 
   try {
     const user = await requireUser();
-    const { id } = await params;
     const repo = await getRepoAsync();
 
     const body = await readJson<{ imageBase64?: string; mediaType?: string }>(request);
@@ -43,7 +42,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     }
 
     const [receiptImagePath, extracted] = await Promise.all([
-      repo.uploadReceiptImage(id, user.id, body.imageBase64, body.mediaType),
+      repo.uploadReceiptImage(user.id, body.imageBase64, body.mediaType),
       extractReceipt(body.imageBase64, body.mediaType),
     ]);
 
