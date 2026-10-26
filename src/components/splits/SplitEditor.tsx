@@ -99,6 +99,18 @@ export default function SplitEditor({
   const [subtotalCents] = useState(initialSubtotalCents ?? 0);
   const [receiptImagePath] = useState(initialReceiptImagePath ?? null);
 
+  /** "Go Dutch" assigns each item to whoever actually had it (the
+   *  itemized flow below). "Split evenly" ignores items entirely — one
+   *  total, divided equally across everyone in the roster, same math as
+   *  a single item shared by the whole table. Switching back to "Go
+   *  Dutch" never loses the itemized list — only `save()` decides which
+   *  one actually gets sent. */
+  const [mode, setMode] = useState<"dutch" | "even">("dutch");
+  const [evenTotalCents, setEvenTotalCents] = useState(() => {
+    const itemsSum = (initialItems ?? []).reduce((sum, item) => sum + item.amountCents, 0);
+    return itemsSum || (initialGstCents ?? 0) + (initialServiceChargeCents ?? 0);
+  });
+
   const [addingPeople, setAddingPeople] = useState(false);
   const [pickerValue, setPickerValue] = useState<InviteSelection>({
     userIds: [],
@@ -140,6 +152,19 @@ export default function SplitEditor({
   const removePerson = (ref: string) => {
     setRoster(roster.filter((p) => p.ref !== ref));
     setItems(items.map((item) => ({ ...item, assigneeRefs: item.assigneeRefs.filter((r) => r !== ref) })));
+  };
+
+  /** Whether an item is currently shared by the whole roster — derived,
+   *  not stored: true exactly when its assignees are everyone in the
+   *  roster right now. Checking the box is a one-tap "assign everyone";
+   *  it isn't kept in sync afterward, so adding someone new un-checks it
+   *  until re-confirmed, rather than silently growing who owes. */
+  const isSharedByAll = (item: DraftItem): boolean =>
+    roster.length > 0 &&
+    item.assigneeRefs.length === roster.length &&
+    roster.every((p) => item.assigneeRefs.includes(p.ref));
+  const toggleShared = (key: string, shared: boolean) => {
+    updateItem(key, { assigneeRefs: shared ? roster.map((p) => p.ref) : [] });
   };
 
   const confirmAddFromPicker = async () => {
@@ -209,12 +234,33 @@ export default function SplitEditor({
     setAddingGuest(false);
   };
 
+  // "Split evenly" reuses the exact same per-item math as "Go Dutch" —
+  // it's just one synthetic item (the whole total) assigned to everyone
+  // in the roster, which divides out to an equal share automatically,
+  // GST/service charge included in that one number rather than added
+  // separately on top.
+  const effectiveItems: DraftItem[] =
+    mode === "dutch"
+      ? items
+      : [
+          {
+            key: "__even__",
+            label: "Shared bill",
+            amountCents: evenTotalCents,
+            assigneeRefs: roster.map((p) => p.ref),
+          },
+        ];
+  const effectiveGstCents = mode === "dutch" ? gstCents : 0;
+  const effectiveGstIncluded = mode === "dutch" ? gstIncluded : false;
+  const effectiveServiceChargeCents = mode === "dutch" ? serviceChargeCents : 0;
+  const effectiveServiceChargeIncluded = mode === "dutch" ? serviceChargeIncluded : false;
+
   // Live preview of each person's share while assigning — the server
   // recomputes this authoritatively on save; this is just immediate
   // feedback, same arithmetic as hydrateSplit on both repos.
   const itemsCentsByRef = new Map<string, number>();
   let totalAssignedCents = 0;
-  for (const item of items) {
+  for (const item of effectiveItems) {
     if (item.assigneeRefs.length === 0) continue;
     totalAssignedCents += item.amountCents;
     const share = item.amountCents / item.assigneeRefs.length;
@@ -225,18 +271,22 @@ export default function SplitEditor({
   const previewOwed = (ref: string): number => {
     const itemsCents = itemsCentsByRef.get(ref) ?? 0;
     const proportion = totalAssignedCents > 0 ? itemsCents / totalAssignedCents : 0;
-    const gst = gstIncluded ? gstCents * proportion : 0;
-    const svc = serviceChargeIncluded ? serviceChargeCents * proportion : 0;
+    const gst = effectiveGstIncluded ? effectiveGstCents * proportion : 0;
+    const svc = effectiveServiceChargeIncluded ? effectiveServiceChargeCents * proportion : 0;
     return Math.round(itemsCents + gst + svc);
   };
 
   const itemsSumCents = items.reduce((sum, item) => sum + item.amountCents, 0);
   const subtotalMismatch =
-    subtotalCents > 0 && Math.abs(subtotalCents - itemsSumCents) > 1;
+    mode === "dutch" && subtotalCents > 0 && Math.abs(subtotalCents - itemsSumCents) > 1;
 
   const save = async () => {
-    if (items.some((item) => !item.label.trim())) {
+    if (mode === "dutch" && items.some((item) => !item.label.trim())) {
       setError("Every item needs a name");
+      return;
+    }
+    if (mode === "even" && evenTotalCents <= 0) {
+      setError("Enter a total to split");
       return;
     }
     if (roster.length === 0) {
@@ -258,16 +308,16 @@ export default function SplitEditor({
           guest_name: p.guestName,
           phone_number: p.phoneNumber ?? undefined,
         })),
-        items: items.map((item) => ({
+        items: effectiveItems.map((item) => ({
           label: item.label.trim(),
           amount_cents: item.amountCents,
           assignee_refs: item.assigneeRefs,
         })),
-        subtotal_cents: subtotalCents,
-        gst_cents: gstCents,
-        service_charge_cents: serviceChargeCents,
-        gst_included: gstIncluded,
-        service_charge_included: serviceChargeIncluded,
+        subtotal_cents: mode === "dutch" ? subtotalCents : 0,
+        gst_cents: effectiveGstCents,
+        service_charge_cents: effectiveServiceChargeCents,
+        gst_included: effectiveGstIncluded,
+        service_charge_included: effectiveServiceChargeIncluded,
       };
       const result = splitId
         ? await mutateJson<{ split: BillSplit }>(`/api/splits/${splitId}`, "PATCH", body)
@@ -281,7 +331,8 @@ export default function SplitEditor({
   };
 
   const cancel = () => {
-    if (items.length > 0 && !window.confirm("Discard your changes to this split?")) return;
+    const hasDraft = items.length > 0 || evenTotalCents > 0;
+    if (hasDraft && !window.confirm("Discard your changes to this split?")) return;
     onCancel?.();
   };
 
@@ -312,6 +363,27 @@ export default function SplitEditor({
           className={inputClass}
         />
       </Field>
+
+      <div className="flex gap-4">
+        <label className="flex items-center gap-1.5 text-sm">
+          <input
+            type="radio"
+            name="split-mode"
+            checked={mode === "dutch"}
+            onChange={() => setMode("dutch")}
+          />
+          Go Dutch — pay for what you had
+        </label>
+        <label className="flex items-center gap-1.5 text-sm">
+          <input
+            type="radio"
+            name="split-mode"
+            checked={mode === "even"}
+            onChange={() => setMode("even")}
+          />
+          Split evenly — one total, divided equally
+        </label>
+      </div>
 
       <div className="space-y-2">
         <p className="text-stone text-xs font-medium tracking-wide uppercase">
@@ -394,120 +466,147 @@ export default function SplitEditor({
         )}
       </div>
 
-      <ol className="space-y-2">
-        {items.map((item) => (
-          <li key={item.key} className="border-line space-y-1.5 rounded-lg border p-2.5">
+      {mode === "dutch" ? (
+        <>
+          <ol className="space-y-2">
+            {items.map((item) => (
+              <li key={item.key} className="border-line space-y-1.5 rounded-lg border p-2.5">
+                <div className="flex items-center gap-2">
+                  <input
+                    value={item.label}
+                    onChange={(e) => updateItem(item.key, { label: e.target.value })}
+                    placeholder="Item"
+                    className={cn(inputClass, "min-w-0 flex-1")}
+                  />
+                  <div className="w-20 shrink-0">
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={(item.amountCents / 100).toFixed(2)}
+                      onChange={(e) =>
+                        updateItem(item.key, {
+                          amountCents: Math.round((Number(e.target.value) || 0) * 100),
+                        })
+                      }
+                      className={cn(inputClass, "min-w-0")}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => removeItem(item.key)}
+                    aria-label="Remove item"
+                    className="text-stone hover:text-ink shrink-0 px-1 text-sm"
+                  >
+                    ✕
+                  </button>
+                </div>
+                <label className="flex items-center gap-1.5 text-xs">
+                  <input
+                    type="checkbox"
+                    checked={isSharedByAll(item)}
+                    onChange={(e) => toggleShared(item.key, e.target.checked)}
+                  />
+                  Shared by everyone
+                </label>
+                <div className="flex flex-wrap gap-1.5">
+                  {roster.map((person) => {
+                    const active = item.assigneeRefs.includes(person.ref);
+                    return (
+                      <button
+                        key={person.ref}
+                        type="button"
+                        onClick={() => toggleAssignee(item.key, person.ref)}
+                        aria-pressed={active}
+                        className={cn(
+                          "rounded-full px-2 py-0.5 text-xs",
+                          active ? "bg-ember text-white" : "bg-paper text-stone border-line border"
+                        )}
+                      >
+                        {person.name}
+                      </button>
+                    );
+                  })}
+                </div>
+                {item.assigneeRefs.length === 0 && (
+                  <p className="text-ember text-xs">Nobody&apos;s assigned to this yet.</p>
+                )}
+              </li>
+            ))}
+          </ol>
+
+          <Button size="sm" variant="secondary" onClick={addItem}>
+            + Add item
+          </Button>
+
+          {subtotalMismatch && (
+            <p className="bg-amber-tint text-amber-tint-text rounded-lg px-3 py-2 text-xs">
+              The items add up to {formatCents(itemsSumCents)}, but the receipt&apos;s subtotal
+              was {formatCents(subtotalCents)} — worth a quick check.
+            </p>
+          )}
+
+          <div className="border-line space-y-2 border-t pt-3">
             <div className="flex items-center gap-2">
-              <input
-                value={item.label}
-                onChange={(e) => updateItem(item.key, { label: e.target.value })}
-                placeholder="Item"
-                className={cn(inputClass, "min-w-0 flex-1")}
-              />
+              <label className="flex flex-1 items-center gap-1.5 text-xs">
+                <input
+                  type="checkbox"
+                  checked={gstIncluded}
+                  onChange={(e) => setGstIncluded(e.target.checked)}
+                />
+                Split GST
+              </label>
               <div className="w-20 shrink-0">
                 <input
                   type="number"
                   step="0.01"
                   min="0"
-                  value={(item.amountCents / 100).toFixed(2)}
+                  value={(gstCents / 100).toFixed(2)}
+                  onChange={(e) => setGstCents(Math.round((Number(e.target.value) || 0) * 100))}
+                  className={cn(inputClass, "min-w-0")}
+                />
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="flex flex-1 items-center gap-1.5 text-xs">
+                <input
+                  type="checkbox"
+                  checked={serviceChargeIncluded}
+                  onChange={(e) => setServiceChargeIncluded(e.target.checked)}
+                />
+                Split service charge
+              </label>
+              <div className="w-20 shrink-0">
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={(serviceChargeCents / 100).toFixed(2)}
                   onChange={(e) =>
-                    updateItem(item.key, {
-                      amountCents: Math.round((Number(e.target.value) || 0) * 100),
-                    })
+                    setServiceChargeCents(Math.round((Number(e.target.value) || 0) * 100))
                   }
                   className={cn(inputClass, "min-w-0")}
                 />
               </div>
-              <button
-                type="button"
-                onClick={() => removeItem(item.key)}
-                aria-label="Remove item"
-                className="text-stone hover:text-ink shrink-0 px-1 text-sm"
-              >
-                ✕
-              </button>
             </div>
-            <div className="flex flex-wrap gap-1.5">
-              {roster.map((person) => {
-                const active = item.assigneeRefs.includes(person.ref);
-                return (
-                  <button
-                    key={person.ref}
-                    type="button"
-                    onClick={() => toggleAssignee(item.key, person.ref)}
-                    aria-pressed={active}
-                    className={cn(
-                      "rounded-full px-2 py-0.5 text-xs",
-                      active ? "bg-ember text-white" : "bg-paper text-stone border-line border"
-                    )}
-                  >
-                    {person.name}
-                  </button>
-                );
-              })}
-            </div>
-            {item.assigneeRefs.length === 0 && (
-              <p className="text-ember text-xs">Nobody&apos;s assigned to this yet.</p>
-            )}
-          </li>
-        ))}
-      </ol>
-
-      <Button size="sm" variant="secondary" onClick={addItem}>
-        + Add item
-      </Button>
-
-      {subtotalMismatch && (
-        <p className="bg-amber-tint text-amber-tint-text rounded-lg px-3 py-2 text-xs">
-          The items add up to {formatCents(itemsSumCents)}, but the receipt&apos;s subtotal was{" "}
-          {formatCents(subtotalCents)} — worth a quick check.
-        </p>
-      )}
-
-      <div className="border-line space-y-2 border-t pt-3">
-        <div className="flex items-center gap-2">
-          <label className="flex flex-1 items-center gap-1.5 text-xs">
-            <input
-              type="checkbox"
-              checked={gstIncluded}
-              onChange={(e) => setGstIncluded(e.target.checked)}
-            />
-            Split GST
-          </label>
-          <div className="w-20 shrink-0">
-            <input
-              type="number"
-              step="0.01"
-              min="0"
-              value={(gstCents / 100).toFixed(2)}
-              onChange={(e) => setGstCents(Math.round((Number(e.target.value) || 0) * 100))}
-              className={cn(inputClass, "min-w-0")}
-            />
           </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <label className="flex flex-1 items-center gap-1.5 text-xs">
-            <input
-              type="checkbox"
-              checked={serviceChargeIncluded}
-              onChange={(e) => setServiceChargeIncluded(e.target.checked)}
-            />
-            Split service charge
-          </label>
-          <div className="w-20 shrink-0">
+        </>
+      ) : (
+        <Field label="Total to split evenly" hint="Already inclusive of GST/service charge, if any.">
+          <div className="w-32">
             <input
               type="number"
               step="0.01"
               min="0"
-              value={(serviceChargeCents / 100).toFixed(2)}
+              value={(evenTotalCents / 100).toFixed(2)}
               onChange={(e) =>
-                setServiceChargeCents(Math.round((Number(e.target.value) || 0) * 100))
+                setEvenTotalCents(Math.round((Number(e.target.value) || 0) * 100))
               }
               className={cn(inputClass, "min-w-0")}
             />
           </div>
-        </div>
-      </div>
+        </Field>
+      )}
 
       {registeredRoster.length > 0 && (
         <Field label="Who gets paid back">
