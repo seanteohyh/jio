@@ -65,6 +65,9 @@ export default function SplitDetailPage() {
             label: item.label,
             amountCents: item.amount_cents,
             assigneeRefs: item.assignee_ids,
+            discountAmountCents: item.discount_amount_cents,
+            discountPercent: item.discount_percent,
+            discountScope: item.discount_scope,
           }))}
           initialReceiptImagePath={split.receipt_image_path}
           initialReceiptImageUrl={split.receipt_image_url}
@@ -73,6 +76,7 @@ export default function SplitDetailPage() {
           initialServiceChargeCents={split.service_charge_cents}
           initialServiceChargeIncluded={split.service_charge_included}
           initialSubtotalCents={split.subtotal_cents}
+          initialDiscountPercent={split.discount_percent}
           onSaved={() => {
             setEditing(false);
             mutate();

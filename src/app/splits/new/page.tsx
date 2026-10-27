@@ -162,6 +162,9 @@ function NewSplitContent() {
       label: item.label,
       amountCents: item.amount_cents,
       assigneeRefs: [],
+      discountAmountCents: 0,
+      discountPercent: 0,
+      discountScope: "item" as const,
     }));
 
     return (

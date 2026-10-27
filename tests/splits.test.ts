@@ -465,3 +465,154 @@ describe("uploadReceiptImage", () => {
     expect(path).toBeNull();
   });
 });
+
+describe("discounts", () => {
+  it("an item's own discount (dollar) only benefits its own assignees", async () => {
+    const split = await demoRepo.createSplit(
+      DEMO_USER_ID,
+      basicInput({
+        participants: [
+          { ref: "host", userId: DEMO_USER_ID },
+          { ref: "a", userId: DEMO_TEAMMATE_A },
+          { ref: "b", userId: DEMO_TEAMMATE_B },
+        ],
+        items: [
+          {
+            label: "Steak",
+            amountCents: 8000,
+            assigneeRefs: ["a"],
+            discountAmountCents: 1000,
+            discountScope: "item",
+          },
+          { label: "Kopi", amountCents: 2000, assigneeRefs: ["b"] },
+        ],
+        subtotalCents: 10000,
+      })
+    );
+    const a = split.participants.find((p) => p.user_id === DEMO_TEAMMATE_A);
+    const b = split.participants.find((p) => p.user_id === DEMO_TEAMMATE_B);
+    expect(a?.owed_cents).toBe(7000); // 8000 - 1000, nobody else's business
+    expect(b?.owed_cents).toBe(2000); // untouched
+  });
+
+  it("an item's own discount (percent) computes off that item's own amount", async () => {
+    const split = await demoRepo.createSplit(
+      DEMO_USER_ID,
+      basicInput({
+        items: [
+          {
+            label: "Dessert",
+            amountCents: 1000,
+            assigneeRefs: ["host"],
+            discountPercent: 20,
+            discountScope: "item",
+          },
+        ],
+        subtotalCents: 1000,
+      })
+    );
+    const host = split.participants.find((p) => p.user_id === DEMO_USER_ID);
+    expect(host?.owed_cents).toBe(800); // 1000 - 20%
+  });
+
+  it("a shared-scope discount redistributes across everyone, weighted by order amount — not just the item's own assignees", async () => {
+    // A ordered $80 of food, B ordered a $20 Kopi with a $10 discount
+    // marked "share with everyone." B's own item still counts its full
+    // $20 toward B's base share; the $10 discount instead pools and
+    // splits 80/20 between A and B by their own order size, so A (who
+    // never had the Kopi at all) gets the bigger slice of the discount.
+    const split = await demoRepo.createSplit(
+      DEMO_USER_ID,
+      basicInput({
+        participants: [
+          { ref: "host", userId: DEMO_USER_ID },
+          { ref: "a", userId: DEMO_TEAMMATE_A },
+          { ref: "b", userId: DEMO_TEAMMATE_B },
+        ],
+        items: [
+          { label: "Steak", amountCents: 8000, assigneeRefs: ["a"] },
+          {
+            label: "Kopi",
+            amountCents: 2000,
+            assigneeRefs: ["b"],
+            discountAmountCents: 1000,
+            discountScope: "shared",
+          },
+        ],
+        subtotalCents: 10000,
+      })
+    );
+    const a = split.participants.find((p) => p.user_id === DEMO_TEAMMATE_A);
+    const b = split.participants.find((p) => p.user_id === DEMO_TEAMMATE_B);
+    expect(a?.owed_cents).toBe(7200); // 8000 - 80% of the $10 pool
+    expect(b?.owed_cents).toBe(1800); // 2000 - 20% of the $10 pool
+  });
+
+  it("the whole-bill % discount reduces everyone's share proportionally, before GST/service charge are applied on top", async () => {
+    const split = await demoRepo.createSplit(
+      DEMO_USER_ID,
+      basicInput({
+        items: [{ label: "Everything", amountCents: 10000, assigneeRefs: ["host"] }],
+        subtotalCents: 10000,
+        discountPercent: 10,
+        gstCents: 891,
+        serviceChargeCents: 900,
+      })
+    );
+    const host = split.participants.find((p) => p.user_id === DEMO_USER_ID);
+    // 10000 - 10% ($1000) + service charge (900) + GST (891), the sole
+    // assignee carries the whole bill so proportion is 1 throughout.
+    expect(host?.owed_cents).toBe(10791);
+  });
+
+  it("an unassigned item's shared discount never pools — it isn't really part of the bill yet", async () => {
+    const split = await demoRepo.createSplit(
+      DEMO_USER_ID,
+      basicInput({
+        participants: [
+          { ref: "host", userId: DEMO_USER_ID },
+          { ref: "a", userId: DEMO_TEAMMATE_A },
+        ],
+        items: [
+          { label: "Steak", amountCents: 8000, assigneeRefs: ["a"] },
+          {
+            label: "Unassigned dessert",
+            amountCents: 2000,
+            assigneeRefs: [],
+            discountAmountCents: 500,
+            discountScope: "shared",
+          },
+        ],
+        subtotalCents: 10000,
+      })
+    );
+    const a = split.participants.find((p) => p.user_id === DEMO_TEAMMATE_A);
+    expect(a?.owed_cents).toBe(8000); // no discount leaked in from the unassigned item
+  });
+
+  it("works for a guest exactly like a registered participant, combining an item discount and a whole-bill discount", async () => {
+    const split = await demoRepo.createSplit(
+      DEMO_USER_ID,
+      basicInput({
+        participants: [
+          { ref: "host", userId: DEMO_USER_ID },
+          { ref: "guest", guestName: "Riley" },
+        ],
+        items: [
+          {
+            label: "Riley's noodles",
+            amountCents: 2000,
+            assigneeRefs: ["guest"],
+            discountAmountCents: 200,
+            discountScope: "item",
+          },
+        ],
+        subtotalCents: 2000,
+        discountPercent: 10,
+      })
+    );
+    const guest = split.participants.find((p) => p.guest_name === "Riley");
+    // 2000 - 200 (own item discount) = 1800, then - 10% of 1800 = 180.
+    expect(guest?.owed_cents).toBe(1620);
+  });
+});
