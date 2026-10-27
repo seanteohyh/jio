@@ -13,9 +13,10 @@ import type { BillSplit, KakiDetail, TeamUser } from "@/types";
 // setting. GST/service charge stay live off these while in "auto" mode
 // (service charge off the plain item subtotal, GST off subtotal plus
 // service charge when both are included, matching how a real receipt
-// stacks them) — see `gstAuto`/`serviceChargeAuto`'s own doc comment for
-// when that stops. Always freely editable — a particular restaurant's
-// actual rate can differ.
+// stacks them — GST is charged on the full taxable supply, which
+// includes the service charge) — see `gstAuto`/`serviceChargeAuto`'s
+// own doc comment for when that stops. Always freely editable — a
+// particular restaurant's actual rate can differ.
 const GST_RATE = 0.09;
 const SERVICE_CHARGE_RATE = 0.1;
 
