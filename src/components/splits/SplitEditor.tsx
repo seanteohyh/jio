@@ -177,10 +177,30 @@ export default function SplitEditor({
    *  Dutch" never loses the itemized list — only `save()` decides which
    *  one actually gets sent. */
   const [mode, setMode] = useState<"dutch" | "even">("dutch");
-  const [evenTotalCents, setEvenTotalCents] = useState(() => {
+  /** "Split evenly"'s own subtotal — GST/service charge are no longer
+   *  baked into this number (see the checkbox section below, shared with
+   *  "Go Dutch"), they're added on top the same way an itemized split
+   *  adds them. Live, not a one-time snapshot, while in "auto" mode: it
+   *  tracks whatever the (shared) item list sums to, so editing items
+   *  under "Go Dutch" and then switching to "Split evenly" shows the
+   *  current total, not whatever was true at the moment the editor first
+   *  opened — the bug report that caught this. Starts manual when
+   *  there's already a real figure on it (reopening an existing split,
+   *  or a scan that found a subtotal/items) so that number is never
+   *  silently replaced by a formula; typing into the field directly ends
+   *  auto mode, one-way, the same rule gstAuto/serviceChargeAuto follow. */
+  const [evenSubtotalAuto, setEvenSubtotalAuto] = useState(() => {
     const itemsSum = (initialItems ?? []).reduce((sum, item) => sum + item.amountCents, 0);
-    return itemsSum || (initialGstCents ?? 0) + (initialServiceChargeCents ?? 0);
+    return (initialSubtotalCents ?? 0) === 0 && itemsSum === 0;
   });
+  const [evenSubtotalCents, setEvenSubtotalCentsState] = useState(() => {
+    const itemsSum = (initialItems ?? []).reduce((sum, item) => sum + item.amountCents, 0);
+    return (initialSubtotalCents ?? 0) || itemsSum;
+  });
+  const handleEvenSubtotalChange = (cents: number) => {
+    setEvenSubtotalAuto(false);
+    setEvenSubtotalCentsState(cents);
+  };
 
   const [addingPeople, setAddingPeople] = useState(false);
   const [pickerValue, setPickerValue] = useState<InviteSelection>({
@@ -317,26 +337,34 @@ export default function SplitEditor({
   };
 
   const itemsSumCents = items.reduce((sum, item) => sum + item.amountCents, 0);
+  const displayEvenSubtotalCents = evenSubtotalAuto ? itemsSumCents : evenSubtotalCents;
+  // Whichever mode is active — "Go Dutch" assigns each item by hand,
+  // "Split evenly" has exactly one, but both share one subtotal concept
+  // GST/service charge compute off.
+  const effectiveSubtotalCents = mode === "dutch" ? itemsSumCents : displayEvenSubtotalCents;
 
-  // Live, not a one-time snapshot: recomputed from the current item
-  // subtotal on every render, so adding/editing an item immediately
-  // moves GST/service charge too, as long as that field hasn't been
-  // manually typed into (see `gstAuto`/`serviceChargeAuto`'s own doc
-  // comment). Service charge first, off the plain subtotal; GST on top
-  // of subtotal-plus-service-charge when both are included, matching how
-  // a real receipt stacks them.
-  const autoServiceChargeCents = Math.round(itemsSumCents * SERVICE_CHARGE_RATE);
+  // Live, not a one-time snapshot: recomputed from the current subtotal
+  // on every render, so adding/editing an item (or, in "Split evenly,"
+  // the one lump subtotal) immediately moves GST/service charge too, as
+  // long as that field hasn't been manually typed into (see
+  // `gstAuto`/`serviceChargeAuto`'s own doc comment). Service charge
+  // first, off the plain subtotal; GST on top of subtotal-plus-service-
+  // charge when both are included, matching how a real receipt stacks
+  // them. Shared across both modes — ticking "Split GST" works the same
+  // either way, and switching modes doesn't reset it.
+  const autoServiceChargeCents = Math.round(effectiveSubtotalCents * SERVICE_CHARGE_RATE);
   const displayServiceChargeCents = serviceChargeAuto
     ? autoServiceChargeCents
     : serviceChargeCents;
-  const autoGstBase = itemsSumCents + (serviceChargeIncluded ? displayServiceChargeCents : 0);
+  const autoGstBase = effectiveSubtotalCents + (serviceChargeIncluded ? displayServiceChargeCents : 0);
   const displayGstCents = gstAuto ? Math.round(autoGstBase * GST_RATE) : gstCents;
 
   // "Split evenly" reuses the exact same per-item math as "Go Dutch" —
-  // it's just one synthetic item (the whole total) assigned to everyone
-  // in the roster, which divides out to an equal share automatically,
-  // GST/service charge included in that one number rather than added
-  // separately on top.
+  // it's just one synthetic item (the subtotal, pre-tax) assigned to
+  // everyone in the roster, which divides out to an equal share
+  // automatically, with GST/service charge then splitting evenly across
+  // that same single assignment the same proportional way they'd split
+  // across any shared item.
   const effectiveItems: DraftItem[] =
     mode === "dutch"
       ? items
@@ -344,14 +372,14 @@ export default function SplitEditor({
           {
             key: "__even__",
             label: "Shared bill",
-            amountCents: evenTotalCents,
+            amountCents: displayEvenSubtotalCents,
             assigneeRefs: roster.map((p) => p.ref),
           },
         ];
-  const effectiveGstCents = mode === "dutch" ? displayGstCents : 0;
-  const effectiveGstIncluded = mode === "dutch" ? gstIncluded : false;
-  const effectiveServiceChargeCents = mode === "dutch" ? displayServiceChargeCents : 0;
-  const effectiveServiceChargeIncluded = mode === "dutch" ? serviceChargeIncluded : false;
+  const effectiveGstCents = displayGstCents;
+  const effectiveGstIncluded = gstIncluded;
+  const effectiveServiceChargeCents = displayServiceChargeCents;
+  const effectiveServiceChargeIncluded = serviceChargeIncluded;
 
   // Live preview of each person's share while assigning — the server
   // recomputes this authoritatively on save; this is just immediate
@@ -382,7 +410,7 @@ export default function SplitEditor({
       setError("Every item needs a name");
       return;
     }
-    if (mode === "even" && evenTotalCents <= 0) {
+    if (mode === "even" && displayEvenSubtotalCents <= 0) {
       setError("Enter a total to split");
       return;
     }
@@ -410,7 +438,7 @@ export default function SplitEditor({
           amount_cents: item.amountCents,
           assignee_refs: item.assigneeRefs,
         })),
-        subtotal_cents: mode === "dutch" ? subtotalCents : 0,
+        subtotal_cents: mode === "dutch" ? subtotalCents : displayEvenSubtotalCents,
         gst_cents: effectiveGstCents,
         service_charge_cents: effectiveServiceChargeCents,
         gst_included: effectiveGstIncluded,
@@ -428,7 +456,7 @@ export default function SplitEditor({
   };
 
   const cancel = () => {
-    const hasDraft = items.length > 0 || evenTotalCents > 0;
+    const hasDraft = items.length > 0 || displayEvenSubtotalCents > 0;
     if (hasDraft && !window.confirm("Discard your changes to this split?")) return;
     onCancel?.();
   };
@@ -635,60 +663,63 @@ export default function SplitEditor({
               was {formatCents(subtotalCents)} — worth a quick check.
             </p>
           )}
-
-          <div className="border-line space-y-2 border-t pt-3">
-            <p className="text-stone text-xs">
-              Ticking either one fills in Singapore&apos;s usual rate (9% GST, 10% service
-              charge) and keeps it in sync as items change — leave unticked if this receipt
-              doesn&apos;t have one, or edit the amount once to take over from here.
-            </p>
-            <div className="flex items-center gap-2">
-              <label className="flex flex-1 items-center gap-1.5 text-xs">
-                <input
-                  type="checkbox"
-                  checked={gstIncluded}
-                  onChange={(e) => setGstIncluded(e.target.checked)}
-                />
-                Split GST
-              </label>
-              <div className="w-20 shrink-0">
-                <MoneyInput
-                  cents={displayGstCents}
-                  onChangeCents={handleGstAmountChange}
-                  className={cn(inputClass, "min-w-0")}
-                />
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <label className="flex flex-1 items-center gap-1.5 text-xs">
-                <input
-                  type="checkbox"
-                  checked={serviceChargeIncluded}
-                  onChange={(e) => setServiceChargeIncluded(e.target.checked)}
-                />
-                Split service charge
-              </label>
-              <div className="w-20 shrink-0">
-                <MoneyInput
-                  cents={displayServiceChargeCents}
-                  onChangeCents={handleServiceChargeAmountChange}
-                  className={cn(inputClass, "min-w-0")}
-                />
-              </div>
-            </div>
-          </div>
         </>
       ) : (
-        <Field label="Total to split evenly" hint="Already inclusive of GST/service charge, if any.">
+        <Field
+          label="Subtotal to split evenly"
+          hint="Before GST/service charge — tick either below to add it on top."
+        >
           <div className="w-32">
             <MoneyInput
-              cents={evenTotalCents}
-              onChangeCents={setEvenTotalCents}
+              cents={displayEvenSubtotalCents}
+              onChangeCents={handleEvenSubtotalChange}
               className={cn(inputClass, "min-w-0")}
             />
           </div>
         </Field>
       )}
+
+      <div className="border-line space-y-2 border-t pt-3">
+        <p className="text-stone text-xs">
+          Ticking either one fills in Singapore&apos;s usual rate (9% GST, 10% service charge)
+          and keeps it in sync as the subtotal changes — leave unticked if this receipt
+          doesn&apos;t have one, or edit the amount once to take over from here.
+        </p>
+        <div className="flex items-center gap-2">
+          <label className="flex flex-1 items-center gap-1.5 text-xs">
+            <input
+              type="checkbox"
+              checked={gstIncluded}
+              onChange={(e) => setGstIncluded(e.target.checked)}
+            />
+            Split GST
+          </label>
+          <div className="w-20 shrink-0">
+            <MoneyInput
+              cents={displayGstCents}
+              onChangeCents={handleGstAmountChange}
+              className={cn(inputClass, "min-w-0")}
+            />
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <label className="flex flex-1 items-center gap-1.5 text-xs">
+            <input
+              type="checkbox"
+              checked={serviceChargeIncluded}
+              onChange={(e) => setServiceChargeIncluded(e.target.checked)}
+            />
+            Split service charge
+          </label>
+          <div className="w-20 shrink-0">
+            <MoneyInput
+              cents={displayServiceChargeCents}
+              onChangeCents={handleServiceChargeAmountChange}
+              className={cn(inputClass, "min-w-0")}
+            />
+          </div>
+        </div>
+      </div>
 
       {registeredRoster.length > 0 && (
         <Field label="Who gets paid back">
