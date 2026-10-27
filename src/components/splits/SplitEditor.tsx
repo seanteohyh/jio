@@ -10,12 +10,12 @@ import { cn } from "@/lib/utils";
 import type { BillSplit, KakiDetail, TeamUser } from "@/types";
 
 // Typical Singapore F&B rates — a starting estimate, not a per-split
-// setting. GST/service charge stay live off these while in "auto" mode
-// (service charge off the plain item subtotal, GST off subtotal plus
-// service charge when both are included, matching how a real receipt
-// stacks them) — see `gstAuto`/`serviceChargeAuto`'s own doc comment for
-// when that stops. Always freely editable — a particular restaurant's
-// actual rate can differ.
+// setting. GST/service charge stay live off these while in "auto" mode,
+// each a flat rate off the plain item subtotal, independently of the
+// other (not compounded) — see `gstAuto`/`serviceChargeAuto`'s own doc
+// comment for when that stops. Always freely editable — a particular
+// restaurant's actual rate, or how it stacks GST on top of service
+// charge, can differ.
 const GST_RATE = 0.09;
 const SERVICE_CHARGE_RATE = 0.1;
 
@@ -321,15 +321,16 @@ export default function SplitEditor({
   // subtotal on every render, so adding/editing an item immediately
   // moves GST/service charge too, as long as that field hasn't been
   // manually typed into (see `gstAuto`/`serviceChargeAuto`'s own doc
-  // comment). Service charge first, off the plain subtotal; GST on top
-  // of subtotal-plus-service-charge when both are included, matching how
-  // a real receipt stacks them.
+  // comment). Each is a flat rate off the plain item subtotal,
+  // independently of the other — not compounded (GST isn't charged on
+  // top of service charge here), matching what a diner expects to see
+  // when checking the two percentages against the subtotal by hand.
   const autoServiceChargeCents = Math.round(itemsSumCents * SERVICE_CHARGE_RATE);
   const displayServiceChargeCents = serviceChargeAuto
     ? autoServiceChargeCents
     : serviceChargeCents;
-  const autoGstBase = itemsSumCents + (serviceChargeIncluded ? displayServiceChargeCents : 0);
-  const displayGstCents = gstAuto ? Math.round(autoGstBase * GST_RATE) : gstCents;
+  const autoGstCents = Math.round(itemsSumCents * GST_RATE);
+  const displayGstCents = gstAuto ? autoGstCents : gstCents;
 
   // "Split evenly" reuses the exact same per-item math as "Go Dutch" —
   // it's just one synthetic item (the whole total) assigned to everyone
