@@ -179,7 +179,16 @@ export default function SplitEditor({
   const [mode, setMode] = useState<"dutch" | "even">("dutch");
   const [evenTotalCents, setEvenTotalCents] = useState(() => {
     const itemsSum = (initialItems ?? []).reduce((sum, item) => sum + item.amountCents, 0);
-    return itemsSum || (initialGstCents ?? 0) + (initialServiceChargeCents ?? 0);
+    // The scanned subtotal when there is one (straight off the receipt,
+    // so it holds even if OCR mis-itemized something), else whatever the
+    // items themselves add up to — either way, GST/service charge from
+    // the scan always get added on top. A prior version used `||` here,
+    // which short-circuited to the items/subtotal alone whenever that was
+    // nonzero and silently dropped GST/service charge from the total the
+    // moment a receipt scan found nonempty items — contradicting this
+    // field's own "Already inclusive of GST/service charge" hint text.
+    const base = (initialSubtotalCents ?? 0) || itemsSum;
+    return base + (initialGstCents ?? 0) + (initialServiceChargeCents ?? 0);
   });
 
   const [addingPeople, setAddingPeople] = useState(false);
