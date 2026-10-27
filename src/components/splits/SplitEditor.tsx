@@ -10,12 +10,12 @@ import { cn } from "@/lib/utils";
 import type { BillSplit, KakiDetail, TeamUser } from "@/types";
 
 // Typical Singapore F&B rates — a starting estimate, not a per-split
-// setting: ticking "Split GST"/"Split service charge" on auto-fills the
-// amount from these (service charge off subtotal, GST off subtotal plus
-// service charge if that's also included, matching how a real receipt
-// stacks them), but only when the field is still at zero, so it never
-// clobbers a typed-in or OCR-scanned amount. Always freely editable
-// afterward — a particular restaurant's actual rate can differ.
+// setting. GST/service charge stay live off these while in "auto" mode
+// (service charge off the plain item subtotal, GST off subtotal plus
+// service charge when both are included, matching how a real receipt
+// stacks them) — see `gstAuto`/`serviceChargeAuto`'s own doc comment for
+// when that stops. Always freely editable — a particular restaurant's
+// actual rate can differ.
 const GST_RATE = 0.09;
 const SERVICE_CHARGE_RATE = 0.1;
 
@@ -154,6 +154,18 @@ export default function SplitEditor({
   const [serviceChargeIncluded, setServiceChargeIncluded] = useState(
     initialServiceChargeIncluded ?? false
   );
+  /** Whether GST/service charge are still following the live auto-calc
+   *  (recomputed from the item subtotal on every render) rather than a
+   *  manually typed amount. Starts auto for a fresh split (nothing typed
+   *  yet) and starts "manual" when re-opening a split that already has a
+   *  real figure on it (typed or scanned off a receipt) — that number is
+   *  never silently replaced by a formula. Typing into either field ends
+   *  auto mode for that field, one-way, the same "don't clobber a
+   *  correction" rule the GST/service-charge amounts already followed. */
+  const [gstAuto, setGstAuto] = useState((initialGstCents ?? 0) === 0);
+  const [serviceChargeAuto, setServiceChargeAuto] = useState(
+    (initialServiceChargeCents ?? 0) === 0
+  );
   const [subtotalCents] = useState(initialSubtotalCents ?? 0);
   const [receiptImagePath] = useState(initialReceiptImagePath ?? null);
 
@@ -225,18 +237,15 @@ export default function SplitEditor({
     updateItem(key, { assigneeRefs: shared ? roster.map((p) => p.ref) : [] });
   };
 
-  const toggleGstIncluded = (checked: boolean) => {
-    setGstIncluded(checked);
-    if (checked && gstCents === 0) {
-      const base = itemsSumCents + (serviceChargeIncluded ? serviceChargeCents : 0);
-      setGstCents(Math.round(base * GST_RATE));
-    }
+  /** Typing a custom amount ends auto mode for that field, one-way — see
+   *  `gstAuto`/`serviceChargeAuto`'s own doc comment. */
+  const handleGstAmountChange = (cents: number) => {
+    setGstAuto(false);
+    setGstCents(cents);
   };
-  const toggleServiceChargeIncluded = (checked: boolean) => {
-    setServiceChargeIncluded(checked);
-    if (checked && serviceChargeCents === 0) {
-      setServiceChargeCents(Math.round(itemsSumCents * SERVICE_CHARGE_RATE));
-    }
+  const handleServiceChargeAmountChange = (cents: number) => {
+    setServiceChargeAuto(false);
+    setServiceChargeCents(cents);
   };
 
   const confirmAddFromPicker = async () => {
@@ -306,6 +315,22 @@ export default function SplitEditor({
     setAddingGuest(false);
   };
 
+  const itemsSumCents = items.reduce((sum, item) => sum + item.amountCents, 0);
+
+  // Live, not a one-time snapshot: recomputed from the current item
+  // subtotal on every render, so adding/editing an item immediately
+  // moves GST/service charge too, as long as that field hasn't been
+  // manually typed into (see `gstAuto`/`serviceChargeAuto`'s own doc
+  // comment). Service charge first, off the plain subtotal; GST on top
+  // of subtotal-plus-service-charge when both are included, matching how
+  // a real receipt stacks them.
+  const autoServiceChargeCents = Math.round(itemsSumCents * SERVICE_CHARGE_RATE);
+  const displayServiceChargeCents = serviceChargeAuto
+    ? autoServiceChargeCents
+    : serviceChargeCents;
+  const autoGstBase = itemsSumCents + (serviceChargeIncluded ? displayServiceChargeCents : 0);
+  const displayGstCents = gstAuto ? Math.round(autoGstBase * GST_RATE) : gstCents;
+
   // "Split evenly" reuses the exact same per-item math as "Go Dutch" —
   // it's just one synthetic item (the whole total) assigned to everyone
   // in the roster, which divides out to an equal share automatically,
@@ -322,9 +347,9 @@ export default function SplitEditor({
             assigneeRefs: roster.map((p) => p.ref),
           },
         ];
-  const effectiveGstCents = mode === "dutch" ? gstCents : 0;
+  const effectiveGstCents = mode === "dutch" ? displayGstCents : 0;
   const effectiveGstIncluded = mode === "dutch" ? gstIncluded : false;
-  const effectiveServiceChargeCents = mode === "dutch" ? serviceChargeCents : 0;
+  const effectiveServiceChargeCents = mode === "dutch" ? displayServiceChargeCents : 0;
   const effectiveServiceChargeIncluded = mode === "dutch" ? serviceChargeIncluded : false;
 
   // Live preview of each person's share while assigning — the server
@@ -348,7 +373,6 @@ export default function SplitEditor({
     return Math.round(itemsCents + gst + svc);
   };
 
-  const itemsSumCents = items.reduce((sum, item) => sum + item.amountCents, 0);
   const subtotalMismatch =
     mode === "dutch" && subtotalCents > 0 && Math.abs(subtotalCents - itemsSumCents) > 1;
 
@@ -614,22 +638,22 @@ export default function SplitEditor({
           <div className="border-line space-y-2 border-t pt-3">
             <p className="text-stone text-xs">
               Ticking either one fills in Singapore&apos;s usual rate (9% GST, 10% service
-              charge) — leave unticked if this receipt doesn&apos;t have one, or edit the amount
-              if it's different.
+              charge) and keeps it in sync as items change — leave unticked if this receipt
+              doesn&apos;t have one, or edit the amount once to take over from here.
             </p>
             <div className="flex items-center gap-2">
               <label className="flex flex-1 items-center gap-1.5 text-xs">
                 <input
                   type="checkbox"
                   checked={gstIncluded}
-                  onChange={(e) => toggleGstIncluded(e.target.checked)}
+                  onChange={(e) => setGstIncluded(e.target.checked)}
                 />
                 Split GST
               </label>
               <div className="w-20 shrink-0">
                 <MoneyInput
-                  cents={gstCents}
-                  onChangeCents={setGstCents}
+                  cents={displayGstCents}
+                  onChangeCents={handleGstAmountChange}
                   className={cn(inputClass, "min-w-0")}
                 />
               </div>
@@ -639,14 +663,14 @@ export default function SplitEditor({
                 <input
                   type="checkbox"
                   checked={serviceChargeIncluded}
-                  onChange={(e) => toggleServiceChargeIncluded(e.target.checked)}
+                  onChange={(e) => setServiceChargeIncluded(e.target.checked)}
                 />
                 Split service charge
               </label>
               <div className="w-20 shrink-0">
                 <MoneyInput
-                  cents={serviceChargeCents}
-                  onChangeCents={setServiceChargeCents}
+                  cents={displayServiceChargeCents}
+                  onChangeCents={handleServiceChargeAmountChange}
                   className={cn(inputClass, "min-w-0")}
                 />
               </div>
