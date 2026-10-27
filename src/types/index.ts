@@ -596,8 +596,21 @@ export interface BillItem {
   id: string;
   bill_split_id: string;
   label: string;
+  /** The item's own raw price — never discount-adjusted; a discount is
+   *  tracked separately (below) and applied at read time, so editing an
+   *  item's price later and the OCR-vs-entered subtotal mismatch check
+   *  both keep comparing real, undiscounted menu prices. */
   amount_cents: number;
   position: number;
+  /** Whichever one the host used; the other stays 0. A dollar amount off
+   *  this item, OR a percent off it — never both at once. */
+  discount_amount_cents: number;
+  discount_percent: number;
+  /** "item": only this item's own assignees benefit, same as the price
+   *  was simply lower. "shared": the discount is instead pooled and
+   *  split across everyone in the roster, weighted by their own order
+   *  amount — same proportional mechanism GST/service charge use. */
+  discount_scope: "item" | "shared";
   /** Who shares this item — participant ids (registered or guest),
    *  splitting its cost evenly across however many. */
   assignee_ids: string[];
@@ -641,6 +654,12 @@ export interface BillSplit {
   service_charge_cents: number;
   gst_included: boolean;
   service_charge_included: boolean;
+  /** Flat % off the subtotal, before GST/service charge — a membership
+   *  or promo discount on the whole bill. 0 means none. Combines with
+   *  any per-item discounts (`BillItem.discount_amount_cents`/
+   *  `discount_percent`), computed independently off the same
+   *  post-item-discount subtotal rather than stacking on top of them. */
+  discount_percent: number;
   status: "draft" | "finalized";
   created_at: string;
   items: BillItem[];
@@ -680,6 +699,9 @@ export interface SplitItemInput {
   label: string;
   amountCents: number;
   assigneeRefs: string[];
+  discountAmountCents?: number;
+  discountPercent?: number;
+  discountScope?: "item" | "shared";
 }
 
 export interface SplitInput {
@@ -694,6 +716,8 @@ export interface SplitInput {
   serviceChargeCents: number;
   gstIncluded: boolean;
   serviceChargeIncluded: boolean;
+  /** Flat % off the whole bill's subtotal — see `BillSplit.discount_percent`. */
+  discountPercent?: number;
 }
 
 export interface EventInvitee {

@@ -15,12 +15,20 @@ export interface SplitBody {
     guest_name?: string;
     phone_number?: string | null;
   }>;
-  items?: Array<{ label?: string; amount_cents?: number; assignee_refs?: string[] }>;
+  items?: Array<{
+    label?: string;
+    amount_cents?: number;
+    assignee_refs?: string[];
+    discount_amount_cents?: number;
+    discount_percent?: number;
+    discount_scope?: string;
+  }>;
   subtotal_cents?: number;
   gst_cents?: number;
   service_charge_cents?: number;
   gst_included?: boolean;
   service_charge_included?: boolean;
+  discount_percent?: number;
 }
 
 /**
@@ -67,10 +75,25 @@ export function parseSplitInput(body: SplitBody | null): SplitInput | string {
     for (const ref of assigneeRefs) {
       if (!seenRefs.has(ref)) return "An item is assigned to someone not in this split";
     }
+    const discountAmountCents = raw.discount_amount_cents ?? 0;
+    const discountPercent = raw.discount_percent ?? 0;
+    if (
+      typeof discountAmountCents !== "number" ||
+      discountAmountCents < 0 ||
+      typeof discountPercent !== "number" ||
+      discountPercent < 0 ||
+      discountPercent > 100
+    ) {
+      return `"${label}" has an invalid discount`;
+    }
+    const discountScope = raw.discount_scope === "shared" ? "shared" : "item";
     items.push({
       label,
       amountCents: Math.round(raw.amount_cents),
       assigneeRefs,
+      discountAmountCents: Math.round(discountAmountCents),
+      discountPercent,
+      discountScope,
     });
   }
   if (items.length === 0) return "Add at least one item";
@@ -79,6 +102,10 @@ export function parseSplitInput(body: SplitBody | null): SplitInput | string {
     if (typeof body[field] !== "number" || body[field]! < 0) {
       return "That doesn't look like a valid amount";
     }
+  }
+  const discountPercent = body.discount_percent ?? 0;
+  if (typeof discountPercent !== "number" || discountPercent < 0 || discountPercent > 100) {
+    return "That doesn't look like a valid discount";
   }
 
   return {
@@ -93,5 +120,6 @@ export function parseSplitInput(body: SplitBody | null): SplitInput | string {
     serviceChargeCents: Math.round(body.service_charge_cents!),
     gstIncluded: body.gst_included ?? true,
     serviceChargeIncluded: body.service_charge_included ?? true,
+    discountPercent,
   };
 }

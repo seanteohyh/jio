@@ -13,6 +13,7 @@ function makeSplit(overrides: Partial<BillSplit> = {}): BillSplit {
     service_charge_cents: 0,
     gst_included: true,
     service_charge_included: true,
+    discount_percent: 0,
     status: "finalized",
     created_at: new Date().toISOString(),
     items: [],

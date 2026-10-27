@@ -69,6 +69,51 @@ function MoneyInput({
 }
 
 /**
+ * A plain decimal-text input for a 0-100 percent value, same free-typing
+ * shape as `MoneyInput` (own string state, re-syncs from the outside
+ * only while not focused) — used for a discount's own rate, not a cents
+ * amount, so it reports a plain number (e.g. `12.5`) rather than cents.
+ */
+function PercentInput({
+  value,
+  onChangeValue,
+  className,
+}: {
+  value: number;
+  onChangeValue: (value: number) => void;
+  className?: string;
+}) {
+  const [text, setText] = useState(value === 0 ? "" : String(value));
+  const [focused, setFocused] = useState(false);
+
+  useEffect(() => {
+    if (!focused) setText(value === 0 ? "" : String(value));
+  }, [value, focused]);
+
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      placeholder="0"
+      value={text}
+      onFocus={() => setFocused(true)}
+      onBlur={() => {
+        setFocused(false);
+        setText(value === 0 ? "" : String(value));
+      }}
+      onChange={(e) => {
+        const raw = e.target.value;
+        if (!/^\d*\.?\d{0,2}$/.test(raw)) return;
+        setText(raw);
+        const parsed = Math.min(100, Math.max(0, Number(raw) || 0));
+        onChangeValue(parsed);
+      }}
+      className={className}
+    />
+  );
+}
+
+/**
  * The review-and-assign screen — shared by starting a brand-new split
  * (from a scan or manual entry) and re-opening a saved one to correct
  * it. Nothing here is tied to a Jio: the "who's splitting this" roster
@@ -98,6 +143,24 @@ interface DraftItem {
   label: string;
   amountCents: number;
   assigneeRefs: string[];
+  /** Whichever one is nonzero; the other stays 0 — see
+   *  `BillItem.discount_amount_cents`'s own doc comment. */
+  discountAmountCents: number;
+  discountPercent: number;
+  discountScope: "item" | "shared";
+}
+
+/** A fresh item with no discount set — the common case. */
+function emptyDraftItem(key: string): DraftItem {
+  return {
+    key,
+    label: "",
+    amountCents: 0,
+    assigneeRefs: [],
+    discountAmountCents: 0,
+    discountPercent: 0,
+    discountScope: "item",
+  };
 }
 
 function newRef(prefix: string): string {
@@ -119,6 +182,7 @@ export default function SplitEditor({
   initialServiceChargeCents,
   initialServiceChargeIncluded,
   initialSubtotalCents,
+  initialDiscountPercent,
   onSaved,
   onCancel,
 }: {
@@ -140,6 +204,8 @@ export default function SplitEditor({
   initialServiceChargeCents?: number;
   initialServiceChargeIncluded?: boolean;
   initialSubtotalCents?: number;
+  /** Flat % off the whole bill's subtotal — see `BillSplit.discount_percent`. */
+  initialDiscountPercent?: number;
   onSaved: (split: BillSplit) => void;
   onCancel?: () => void;
 }) {
@@ -147,6 +213,7 @@ export default function SplitEditor({
   const [payerUserId, setPayerUserId] = useState(initialPayerUserId);
   const [roster, setRoster] = useState<RosterPerson[]>(initialRoster);
   const [items, setItems] = useState<DraftItem[]>(initialItems ?? []);
+  const [discountPercent, setDiscountPercent] = useState(initialDiscountPercent ?? 0);
   const [gstCents, setGstCents] = useState(initialGstCents ?? 0);
   const [gstIncluded, setGstIncluded] = useState(initialGstIncluded ?? false);
   const [serviceChargeCents, setServiceChargeCents] = useState(
@@ -213,11 +280,26 @@ export default function SplitEditor({
   const [guestName, setGuestName] = useState("");
   const [guestPhone, setGuestPhone] = useState("");
 
+  /** Which items have their discount controls open — a plain UI toggle,
+   *  not persisted; an item with a real discount already set shows the
+   *  controls regardless, so this only matters for an item with nothing
+   *  on it yet. */
+  const [expandedDiscounts, setExpandedDiscounts] = useState<Set<string>>(new Set());
+  /** Which items' discount input is in "%" entry mode right now — the
+   *  $/% toggle's own explicit choice, not inferred from which field
+   *  happens to be nonzero: right after switching modes, before
+   *  anything's been typed, both fields are still 0, so inferring from
+   *  the value would silently leave the old field showing. Absent means
+   *  "$," the default. */
+  const [percentModeItems, setPercentModeItems] = useState<Set<string>>(
+    () => new Set((initialItems ?? []).filter((i) => i.discountPercent > 0).map((i) => i.key))
+  );
+
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const addItem = () => {
-    setItems([...items, { key: newRef("item"), label: "", amountCents: 0, assigneeRefs: [] }]);
+    setItems([...items, emptyDraftItem(newRef("item"))]);
   };
   const updateItem = (key: string, patch: Partial<DraftItem>) => {
     setItems(items.map((item) => (item.key === key ? { ...item, ...patch } : item)));
@@ -336,35 +418,16 @@ export default function SplitEditor({
     setAddingGuest(false);
   };
 
+  // Raw, unaffected by discounts — only ever used for the OCR-vs-entered
+  // mismatch check below, which compares real, undiscounted menu prices.
   const itemsSumCents = items.reduce((sum, item) => sum + item.amountCents, 0);
   const displayEvenSubtotalCents = evenSubtotalAuto ? itemsSumCents : evenSubtotalCents;
-  // Whichever mode is active — "Go Dutch" assigns each item by hand,
-  // "Split evenly" has exactly one, but both share one subtotal concept
-  // GST/service charge compute off.
-  const effectiveSubtotalCents = mode === "dutch" ? itemsSumCents : displayEvenSubtotalCents;
-
-  // Live, not a one-time snapshot: recomputed from the current subtotal
-  // on every render, so adding/editing an item (or, in "Split evenly,"
-  // the one lump subtotal) immediately moves GST/service charge too, as
-  // long as that field hasn't been manually typed into (see
-  // `gstAuto`/`serviceChargeAuto`'s own doc comment). Service charge
-  // first, off the plain subtotal; GST on top of subtotal-plus-service-
-  // charge when both are included, matching how a real receipt stacks
-  // them. Shared across both modes — ticking "Split GST" works the same
-  // either way, and switching modes doesn't reset it.
-  const autoServiceChargeCents = Math.round(effectiveSubtotalCents * SERVICE_CHARGE_RATE);
-  const displayServiceChargeCents = serviceChargeAuto
-    ? autoServiceChargeCents
-    : serviceChargeCents;
-  const autoGstBase = effectiveSubtotalCents + (serviceChargeIncluded ? displayServiceChargeCents : 0);
-  const displayGstCents = gstAuto ? Math.round(autoGstBase * GST_RATE) : gstCents;
 
   // "Split evenly" reuses the exact same per-item math as "Go Dutch" —
-  // it's just one synthetic item (the subtotal, pre-tax) assigned to
-  // everyone in the roster, which divides out to an equal share
-  // automatically, with GST/service charge then splitting evenly across
-  // that same single assignment the same proportional way they'd split
-  // across any shared item.
+  // it's just one synthetic item (the subtotal, pre-tax, no discount of
+  // its own — only the whole-bill % discount below applies to it)
+  // assigned to everyone in the roster, which divides out to an equal
+  // share automatically.
   const effectiveItems: DraftItem[] =
     mode === "dutch"
       ? items
@@ -374,8 +437,69 @@ export default function SplitEditor({
             label: "Shared bill",
             amountCents: displayEvenSubtotalCents,
             assigneeRefs: roster.map((p) => p.ref),
+            discountAmountCents: 0,
+            discountPercent: 0,
+            discountScope: "item",
           },
         ];
+
+  // One pass over whichever item list is active, computing each item's
+  // own net amount (its own "item"-scope discount reduces it directly,
+  // so only that item's assignees ever benefit) and pooling any
+  // "shared"-scope discounts to redistribute across everyone below —
+  // mirrors demoRepo/supabaseRepo's own hydrateSplit exactly, including
+  // skipping an unassigned item entirely (it isn't really part of the
+  // bill yet, so it contributes no cost and no discount either).
+  const itemsCentsByRef = new Map<string, number>();
+  let totalAssignedCents = 0;
+  let sharedDiscountPoolCents = 0;
+  for (const item of effectiveItems) {
+    if (item.assigneeRefs.length === 0) continue;
+    const rawDiscount =
+      item.discountAmountCents > 0
+        ? item.discountAmountCents
+        : Math.round(item.amountCents * (item.discountPercent / 100));
+    const discount = Math.min(rawDiscount, item.amountCents);
+    let netAmount: number;
+    if (item.discountScope === "shared" && discount > 0) {
+      netAmount = item.amountCents;
+      sharedDiscountPoolCents += discount;
+    } else {
+      netAmount = item.amountCents - discount;
+    }
+    totalAssignedCents += netAmount;
+    const share = netAmount / item.assigneeRefs.length;
+    for (const ref of item.assigneeRefs) {
+      itemsCentsByRef.set(ref, (itemsCentsByRef.get(ref) ?? 0) + share);
+    }
+  }
+
+  // The whole-bill % discount, off that same subtotal.
+  const billDiscountCents = Math.round(totalAssignedCents * (discountPercent / 100));
+
+  // Live, not a one-time snapshot: recomputed from the current subtotal
+  // on every render, so adding/editing an item (or, in "Split evenly,"
+  // the one lump subtotal) immediately moves GST/service charge too, as
+  // long as that field hasn't been manually typed into (see
+  // `gstAuto`/`serviceChargeAuto`'s own doc comment). Fully net of every
+  // discount — item, shared-pool, and whole-bill % alike — before either
+  // is computed, matching how a restaurant POS discount usually works
+  // (tax is charged on what was actually paid). Service charge first,
+  // off the discounted subtotal; GST on top of subtotal-plus-service-
+  // charge when both are included, matching how a real receipt stacks
+  // them. Shared across both modes — ticking "Split GST" works the same
+  // either way, and switching modes doesn't reset it.
+  const effectiveSubtotalCents = Math.max(
+    0,
+    totalAssignedCents - sharedDiscountPoolCents - billDiscountCents
+  );
+  const autoServiceChargeCents = Math.round(effectiveSubtotalCents * SERVICE_CHARGE_RATE);
+  const displayServiceChargeCents = serviceChargeAuto
+    ? autoServiceChargeCents
+    : serviceChargeCents;
+  const autoGstBase = effectiveSubtotalCents + (serviceChargeIncluded ? displayServiceChargeCents : 0);
+  const displayGstCents = gstAuto ? Math.round(autoGstBase * GST_RATE) : gstCents;
+
   const effectiveGstCents = displayGstCents;
   const effectiveGstIncluded = gstIncluded;
   const effectiveServiceChargeCents = displayServiceChargeCents;
@@ -384,22 +508,14 @@ export default function SplitEditor({
   // Live preview of each person's share while assigning — the server
   // recomputes this authoritatively on save; this is just immediate
   // feedback, same arithmetic as hydrateSplit on both repos.
-  const itemsCentsByRef = new Map<string, number>();
-  let totalAssignedCents = 0;
-  for (const item of effectiveItems) {
-    if (item.assigneeRefs.length === 0) continue;
-    totalAssignedCents += item.amountCents;
-    const share = item.amountCents / item.assigneeRefs.length;
-    for (const ref of item.assigneeRefs) {
-      itemsCentsByRef.set(ref, (itemsCentsByRef.get(ref) ?? 0) + share);
-    }
-  }
   const previewOwed = (ref: string): number => {
     const itemsCents = itemsCentsByRef.get(ref) ?? 0;
     const proportion = totalAssignedCents > 0 ? itemsCents / totalAssignedCents : 0;
     const gst = effectiveGstIncluded ? effectiveGstCents * proportion : 0;
     const svc = effectiveServiceChargeIncluded ? effectiveServiceChargeCents * proportion : 0;
-    return Math.round(itemsCents + gst + svc);
+    const sharedDiscountShare = sharedDiscountPoolCents * proportion;
+    const billDiscountShare = billDiscountCents * proportion;
+    return Math.round(itemsCents - sharedDiscountShare - billDiscountShare + gst + svc);
   };
 
   const subtotalMismatch =
@@ -437,12 +553,16 @@ export default function SplitEditor({
           label: item.label.trim(),
           amount_cents: item.amountCents,
           assignee_refs: item.assigneeRefs,
+          discount_amount_cents: item.discountAmountCents,
+          discount_percent: item.discountPercent,
+          discount_scope: item.discountScope,
         })),
         subtotal_cents: mode === "dutch" ? subtotalCents : displayEvenSubtotalCents,
         gst_cents: effectiveGstCents,
         service_charge_cents: effectiveServiceChargeCents,
         gst_included: effectiveGstIncluded,
         service_charge_included: effectiveServiceChargeIncluded,
+        discount_percent: discountPercent,
       };
       const result = splitId
         ? await mutateJson<{ split: BillSplit }>(`/api/splits/${splitId}`, "PATCH", body)
@@ -649,6 +769,125 @@ export default function SplitEditor({
                 {item.assigneeRefs.length === 0 && (
                   <p className="text-ember text-xs">Nobody&apos;s assigned to this yet.</p>
                 )}
+                {expandedDiscounts.has(item.key) ||
+                item.discountAmountCents > 0 ||
+                item.discountPercent > 0 ? (
+                  <div className="border-line space-y-1.5 rounded-md border border-dashed p-1.5">
+                    <div className="flex items-center gap-1.5">
+                      <div className="border-line flex overflow-hidden rounded-full border text-xs">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            updateItem(item.key, { discountPercent: 0 });
+                            setPercentModeItems((prev) => {
+                              const next = new Set(prev);
+                              next.delete(item.key);
+                              return next;
+                            });
+                          }}
+                          className={cn(
+                            "px-2 py-0.5",
+                            !percentModeItems.has(item.key) ? "bg-ember text-white" : "bg-paper text-stone"
+                          )}
+                        >
+                          $
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            updateItem(item.key, { discountAmountCents: 0 });
+                            setPercentModeItems((prev) => new Set(prev).add(item.key));
+                          }}
+                          className={cn(
+                            "px-2 py-0.5",
+                            percentModeItems.has(item.key) ? "bg-ember text-white" : "bg-paper text-stone"
+                          )}
+                        >
+                          %
+                        </button>
+                      </div>
+                      <div className="w-16 shrink-0">
+                        {percentModeItems.has(item.key) ? (
+                          <PercentInput
+                            value={item.discountPercent}
+                            onChangeValue={(discountPercent) =>
+                              updateItem(item.key, { discountPercent })
+                            }
+                            className={cn(inputClass, "min-w-0")}
+                          />
+                        ) : (
+                          <MoneyInput
+                            cents={item.discountAmountCents}
+                            onChangeCents={(discountAmountCents) =>
+                              updateItem(item.key, { discountAmountCents })
+                            }
+                            className={cn(inputClass, "min-w-0")}
+                          />
+                        )}
+                      </div>
+                      <span className="text-stone text-xs">off</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          updateItem(item.key, {
+                            discountAmountCents: 0,
+                            discountPercent: 0,
+                            discountScope: "item",
+                          });
+                          setExpandedDiscounts((prev) => {
+                            const next = new Set(prev);
+                            next.delete(item.key);
+                            return next;
+                          });
+                          setPercentModeItems((prev) => {
+                            const next = new Set(prev);
+                            next.delete(item.key);
+                            return next;
+                          });
+                        }}
+                        className="text-stone hover:text-ink ml-auto text-xs underline"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                    <div className="flex gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => updateItem(item.key, { discountScope: "item" })}
+                        className={cn(
+                          "rounded-full px-2 py-0.5 text-xs",
+                          item.discountScope === "item"
+                            ? "bg-ember text-white"
+                            : "bg-paper text-stone border-line border"
+                        )}
+                      >
+                        Just for them
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => updateItem(item.key, { discountScope: "shared" })}
+                        className={cn(
+                          "rounded-full px-2 py-0.5 text-xs",
+                          item.discountScope === "shared"
+                            ? "bg-ember text-white"
+                            : "bg-paper text-stone border-line border"
+                        )}
+                      >
+                        Share with everyone
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setExpandedDiscounts((prev) => new Set(prev).add(item.key))
+                    }
+                    className="text-stone hover:text-ink text-xs underline"
+                  >
+                    + Discount
+                  </button>
+                )}
               </li>
             ))}
           </ol>
@@ -678,6 +917,22 @@ export default function SplitEditor({
           </div>
         </Field>
       )}
+
+      <div className="border-line space-y-2 border-t pt-3">
+        <Field
+          label="Discount (optional)"
+          hint="A flat % off the whole bill — a membership or promo discount, applied before GST/service charge."
+        >
+          <div className="flex w-20 items-center gap-1">
+            <PercentInput
+              value={discountPercent}
+              onChangeValue={setDiscountPercent}
+              className={cn(inputClass, "min-w-0")}
+            />
+            <span className="text-stone text-xs">%</span>
+          </div>
+        </Field>
+      </div>
 
       <div className="border-line space-y-2 border-t pt-3">
         <p className="text-stone text-xs">

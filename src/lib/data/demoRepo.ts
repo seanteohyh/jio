@@ -235,6 +235,7 @@ interface DemoStore {
     service_charge_cents: number;
     gst_included: boolean;
     service_charge_included: boolean;
+    discount_percent: number;
     status: "draft" | "finalized";
     created_at: string;
   }[];
@@ -244,6 +245,9 @@ interface DemoStore {
     label: string;
     amount_cents: number;
     position: number;
+    discount_amount_cents: number;
+    discount_percent: number;
+    discount_scope: "item" | "shared";
   }[];
   billItemAssignees: { item_id: string; participant_id: string }[];
   /** One row per person actually in the split — registered (`user_id`
@@ -658,17 +662,48 @@ function hydrateSplit(splitId: string): BillSplit | null {
       label: i.label,
       amount_cents: i.amount_cents,
       position: i.position,
+      discount_amount_cents: i.discount_amount_cents,
+      discount_percent: i.discount_percent,
+      discount_scope: i.discount_scope,
       assignee_ids: s.billItemAssignees
         .filter((a) => a.item_id === i.id)
         .map((a) => a.participant_id),
     }));
 
+  // Each item's own discount (`discount_scope: "item"`) reduces its net
+  // amount directly, so only its own assignees ever see it — the same
+  // effect as the item simply being cheaper. A "shared" discount instead
+  // keeps the item's full raw amount flowing to its own assignees, and
+  // pools the discount into `sharedDiscountPoolCents` to be split across
+  // EVERYONE below, the same proportional mechanism GST/service charge
+  // already use — see 101_bill_split_discounts.sql's own doc comment.
   const itemsCentsByParticipant = new Map<string, number>();
   let totalAssignedCents = 0;
+  let sharedDiscountPoolCents = 0;
   for (const item of items) {
+    // An item nobody's assigned to isn't really part of the bill being
+    // split yet (flagged to the host as its own data problem) — it
+    // contributes no cost AND no discount, same as it was never there,
+    // rather than quietly handing everyone else a rebate for an item
+    // nobody's actually paying for.
     if (item.assignee_ids.length === 0) continue;
-    totalAssignedCents += item.amount_cents;
-    const share = item.amount_cents / item.assignee_ids.length;
+
+    const rawDiscount =
+      item.discount_amount_cents > 0
+        ? item.discount_amount_cents
+        : Math.round(item.amount_cents * (item.discount_percent / 100));
+    const discount = Math.min(rawDiscount, item.amount_cents);
+
+    let netAmount: number;
+    if (item.discount_scope === "shared" && discount > 0) {
+      netAmount = item.amount_cents;
+      sharedDiscountPoolCents += discount;
+    } else {
+      netAmount = item.amount_cents - discount;
+    }
+
+    totalAssignedCents += netAmount;
+    const share = netAmount / item.assignee_ids.length;
     for (const participantId of item.assignee_ids) {
       itemsCentsByParticipant.set(
         participantId,
@@ -676,6 +711,13 @@ function hydrateSplit(splitId: string): BillSplit | null {
       );
     }
   }
+
+  // The whole-bill % discount, off the same post-item-discount subtotal
+  // the shared-item-discount pool is drawn from — computed independently
+  // of that pool rather than stacking on top of it, so a $5 shared
+  // discount plus a 10% bill discount on a $100 bill is $5 + $10 = $15
+  // off, not a compounding $5-then-10%-of-$95.
+  const billDiscountCents = Math.round(totalAssignedCents * (split.discount_percent / 100));
 
   const participantRows = s.billSplitParticipants.filter(
     (p) => p.bill_split_id === split.id
@@ -692,6 +734,8 @@ function hydrateSplit(splitId: string): BillSplit | null {
     const serviceShare = split.service_charge_included
       ? split.service_charge_cents * proportion
       : 0;
+    const sharedDiscountShare = sharedDiscountPoolCents * proportion;
+    const billDiscountShare = billDiscountCents * proportion;
     const row = participantRows.find((p) => p.id === participantId);
     return {
       id: participantId,
@@ -704,7 +748,9 @@ function hydrateSplit(splitId: string): BillSplit | null {
       // tool — the sum across everyone can land a cent or two off the
       // true total, which is normal and not worth a remainder-allocation
       // algorithm for v1.
-      owed_cents: Math.round(itemsCents + gstShare + serviceShare),
+      owed_cents: Math.round(
+        itemsCents - sharedDiscountShare - billDiscountShare + gstShare + serviceShare
+      ),
     };
   });
 
@@ -724,6 +770,7 @@ function hydrateSplit(splitId: string): BillSplit | null {
     service_charge_cents: split.service_charge_cents,
     gst_included: split.gst_included,
     service_charge_included: split.service_charge_included,
+    discount_percent: split.discount_percent,
     status: split.status,
     created_at: split.created_at,
     items,
@@ -769,6 +816,7 @@ function writeSplit(
     service_charge_cents: input.serviceChargeCents,
     gst_included: input.gstIncluded,
     service_charge_included: input.serviceChargeIncluded,
+    discount_percent: input.discountPercent ?? 0,
     status: "finalized",
     created_at: createdAt,
   });
@@ -870,6 +918,9 @@ function writeSplit(
       label: item.label,
       amount_cents: item.amountCents,
       position,
+      discount_amount_cents: item.discountAmountCents ?? 0,
+      discount_percent: item.discountPercent ?? 0,
+      discount_scope: item.discountScope ?? "item",
     });
     for (const ref of item.assigneeRefs) {
       const participantId = refToParticipantId.get(ref);
