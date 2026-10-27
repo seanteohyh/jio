@@ -5,14 +5,14 @@ import { Avatar, Button, Card, SectionHeading, inputClass } from "@/components/u
 import { AlertIcon } from "@/components/icons";
 import { mutateJson } from "@/lib/fetcher";
 import { formatCents } from "@/lib/expenses";
-import { buildWhatsAppPaymentLink } from "@/lib/whatsapp";
 import { cn } from "@/lib/utils";
+import SplitShareCard from "./SplitShareCard";
 import type { BillSplit } from "@/types";
 
-/** The settled view of a split — per-person owed amount, a way to nudge
- *  them to pay, and host-only corrections. Works identically for a
- *  registered participant or a guest: both are just a
- *  `bill_split_participants` row, a guest just has nothing to
+/** The settled view of a split — per-person owed amount and host-only
+ *  corrections, plus `SplitShareCard` for notifying everyone at once.
+ *  Works identically for a registered participant or a guest: both are
+ *  just a `bill_split_participants` row, a guest just has nothing to
  *  push-notify. */
 export default function SplitBreakdown({
   split,
@@ -113,39 +113,42 @@ export default function SplitBreakdown({
               <span className="text-sm font-medium tabular-nums">{formatCents(p.owed_cents)}</span>
             </div>
             {canEdit && (
-              <div className="flex flex-wrap items-center gap-1.5">
-                <input
-                  defaultValue={p.phone_number ?? ""}
-                  onChange={(e) => setPhoneDrafts({ ...phoneDrafts, [p.id]: e.target.value })}
-                  placeholder="Phone number"
-                  className={cn(inputClass, "h-8 max-w-[9rem] text-xs")}
-                />
-                <Button size="sm" variant="secondary" onClick={() => savePhone(p.id)}>
-                  Save
-                </Button>
-                {p.phone_number && (
-                  <a
-                    href={buildWhatsAppPaymentLink(p.phone_number, p.owed_cents, split.title)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-ember text-xs underline"
-                  >
-                    Send via WhatsApp
-                  </a>
-                )}
-                <button
-                  type="button"
-                  onClick={() => togglePaid(p.id, !!p.paid_at)}
-                  className="text-stone hover:text-ink ml-auto text-xs underline"
-                >
-                  {p.paid_at ? "Mark unpaid" : "Mark as paid"}
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => togglePaid(p.id, !!p.paid_at)}
+                className="text-stone hover:text-ink text-xs underline"
+              >
+                {p.paid_at ? "Mark unpaid" : "Mark as paid"}
+              </button>
             )}
           </li>
         ))}
         {others.length === 0 && <p className="text-stone text-xs">Nobody else owes anything yet.</p>}
       </ul>
+
+      {canEdit && (
+        <div className="space-y-1">
+          <p className="text-stone text-xs">
+            {split.payer_user_id === viewerId
+              ? "Your number"
+              : `${payer?.display_name ?? "The payer"}'s number`}{" "}
+            — shown on the shareable summary below so everyone knows how to pay.
+          </p>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <input
+              defaultValue={payer?.phone_number ?? ""}
+              onChange={(e) => setPhoneDrafts({ ...phoneDrafts, [payer?.id ?? ""]: e.target.value })}
+              placeholder="Payer's number, e.g. for PayNow"
+              className={cn(inputClass, "h-8 max-w-[11rem] text-xs")}
+            />
+            <Button size="sm" variant="secondary" onClick={() => payer && savePhone(payer.id)}>
+              Save
+            </Button>
+          </div>
+        </div>
+      )}
+
+      <SplitShareCard split={split} />
 
       {canEdit && (
         <div className="flex gap-2">
