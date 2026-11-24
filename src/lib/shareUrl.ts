@@ -1,3 +1,5 @@
+import { config } from "@/lib/config";
+
 /**
  * Absolute URLs for things people paste into WhatsApp.
  *
@@ -34,9 +36,18 @@ export function absoluteUrl(path: string): string {
   return `${siteOrigin()}${suffix}`;
 }
 
-/** Shareable link that opens a Jio's invite page. */
+/**
+ * Shareable link that opens a Jio's invite page.
+ *
+ * Carries `config.ogCacheBustVersion` as a plain query param — ignored by
+ * `/e/[token]`'s own routing (it matches on the path segment alone) but
+ * enough to make a chat app's crawler treat this as a URL it's never seen,
+ * so a Jio whose link was already shared and cached with an older/stale
+ * preview gets a fresh one the next time it's shared, same as a brand-new
+ * Jio always would.
+ */
 export function eventInviteUrl(token: string): string {
-  return absoluteUrl(`/e/${token}`);
+  return absoluteUrl(`/e/${token}?v=${config.ogCacheBustVersion}`);
 }
 
 /** Shareable link that opens a Kaki's join page. */
