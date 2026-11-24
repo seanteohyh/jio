@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { getRepoAsync } from "@/lib/data/repo";
@@ -5,8 +6,40 @@ import { Card, Chip, LinkButton } from "@/components/ui";
 import ShareLink from "@/components/ShareLink";
 import HomeScreenNudge from "@/components/HomeScreenNudge";
 import { eventInviteUrl } from "@/lib/shareUrl";
+import { inviteDescription, inviteShareText } from "@/lib/inviteShare";
 import { config } from "@/lib/config";
 import { formatCountdown, formatDateTime } from "@/lib/utils";
+
+/**
+ * Dynamic per-Jio title/description for whatever a chat app's link
+ * preview falls back to when it can't render `opengraph-image.tsx`'s own
+ * image (a crawler that skips images, an in-chat text-only preview) —
+ * same safe, signed-out-friendly data the page itself renders below.
+ */
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ token: string }>;
+}): Promise<Metadata> {
+  const { token } = await params;
+  const repo = await getRepoAsync();
+
+  let preview;
+  try {
+    preview = await repo.getPublicEventPreview(token);
+  } catch {
+    preview = null;
+  }
+  if (!preview) return { title: "Invite not found" };
+
+  const description = inviteDescription(preview);
+  return {
+    title: preview.title,
+    description,
+    openGraph: { title: preview.title, description },
+    twitter: { card: "summary_large_image", title: preview.title, description },
+  };
+}
 
 /**
  * Event invite landing page.
@@ -133,7 +166,7 @@ export default async function EventInvitePage({
         <ShareLink
           url={eventInviteUrl(token)}
           label="Share this Jio"
-          shareText={`Join "${preview.title}" on ${config.appName}`}
+          shareText={inviteShareText(preview.title)}
         />
       </div>
     );
