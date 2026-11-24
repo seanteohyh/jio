@@ -48,13 +48,26 @@ export async function GET(request: NextRequest) {
       if (prefs?.default_office_id) defaultOfficeId = prefs.default_office_id;
     }
 
+    const search = params.get("q") ?? "";
+    // A bare name search (no `maxWalk` of its own — the Jio-creation form's
+    // search box never sends one) isn't limited to nearby places just
+    // because that's this endpoint's unrelated default for a plain browse —
+    // typing a specific name means "find that place," wherever it is. A
+    // caller that DOES send its own `maxWalk` (the Places page's walk-time
+    // slider, once touched) still gets it honored even alongside a search.
+    const maxWalkMinutes = params.has("maxWalk")
+      ? numberParam(params, "maxWalk", 60)
+      : search.trim()
+        ? Infinity
+        : 60;
+
     const baseFilters: Omit<Filters, "sortBy"> = {
       cuisines: listParam(params, "cuisines"),
       budgetMin: numberParam(params, "budgetMin", 1) as BudgetTier,
       budgetMax: numberParam(params, "budgetMax", 6) as BudgetTier,
-      maxWalkMinutes: numberParam(params, "maxWalk", 60),
+      maxWalkMinutes,
       status: (params.get("status") as PlaceStatus | "all") ?? "active",
-      search: params.get("q") ?? "",
+      search,
       officeId: params.get("officeId") ?? defaultOfficeId,
     };
 
