@@ -21,18 +21,21 @@ export function inviteShareText(title: string): string {
  * `generateMetadata`'s fallback for a crawler that skips images
  * entirely. Mirrors what the signed-out preview page itself already
  * shows, condensed to one line.
+ *
+ * Deliberately excludes `goingCount`: a chat app crawls and caches this
+ * text per URL once, so it would freeze at whatever the count was the
+ * moment the link was first unfurled — stale and misleading for anyone
+ * who joins after. The live page itself (not this) shows the real count.
  */
 export function inviteDescription(preview: PublicEventPreview): string {
   if (preview.status === "closed" && preview.winnerPlaceName) {
     return `Decided: ${preview.winnerPlaceName} — hosted by ${preview.hostName}.`;
   }
-  const going =
-    preview.goingCount > 0 ? `${preview.goingCount} going so far` : "Nobody's confirmed yet";
   const options = preview.placeOptions
     .slice(0, 3)
     .map((o) => o.name)
     .join(", ");
-  return [`Hosted by ${preview.hostName}`, going, options ? `Vote: ${options}` : null]
+  return [`Hosted by ${preview.hostName}`, options ? `Vote: ${options}` : "Vote on where to eat"]
     .filter(Boolean)
     .join(" · ");
 }

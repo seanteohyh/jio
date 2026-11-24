@@ -25,7 +25,7 @@ describe("inviteShareText", () => {
 });
 
 describe("inviteDescription", () => {
-  it("summarizes an open Jio with host, going count and up to 3 options", () => {
+  it("summarizes an open Jio with host and up to 3 options, never the going count", () => {
     const text = inviteDescription(
       makePreview({
         hostName: "Sean",
@@ -39,14 +39,15 @@ describe("inviteDescription", () => {
       })
     );
     expect(text).toContain("Hosted by Sean");
-    expect(text).toContain("3 going so far");
     expect(text).toContain("Vote: Kim San Leng, Ya Kun, Toast Box");
     expect(text).not.toContain("Fourth Place");
+    expect(text).not.toContain("going");
+    expect(text).not.toMatch(/\d/);
   });
 
-  it("says nobody's confirmed yet when going count is zero", () => {
-    expect(inviteDescription(makePreview({ goingCount: 0 }))).toContain(
-      "Nobody's confirmed yet"
+  it("falls back to a generic vote prompt with no place options yet", () => {
+    expect(inviteDescription(makePreview({ goingCount: 0, placeOptions: [] }))).toContain(
+      "Vote on where to eat"
     );
   });
 

@@ -80,7 +80,7 @@ export default async function Image({ params }: { params: Promise<{ token: strin
     .filter(Boolean)
     .join("");
   const staticText =
-    "WHERE ARE WE EATING?DECIDEDNobody's confirmed yetgoing so far+ more" +
+    "WHERE ARE WE EATING?DECIDED+ moreHelp pick where to eat:Tap to vote on where to eat" +
     "TAP TO VOTE — NO SIGNUP NEEDED TO PEEKTAP TO SEE WHO'S GOING" +
     "This invite may have expired — open it to check.0123456789";
   const fontText = `${title}${dynamicText}${staticText}`;
@@ -193,12 +193,16 @@ export default async function Image({ params }: { params: Promise<{ token: strin
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+              {/* Deliberately static, never the live going-count: a chat
+                  app crawls and caches this card per URL once, so a real
+                  number here would freeze stale the moment anyone else
+                  joins after the link's first unfurl. */}
               <div style={{ display: "flex", fontSize: 28, color: COLOR.ink }}>
-                {preview
-                  ? preview.goingCount > 0
-                    ? `${preview.goingCount} going so far`
-                    : "Nobody's confirmed yet"
-                  : "This invite may have expired — open it to check."}
+                {!preview
+                  ? "This invite may have expired — open it to check."
+                  : options.length > 0
+                    ? "Help pick where to eat:"
+                    : "Tap to vote on where to eat"}
               </div>
               {options.length > 0 && (
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
