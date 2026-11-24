@@ -56,6 +56,19 @@ const hasOneMap = Boolean(
 export const config = {
   appName: process.env.NEXT_PUBLIC_JIO_APP_NAME || "Jio",
 
+  /**
+   * Cache-busting suffix appended to every invite link (`eventInviteUrl`).
+   * A chat app (WhatsApp, Telegram, ...) caches a link's preview per exact
+   * URL, indefinitely — a link already shared before an OG-card change
+   * shipped keeps showing the old, stale card forever otherwise, since
+   * there's no way to ask a third party to re-crawl a URL it already has.
+   * Bump this string whenever a change could meaningfully alter what the
+   * card/description renders (so every already-shared link, old Jios
+   * included, gets treated as new and re-crawled on its next share) —
+   * any value works, it only has to differ from the last one shipped.
+   */
+  ogCacheBustVersion: "2",
+
   /** Which repository implementation `getRepoAsync()` returns. */
   dataAdapter: pick<DataAdapter>(
     process.env.JIO_DATA_ADAPTER,
