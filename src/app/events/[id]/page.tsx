@@ -48,6 +48,7 @@ import {
 } from "@/components/profile/ReminderSettingsPanel";
 import { fetcher, mutateJson } from "@/lib/fetcher";
 import { eventInviteUrl } from "@/lib/shareUrl";
+import { inviteShareText } from "@/lib/inviteShare";
 import { googleCalendarUrl, canAddToCalendar } from "@/lib/calendar";
 import { subscribeToEventChanges } from "@/lib/realtime";
 import { features } from "@/lib/config";
@@ -820,7 +821,7 @@ export default function EventDetailPage({
         <ShareLink
           url={eventInviteUrl(event.invite_token)}
           label="Share this Jio"
-          shareText={`${event.title} — come vote on where we eat.`}
+          shareText={inviteShareText(event.title)}
         />
       )}
 

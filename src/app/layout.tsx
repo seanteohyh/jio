@@ -13,6 +13,7 @@ import { ToastProvider } from "@/components/Toast";
 import AppVisitTracker from "@/components/AppVisitTracker";
 import { config } from "@/lib/config";
 import { getValidatedUser } from "@/lib/supabase/serverAuth";
+import { siteOrigin } from "@/lib/shareUrl";
 
 /**
  * Display face. Bold, warm and geometric — it echoes the pebble mark, which
@@ -35,7 +36,16 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+// Only set when configured — `siteOrigin()` has no window to fall back to
+// during a server render, so this stays unset in a deploy with no
+// NEXT_PUBLIC_SITE_URL rather than throwing on `new URL("")`. Needed so a
+// page's own relative `opengraph-image.tsx` output (and any other
+// relative `openGraph.images`) resolves to an absolute URL a chat app's
+// crawler can actually fetch, rather than a bare path.
+const configuredSiteOrigin = siteOrigin();
+
 export const metadata: Metadata = {
+  ...(configuredSiteOrigin ? { metadataBase: new URL(configuredSiteOrigin) } : {}),
   title: {
     default: `${config.appName} — where are we eating?`,
     template: `%s · ${config.appName}`,
